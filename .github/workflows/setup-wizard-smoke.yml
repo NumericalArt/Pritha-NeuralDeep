@@ -1,0 +1,61 @@
+name: Setup Wizard Smoke
+
+on:
+  pull_request:
+    paths:
+      - ".env.example"
+      - "07_workflows/first-run-setup.md"
+      - "scripts/bootstrap.mjs"
+      - "scripts/setup*.mjs"
+      - "setup/**"
+      - "requirements*.txt"
+      - "interfaces/control-center/package.json"
+      - "interfaces/control-center/package-lock.json"
+      - "tests/fixtures/setup-minimal.json"
+
+permissions:
+  contents: read
+
+jobs:
+  setup-wizard-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Node dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install portable Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-core.txt
+
+      - name: Install Control Center dependencies from lockfile
+        run: npm --prefix interfaces/control-center ci --ignore-scripts
+
+      - name: Bootstrap plan and verify
+        run: |
+          node scripts/bootstrap.mjs plan --profile minimal --json
+          node scripts/bootstrap.mjs verify --profile minimal --json
+
+      - name: Run setup wizard in a clean temp state
+        run: |
+          tmp="$(mktemp -d)"
+          node scripts/bootstrap.mjs install \
+            --profile minimal \
+            --state "$tmp/.techscope-setup.json" \
+            --env "$tmp/.env.local" \
+            --json
+          node scripts/setup-status.mjs --state "$tmp/.techscope-setup.json" --json
