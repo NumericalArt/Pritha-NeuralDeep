@@ -1,0 +1,1 @@
+export function validateResponsesInputs(payload: Record<string, unknown>, options: { model?: string; imagesAllowed?: boolean; imageFormats?: string[]; expectedImages?: { sha256: string; size: number; mediaType: string }[]; requireCurrentImages?: boolean; hasHistoricalImage?: (sha256: string, mediaType: string, size: number) => boolean | Promise<boolean> }): Promise<string[]>;

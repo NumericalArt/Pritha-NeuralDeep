@@ -1,0 +1,28 @@
+# Realtime Voice Interface
+
+Status: documented-placeholder
+
+This agent contract selected a voice/realtime interface. Start from Pritha's
+FESPA26 reference implementation only after adapting the domain tools and
+safety gates.
+
+## Pritha Reference
+
+- Standard: `04_standards/realtime-voice-control-for-codex-agents.md`
+- Workflow: `07_workflows/realtime-voice-control-kit.md`
+- Code pack: `11_agents/reference-implementations/fespa26-voice-control/`
+
+From the Pritha root:
+
+```sh
+node scripts/voice-control-kit.mjs plan
+{{pritha:value0}}
+```
+
+## Required Adaptation
+
+- Replace reference tool names with this agent's domain tools.
+- Keep `OPENAI_API_KEY` server-side and issue only ephemeral Realtime credentials.
+- Route complex work through Codex App, Codex CLI, a session contract or a validated queue.
+- Require explicit operator confirmation for destructive, public or deployment actions.
+- Record readiness for realtime, memory, Codex transport, tools, interfaces and operations.

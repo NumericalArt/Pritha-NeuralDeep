@@ -1,0 +1,86 @@
+const MAINTENANCE_SCHEMA_VERSION = "pritha-maintenance-contract-v1";
+
+const MAINTENANCE_ACTIONS = [
+  {
+    id: "github-check",
+    label: "Check GitHub updates",
+    category: "local-github",
+    mode: "manual_now",
+    cronCandidate: true,
+    mutates: false,
+    status: "manual_only",
+    summary: "Fetches origin metadata and reports whether local Pritha can be safely fast-forwarded.",
+    safety: "Read-only except for Git remote refs updated by git fetch.",
+  },
+  {
+    id: "github-update",
+    label: "Update local Pritha",
+    category: "local-github",
+    mode: "manual_confirmed",
+    cronCandidate: true,
+    mutates: true,
+    status: "manual_only",
+    summary: "Applies a GitHub update only when local main is clean, not ahead, and fast-forwardable.",
+    safety: "Blocks on local tracked edits, local commits ahead of origin/main, non-main branches, and non-fast-forward updates. Creates a backup branch before pull.",
+    confirmation: "--yes",
+  },
+  {
+    id: "rebuild-from-github",
+    label: "Rebuild from GitHub",
+    category: "local-github",
+    mode: "plan_only",
+    cronCandidate: false,
+    mutates: false,
+    status: "planned",
+    summary: "Prepares a destructive rebuild plan for a broken local checkout without executing it.",
+    safety: "No deletion, clone, reset, or overwrite is performed by the current implementation.",
+  },
+  {
+    id: "refresh-agents",
+    label: "Refresh child agents",
+    category: "knowledge-maintenance",
+    mode: "manual_now",
+    cronCandidate: true,
+    mutates: true,
+    status: "manual_only",
+    summary: "Rescans sibling child-agent folders and rebuilds Pritha's agent registry.",
+    safety: "Writes only the current instance's local registry under PRITHA_STATE_ROOT.",
+    writes: ["agents/registry.md"],
+  },
+  {
+    id: "refresh-self-knowledge",
+    label: "Refresh self knowledge",
+    category: "knowledge-maintenance",
+    mode: "manual_now",
+    cronCandidate: true,
+    mutates: true,
+    status: "manual_only",
+    summary: "Writes a draft review describing Pritha's current local maintenance surface and cron placeholders.",
+    safety: "Creates a local draft report only; it does not edit shared standards or decisions automatically.",
+    writes: ["agents/reports/YYYY-MM-DD-pritha-self-knowledge-refresh*.md"],
+  },
+  {
+    id: "github-knowledge-radar",
+    label: "GitHub Knowledge Radar",
+    category: "research-maintenance",
+    mode: "manual_now",
+    cronCandidate: true,
+    mutates: true,
+    status: "manual_only",
+    summary: "Maintains a candidate registry of open-source repositories worth reviewing for agent-building knowledge.",
+    safety: "Registers links and metadata only. It does not clone, install, run, or trust third-party code.",
+    writes: ["01_sources/registries/github-agent-building-repos.md"],
+  },
+];
+
+export function maintenanceContracts() {
+  return {
+    schema: MAINTENANCE_SCHEMA_VERSION,
+    cronAdapter: {
+      status: "not_installed",
+      mode: "manual_only",
+      note: "Scheduled execution is intentionally disabled until a separate operations decision enables it.",
+    },
+    actions: MAINTENANCE_ACTIONS.map((action) => ({ ...action })),
+  };
+}

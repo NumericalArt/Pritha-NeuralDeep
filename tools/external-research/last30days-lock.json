@@ -1,0 +1,14 @@
+{
+  "tools": {
+    "last30days": {
+      "repo": "https://github.com/mvanhorn/last30days-skill",
+      "commit": "d5f3083b826c2187d6b0218224f2a8c5402f89f4",
+      "version": "3.8.3",
+      "python": ">=3.12",
+      "install_path": ".tools/external-research/last30days-skill/d5f3083b826c2187d6b0218224f2a8c5402f89f4",
+      "engine_path": "skills/last30days/scripts/last30days.py",
+      "installed_globally": false,
+      "vendored": false
+    }
+  }
+}

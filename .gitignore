@@ -1,0 +1,80 @@
+# macOS / editor noise
+.DS_Store
+**/.DS_Store
+Untitled*.canvas
+2026-05-15.md
+
+# Secrets and local environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Runtime state
+.logs/
+.tools/
+.queue/
+.private/
+/private/
+.memory-private/
+data/logs/
+.techscope-setup.json
+.obsidian/
+.snapshots/audit/
+03_reviews/*-voice-session-memory.md
+
+# Raw source artifacts, transcripts and media stay out of the portable snapshot.
+# Keep only processed knowledge and neutral metadata in tracked memory.
+01_sources/raw/**/*.mp4
+01_sources/raw/**/*.wav
+01_sources/raw/**/*.mov
+01_sources/raw/**/*.mkv
+01_sources/raw/**/*.webm
+01_sources/raw/**/*.mp3
+01_sources/raw/**/*.m4a
+01_sources/raw/**/*.avi
+01_sources/raw/**/*.flac
+
+# Dependencies / caches
+node_modules/
+.next/
+.next-search-test/
+.next-pritha-staging/
+.next-pritha-previous/
+*.tsbuildinfo
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local backups
+*.bak
+*.tmp
+
+# Test artifacts
+interfaces/control-center/test-results/
+
+# Generated memory indexes; rebuild with `node scripts/bootstrap.mjs prepare --profile local`.
+.memory/techscope.sqlite
+.memory/techscope.sqlite-*
+.memory/*.sqlite
+.memory/*.sqlite3
+.memory/*.db
+.memory/last-rebuild.sql
+.memory/last-self-test.json
+.memory/exports/
+
+# Reproducible VAD assets copied from package-lock dependencies.
+interfaces/control-center/public/voice-vad/
+
+# Distribution instance and example runtime
+.pritha-instance.json
+**/.data/
+**/.env
+**/.env.local
+**/.env.*.local
+**/.env.*backup*
+**/.env.*recovery*
+**/*.backup
+**/*.current-backup
+**/*.fixed
+*.zip

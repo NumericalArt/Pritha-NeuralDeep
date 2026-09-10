@@ -1,0 +1,7 @@
+{
+  "id": "youtube",
+  "version": 1,
+  "description": "YouTube remote media adapter.",
+  "sourceKinds": ["remote-url"],
+  "removable": true
+}

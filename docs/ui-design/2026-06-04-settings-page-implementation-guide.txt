@@ -1,0 +1,480 @@
+Implementation Guide: /settings page
+
+Использовать уже заданные общие tokens, sidebar, typography, glass panels, status strip и button styles. Ниже — только специфика страницы Settings.
+
+1. Route and purpose
+
+Route: /settings
+Desktop nav active item: Settings
+Page title: Settings
+Subtitle: Configure Pritha to work the way you want.
+
+Страница — compact settings surface. Не превращать её в admin panel. Показывать только ключевые настройки и честные статусы возможностей.
+
+⸻
+
+2. Desktop layout
+
+<SettingsPage>
+  <Header />
+  <div className="settings-layout">
+    <main className="settings-main">
+      <SettingsTabs />
+      <GeneralSettingsPanel />
+    </main>
+    <aside className="settings-rail">
+      <PrithaSummaryCard />
+      <LimitsOverviewCard />
+      <ProactivityCard />
+    </aside>
+  </div>
+</SettingsPage>
+
+CSS:
+
+.settings-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 28px;
+}
+.settings-main {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.settings-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+⸻
+
+3. Header status strip
+
+Same as Voice page:
+
+Pritha Ready | Codex Connected | Proactivity Off | Open in Codex
+
+Keep compact and right-aligned.
+
+⸻
+
+4. Settings tabs
+
+Tabs inside one glass container.
+
+General | Access | Codex | Voice | Limits | Proactivity
+
+Default active tab:
+
+General
+
+Visual:
+
+* dark glass bar;
+* active tab has purple underline;
+* no heavy filled background;
+* height around 58px.
+
+.settings-tabs {
+  height: 58px;
+  display: flex;
+  align-items: center;
+  border-radius: 12px;
+  background: rgba(10, 18, 31, 0.78);
+  border: 1px solid var(--border-soft);
+  overflow: hidden;
+}
+.settings-tab {
+  flex: 1;
+  height: 100%;
+  position: relative;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.settings-tab.active {
+  color: var(--text-primary);
+}
+.settings-tab.active::after {
+  content: "";
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #9b6dff, #d86bff);
+  border-radius: 999px;
+}
+
+Tabs may switch local panel content. If only General is implemented, other tabs show honest placeholders:
+
+Planned / Not installed / Configure later
+
+⸻
+
+5. General tab content
+
+General tab contains four sections:
+
+Language
+Access & Connections
+Appearance
+Data & Storage
+
+Each section is a glass card.
+
+.settings-section {
+  border-radius: 12px;
+  padding: 20px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(79, 99, 255, 0.08), transparent 42%),
+    rgba(10, 18, 31, 0.82);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--shadow-inner);
+}
+
+Section header:
+
+<div className="section-header">
+  <Icon />
+  <div>
+    <h2>Language</h2>
+    <p>Interface language</p>
+  </div>
+</div>
+
+⸻
+
+6. Language section
+
+Visual:
+
+Language
+Interface language
+[ English ][ Русский ]
+ⓘ Pritha’s core knowledge and project files remain in English.
+
+Segmented control:
+
+.language-toggle-large {
+  width: 248px;
+  height: 42px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-radius: 9px;
+  background: rgba(7, 14, 25, 0.58);
+  border: 1px solid var(--border-soft);
+  overflow: hidden;
+}
+.language-toggle-large button.active {
+  background: linear-gradient(180deg, rgba(124, 92, 255, 0.9), rgba(82, 56, 194, 0.9));
+  color: white;
+}
+
+Behavior:
+
+* default language: English;
+* Russian is equal switch;
+* canonical files remain English-first;
+* language switch is one-click safe.
+
+⸻
+
+7. Access & Connections section
+
+Visual four cards:
+
+Localhost (This device)
+http://localhost:3000
+LAN
+192.168.1.50:3000
+Tailscale
+pritha.example.invalid
+QR Link
+Open /voice on phone
+
+Selected card has purple border and small check circle top-right.
+
+.access-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+.access-option {
+  position: relative;
+  min-height: 128px;
+  border-radius: 10px;
+  padding: 18px 14px;
+  text-align: center;
+  background: rgba(8, 15, 26, 0.58);
+  border: 1px solid var(--border-soft);
+}
+.access-option.selected {
+  border-color: rgba(124, 92, 255, 0.72);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(124, 92, 255, 0.16), transparent 56%),
+    rgba(10, 18, 31, 0.78);
+}
+
+Info note below:
+
+Use QR code from Agents or Voice page to connect your phone.
+
+Behavior:
+
+* Localhost selected by default;
+* LAN/Tailscale/QR may be ready, unavailable, pending_auth;
+* connecting beyond localhost requires confirmation later;
+* if unreachable, show disabled state, not fake connected status.
+
+⸻
+
+8. Appearance section
+
+Visual:
+
+Appearance
+Theme
+[ Dark ][ System ][ Light ]
+
+In current dark UI, Dark selected.
+
+Behavior:
+
+* MVP can keep only Dark functional;
+* System and Light may be planned if not implemented;
+* if user selects unavailable theme, show toast:
+
+Light theme is planned.
+
+Do not break current dark design.
+
+⸻
+
+9. Data & Storage section
+
+Visual:
+
+Data & Storage
+Snapshots and local data
+Snapshots retention per agent
+How many snapshots to keep for rollback        [2 snapshots (recommended) v]
+Clear local cache
+Safe to clear. Does not remove snapshots or reports.        [Clear Cache]
+
+Snapshot retention select:
+
+1 snapshot
+2 snapshots (recommended)
+3 snapshots
+
+Default:
+
+2 snapshots (recommended)
+
+Behavior:
+
+* changing retention is confirmation-required if it may delete old snapshots;
+* Clear Cache is confirmation-required;
+* Clear Cache must not remove snapshots, reports, memory, registry or contracts;
+* if backend missing, button disabled with tooltip:
+
+Cache cleanup backend is not installed.
+
+⸻
+
+10. Right rail
+
+10.1. Pritha Summary
+
+Pritha Summary
+Version          v0.3.0
+Status           Ready
+Uptime           2h 13m
+Memory Index     Up to date
+Last Self-test   2 hours ago
+[Run Self-test]
+
+Button behavior:
+
+* if self-test writes report/logs, require confirmation;
+* if backend unavailable, button disabled or shows “Open in Codex” fallback;
+* do not put raw diagnostics here.
+
+10.2. Limits Overview
+
+Limits Overview
+Codex Limits      Unavailable
+API Usage         Configured
+Budget            75% used
+[Open Limits Settings]
+
+Progress bar:
+
+.limit-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(72, 88, 120, 0.28);
+}
+.limit-progress-fill {
+  width: 75%;
+  background: linear-gradient(90deg, #ffad20, #ff6d2d);
+}
+
+Important rule:
+
+* do not show fake Codex quota;
+* 75% used only for configured/manual API budget;
+* Codex Limits must remain Unavailable unless backed by real telemetry.
+
+10.3. Proactivity
+
+Proactivity
+Status                         Off
+Cron adapter not installed
+Proactivity is disabled.
+[Configure Draft]
+Manual Actions
+[Run Manual Check]
+
+Behavior:
+
+* cron adapter is not installed in MVP;
+* Configure Draft opens planned/draft panel only;
+* Run Manual Check may be read-only/dry-run;
+* no cron/heartbeat/autostart activation in this page.
+
+⸻
+
+11. Settings data model
+
+export type CapabilityStatus =
+  | "ready"
+  | "disabled"
+  | "manual_only"
+  | "planned"
+  | "not_installed"
+  | "unavailable"
+  | "pending_auth"
+  | "failed";
+export type SettingsState = {
+  language: "en" | "ru";
+  theme: "dark" | "system" | "light";
+  accessMode: "localhost" | "lan" | "tailscale" | "qr";
+  snapshotRetention: 1 | 2 | 3;
+  summary: {
+    version: string;
+    status: CapabilityStatus;
+    uptime: string;
+    memoryIndex: "up_to_date" | "stale" | "failed" | "unknown";
+    lastSelfTest: string;
+  };
+  limits: {
+    codexLimits: CapabilityStatus;
+    apiUsage: CapabilityStatus;
+    budgetUsedPercent?: number;
+  };
+  proactivity: {
+    status: "off" | "manual" | "planned";
+    cronAdapter: CapabilityStatus;
+  };
+};
+
+Mock matching screenshot:
+
+const settingsMock: SettingsState = {
+  language: "en",
+  theme: "dark",
+  accessMode: "localhost",
+  snapshotRetention: 2,
+  summary: {
+    version: "v0.3.0",
+    status: "ready",
+    uptime: "2h 13m",
+    memoryIndex: "up_to_date",
+    lastSelfTest: "2 hours ago"
+  },
+  limits: {
+    codexLimits: "unavailable",
+    apiUsage: "ready",
+    budgetUsedPercent: 75
+  },
+  proactivity: {
+    status: "off",
+    cronAdapter: "not_installed"
+  }
+};
+
+⸻
+
+12. Interactions
+
+One-click safe
+
+switch language
+select visible tab
+open limits tab
+open voice QR panel
+
+Confirmation-required
+
+Run Self-test
+Clear Cache
+Change retention if it deletes snapshots
+Connect LAN/Tailscale beyond localhost
+Run Manual Check if it writes report
+
+Disabled/planned
+
+Enable cron
+Codex limits telemetry
+Light theme, if not implemented
+Tailscale, if not configured
+
+⸻
+
+13. Responsive behavior
+
+Tablet
+
+Right rail moves below main settings.
+
+@media (max-width: 1279px) {
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
+  .settings-rail {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+Mobile
+
+* no desktop sidebar;
+* bottom nav;
+* /settings opens compact settings;
+* tabs become horizontal scroll;
+* access cards become 2×2 grid or single-column;
+* right rail cards move below General sections;
+* hide excessive summary rows if needed.
+
+⸻
+
+14. Visual checklist
+
+Verify against reference:
+
+* active sidebar item is Settings;
+* General tab has purple underline;
+* Language section has EN/RU segmented control on the right;
+* Access cards are four equal compact cards;
+* selected Localhost has purple border/check;
+* Appearance has three-segment theme selector;
+* Data & Storage has snapshot retention dropdown and Clear Cache button;
+* right rail order is Summary → Limits → Proactivity;
+* Proactivity clearly says cron adapter not installed;
+* no dense forms;
+* no raw diagnostics;
+* no fake enabled cron or Codex limits.

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.techscope.web-dasha</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>__TECHSCOPE_ROOT__/scripts/run-techscope-web.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__TECHSCOPE_ROOT__</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TECHSCOPE_ROOT</key>
+    <string>__TECHSCOPE_ROOT__</string>
+    <key>HOST</key>
+    <string>127.0.0.1</string>
+    <key>PORT</key>
+    <string>3000</string>
+    <key>PATH</key>
+    <string>/Applications/Codex.app/Contents/Resources:__HOME__/Library/Python/3.9/bin:__HOME__/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>__HOME__</string>
+    <key>USER</key>
+    <string>__USER__</string>
+    <key>LOGNAME</key>
+    <string>__USER__</string>
+    <key>TMPDIR</key>
+    <string>/private/tmp</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>__TECHSCOPE_ROOT__/.logs/techscope-web.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>__TECHSCOPE_ROOT__/.logs/techscope-web.err.log</string>
+</dict>
+</plist>

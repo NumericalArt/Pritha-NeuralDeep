@@ -1,0 +1,1093 @@
+Ниже — готовое дополнение к спецификации Pritha Control Center. Его можно передать coding agent как отдельный раздел после основного ТЗ.
+
+Appendix A: Unimplemented Control Center Surfaces
+
+A.1. Purpose
+
+В UI Pritha Control Center уже заложены элементы, которые не обязаны быть полностью реализованы в текущей версии Pritha. Это приложение фиксирует, как такие элементы должны вести себя до появления backend-модулей, какие контракты нужно добавить позже и какие действия нельзя имитировать в UI.
+
+Главный принцип:
+
+UI must never pretend that a capability is ready when Pritha cannot verify it.
+
+Любой элемент, который ещё не реализован, должен иметь честный state:
+
+planned
+not_installed
+disabled
+unavailable
+pending_auth
+manual_only
+ready
+failed
+
+Это особенно важно для cron/proactivity, Codex limits, app-server telemetry, child-agent start/stop, restore, rollback, phone access, voice tools and update suggestions.
+
+Pritha уже требует readiness-проверки выбранных модулей и явного состояния ready/skipped/failed/pending-auth, а не молчаливого предположения, что модуль готов.  ￼
+
+⸻
+
+A.2. Capability state model
+
+Каждая крупная функция Control Center должна возвращать machine-readable status.
+
+Required status vocabulary
+
+type CapabilityStatus =
+  | "ready"
+  | "disabled"
+  | "manual_only"
+  | "planned"
+  | "not_installed"
+  | "unavailable"
+  | "pending_auth"
+  | "failed";
+
+UI wording
+
+Status	UI text	Meaning
+ready	Ready / Connected	Функция проверена и доступна
+disabled	Off	Функция существует, но выключена
+manual_only	Manual only	Автоматизации нет, ручной запуск доступен
+planned	Planned	UI уже знает о будущей функции, backend ещё не готов
+not_installed	Not installed	Нужный adapter/module отсутствует
+unavailable	Unavailable	Текущий runtime не даёт такие данные
+pending_auth	Needs setup	Нужна авторизация/секрет/разрешение
+failed	Failed	Проверка упала, нужна диагностика
+
+UI rule
+
+Не показывать “Connected”, “Ready”, “75% used”, “Cron active”, “Agent running” или похожие состояния без backend-проверки.
+
+⸻
+
+A.3. Cron / Proactivity specification
+
+A.3.1. Product goal
+
+Proactivity в Pritha — это контролируемая способность периодически выполнять проверки, которые помогают Pritha развиваться самой и улучшать child agents.
+
+Будущие proactive задачи:
+
+1. Периодически искать новые материалы для саморазвития Pritha.
+2. Определять, какие доверенные ресурсы стоит читать.
+3. Проверять child agents на изменения без участия Pritha.
+4. Документировать внешние изменения с timestamp/version.
+5. Сравнивать новые знания с существующими child agents.
+6. Предлагать updates на карточках агентов.
+7. Создавать rollback-safe update plan перед изменением агента.
+
+A.3.2. MVP behavior
+
+В MVP cron adapter ещё не реализован.
+
+UI должен показывать:
+
+Proactivity: Off
+Manual checks: Available
+Cron adapter: Not installed
+
+Допустимые действия MVP:
+
+View planned jobs
+Run manual check
+Configure draft
+
+Недопустимые действия MVP:
+
+Enable cron
+Enable heartbeat
+Enable autostart
+Install scheduler
+Run background polling
+Automatically write memory from external sources
+
+Pritha standard уже фиксирует: cron, heartbeat, scheduled jobs, queue watchers, launchd autostart и proactive notifications нельзя добавлять без явного выбора, scheduler owner, schedule policy, memory-write policy, monitoring, kill switch и approval gates.  ￼
+
+A.3.3. Future cron adapter
+
+Cron adapter должен быть не “сырой cron”, а слой Pritha над scheduler.
+
+Pritha Control Center
+  -> proactivity manifest
+  -> Pritha cron adapter
+  -> host scheduler / cron / launchd / external scheduler
+  -> run history
+  -> reports
+  -> update suggestions
+
+Cron adapter должен поддерживать:
+
+status
+list jobs
+next run
+last runs
+pause
+resume
+disable
+run-now
+dry-run
+logs
+kill switch
+
+A.3.4. Proactivity job types
+
+Минимальные job types:
+
+type ProactivityJobType =
+  | "self_improvement_discovery"
+  | "child_agent_drift_audit"
+  | "knowledge_to_agent_update_match"
+  | "readiness_health_report"
+  | "snapshot_retention_cleanup";
+
+1. self_improvement_discovery
+
+Pritha ищет новые материалы, которые могут улучшить:
+
+harness
+memory
+tools
+skills
+MCP
+UX
+voice
+evals
+safety
+operations
+child agents
+
+В MVP источники не фиксируем. Позже Pritha должна сама определять, какие ресурсы читать, но source policy должна быть видимой в Dev/Settings.
+
+2. child_agent_drift_audit
+
+Pritha проверяет, изменился ли child agent без её участия.
+
+Примеры сигналов:
+
+AGENTS.md changed
+README changed
+operations/manifest.json changed
+package scripts changed
+new files added
+known files missing
+last readiness changed
+URL/port changed
+voice module changed
+
+Git не обязателен. Если git есть, можно использовать commit info. Если git нет, использовать fingerprints/checksums/mtime.
+
+3. knowledge_to_agent_update_match
+
+Pritha берёт новые знания и проверяет, каким child agents они подходят.
+
+Результат:
+
+Update suggestion
+
+на карточке агента.
+
+4. readiness_health_report
+
+Периодическая или manual проверка readiness Pritha и child agents.
+
+5. snapshot_retention_cleanup
+
+Удаляет старые snapshots сверх retention policy.
+
+Default retention:
+
+2 snapshots per child agent
+
+A.3.5. Proactivity manifest
+
+Pritha должна иметь manifest или эквивалентный status API.
+
+Рекомендуемый shape:
+
+{
+  "version": "0.1",
+  "status": "not_installed",
+  "mode": "disabled",
+  "scheduler_owner": "none",
+  "timezone": "Europe/Berlin",
+  "jobs": [
+    {
+      "id": "self-improvement-discovery",
+      "type": "self_improvement_discovery",
+      "title": "Self-improvement discovery",
+      "status": "planned",
+      "schedule": null,
+      "manual_run": true,
+      "writes_memory": false,
+      "requires_approval": true,
+      "last_run": null,
+      "next_run": null
+    }
+  ]
+}
+
+A.3.6. Required job fields
+
+Каждый proactive job должен иметь:
+
+type ProactivityJob = {
+  id: string;
+  type: ProactivityJobType;
+  title: string;
+  status: CapabilityStatus;
+  mode: "disabled" | "manual" | "scheduled" | "cron" | "heartbeat";
+  schedule?: string | null;
+  timezone: string;
+  source_policy?: string;
+  max_runtime_sec: number;
+  concurrency: "forbid" | "allow" | "replace" | "queue";
+  retry_policy: "none" | "fixed" | "exponential";
+  cost_budget?: {
+    max_usd?: number;
+    max_tokens?: number;
+    max_requests?: number;
+  };
+  memory_write_policy: "none" | "draft_only" | "curated_after_approval";
+  approval_required: boolean;
+  kill_switch: boolean;
+  last_run?: ProactivityRunSummary | null;
+  next_run?: string | null;
+};
+
+A.3.7. Run history
+
+Каждый manual или scheduled run должен создавать run record.
+
+type ProactivityRunSummary = {
+  run_id: string;
+  job_id: string;
+  trigger: "manual" | "cron" | "system";
+  started_at: string;
+  finished_at?: string;
+  status: "running" | "succeeded" | "failed" | "cancelled";
+  duration_ms?: number;
+  output_summary?: string;
+  report_path?: string;
+  update_suggestions_created?: number;
+  memory_writes?: number;
+};
+
+A.3.8. Safety rules
+
+Cron/proactivity must fail closed.
+
+Rules:
+
+1. No background job writes curated memory directly from raw external input.
+2. No hidden source polling writes to child agents.
+3. No automatic update application.
+4. No cron install without explicit approval.
+5. No scheduler without pause/disable/kill switch.
+6. No job without max runtime and cost budget.
+7. No external source ingestion without untrusted-input policy.
+8. No update without snapshot when rollback is expected.
+
+⸻
+
+A.4. Self-improvement source policy
+
+A.4.1. MVP
+
+В MVP source policy не реализована.
+
+UI показывает:
+
+Self-improvement sources: Planned
+Automatic discovery: Off
+Manual check: Available
+
+A.4.2. Future behavior
+
+Pritha может сама определять источники, но должна объяснять source policy.
+
+Possible source classes:
+
+official docs
+official blogs
+GitHub releases
+changelogs
+standards/specs
+research papers
+trusted engineering blogs
+user-provided RSS/list
+
+A.4.3. Source quality rule
+
+Каждый источник должен получить metadata:
+
+type SourceCandidate = {
+  id: string;
+  url: string;
+  source_class: "official_docs" | "official_blog" | "github_release" | "paper" | "engineering_blog" | "rss" | "unknown";
+  trust_level: "high" | "medium" | "low" | "unknown";
+  freshness_status: "current" | "stale" | "unknown";
+  reason_selected: string;
+  allowed_for_background_check: boolean;
+};
+
+UI не должен давать пользователю большую форму источников в MVP. Позже можно добавить compact “source policy” в Dev или Settings.
+
+⸻
+
+A.5. Child-agent drift audit
+
+A.5.1. Purpose
+
+Drift audit проверяет, развивался ли child agent без участия Pritha.
+
+Сценарий:
+
+Пользователь открыл child agent напрямую в Codex.
+Изменил его файлы.
+Pritha позже видит изменения.
+Pritha документирует observed change.
+
+A.5.2. MVP
+
+В MVP можно сделать manual check.
+
+UI:
+
+Run Manual Audit
+
+Если audit только читает состояние — one-click safe.
+
+Если audit пишет report — confirmation-required.
+
+A.5.3. Drift record
+
+type ChildAgentDriftRecord = {
+  agent_id: string;
+  detected_at: string;
+  detection_method: "mtime" | "fingerprint" | "git" | "manifest" | "healthcheck";
+  changed_surfaces: string[];
+  summary: string;
+  risk_level: "low" | "medium" | "high";
+  suggested_version_change?: "none" | "patch" | "minor" | "major";
+  report_path?: string;
+};
+
+A.5.4. UI behavior
+
+На карточке агента:
+
+Changed outside Pritha
+
+или, если изменения привели к update suggestion:
+
+Review needed
+
+Не смешивать это с Update available. Это разные состояния:
+
+Badge	Meaning
+Update available	Pritha предлагает улучшение агенту
+Review needed	Агент изменился вне Pritha
+Needs check	Health/manifest неясен
+Rollback available	Есть snapshot
+
+⸻
+
+A.6. Update suggestions
+
+A.6.1. Purpose
+
+Update suggestion — это предложение Pritha улучшить child agent на основании новых знаний или аудита.
+
+A.6.2. MVP
+
+В MVP UI может показывать update badge, если backend уже вернул suggestion.
+
+UI не должен сам генерировать update suggestions.
+
+A.6.3. Suggestion shape
+
+type AgentUpdateSuggestion = {
+  id: string;
+  agent_id: string;
+  created_at: string;
+  type:
+    | "security"
+    | "capability"
+    | "prompt_harness"
+    | "dependency"
+    | "ui"
+    | "voice"
+    | "memory"
+    | "operations"
+    | "readiness";
+  severity: "low" | "medium" | "high" | "critical";
+  title: string;
+  short_reason: string;
+  source_knowledge_refs: string[];
+  proposed_change_summary: string;
+  requires_snapshot: boolean;
+  rollback_available_after_apply: boolean;
+  status: "draft" | "suggested" | "approved" | "applied" | "declined" | "superseded";
+};
+
+A.6.4. UI display
+
+Default card display:
+
+Update available
+
+Hover/tap:
+
+Voice UI improvement
+Reason: Better context reset handling
+
+Only show severity on card if:
+
+high
+critical
+
+A.6.5. Apply update
+
+Not MVP unless backend supports it.
+
+Future flow:
+
+1. Show suggestion.
+2. User opens details.
+3. Pritha creates update plan.
+4. User confirms.
+5. Pritha creates snapshot.
+6. Pritha applies update.
+7. Pritha runs readiness check.
+8. Pritha writes evolution report.
+9. UI updates version/status.
+
+⸻
+
+A.7. Snapshots and rollback
+
+A.7.1. Decision
+
+Rollback uses Pritha-generated snapshots.
+
+Git is optional and not required.
+
+Retention:
+
+2 snapshots per child agent
+
+A.7.2. Snapshot timing
+
+Create snapshot before:
+
+apply update
+restore-over-existing-folder
+operations manifest migration
+voice module migration
+settings migration that changes files
+
+Do not create snapshot for read-only checks.
+
+A.7.3. Snapshot contents
+
+Include safe project files needed for rollback.
+
+Examples:
+
+AGENTS.md
+README.md
+docs/
+interfaces/
+operations/
+scripts/
+package.json
+manifest files
+selected config templates
+
+Exclude:
+
+.env
+.env.local
+secrets
+tokens
+credentials
+node_modules
+.venv
+.memory/*.sqlite
+.memory-private
+.queue
+.logs
+runtime state
+large media
+cache
+
+A.7.4. Snapshot metadata
+
+type AgentSnapshot = {
+  snapshot_id: string;
+  agent_id: string;
+  agent_version: string;
+  created_at: string;
+  reason: "before_update" | "before_restore" | "before_migration" | "manual";
+  included_paths: string[];
+  excluded_paths: string[];
+  storage_path: string;
+  report_path?: string;
+};
+
+A.7.5. UI states
+
+Rollback unavailable
+Rollback available
+
+Rollback button is hidden or disabled unless snapshot exists.
+
+Rollback requires confirmation.
+
+⸻
+
+A.8. Restore for missing agents
+
+A.8.1. Source of restore
+
+Restore does not restore a full archive from memory.
+
+Restore source:
+
+agent contract
+lifecycle reports
+selected modules
+Pritha registry
+known operations metadata
+
+Pritha registry is already the historical view of known agents, but physical liveness must be checked by folder scan.  ￼
+
+A.8.2. Restore flow
+
+Missing card
+  -> Restore
+  -> Restore plan
+  -> Final confirmation
+  -> Rebuild sibling folder
+  -> Run readiness check
+  -> Write recovery report
+  -> Card becomes alive
+
+A.8.3. Restore plan shape
+
+type RestorePlan = {
+  agent_id: string;
+  agent_name: string;
+  target_folder: string;
+  source_contract: string;
+  source_reports: string[];
+  selected_modules: string[];
+  expected_url?: string;
+  risks: string[];
+  will_create_folder: boolean;
+  will_overwrite_existing_folder: false;
+};
+
+If target folder already exists, this is not missing-agent restore. It becomes repair/migration and requires a separate flow.
+
+⸻
+
+A.9. Child-agent operations manifest
+
+A.9.1. Purpose
+
+Start/Stop must not be hardcoded in UI.
+
+Every live child agent that can be started/stopped from Control Center should expose an operations manifest or equivalent status API.
+
+A.9.2. Minimal manifest
+
+{
+  "agent_id": "funny-teacher",
+  "display_name": "Funny Teacher",
+  "version": "v1.3",
+  "services": [
+    {
+      "id": "web",
+      "type": "local-web-server",
+      "status": "stopped",
+      "cwd": ".",
+      "start_command": "npm run dev",
+      "stop_command": "control-center-managed",
+      "port": 3021,
+      "health_url": "http://localhost:3021/health",
+      "public_url": null,
+      "autostart": "disabled"
+    }
+  ]
+}
+
+A.9.3. Service types
+
+type ServiceType =
+  | "local-web-server"
+  | "voice-server"
+  | "telegram-bot"
+  | "worker"
+  | "codex-bridge"
+  | "external"
+  | "none";
+
+A.9.4. UI behavior
+
+If manifest exists and healthcheck works:
+
+Start / Stop
+Open URL
+Copy URL
+
+If manifest missing:
+
+Needs check
+
+If manifest exists but required fields are missing:
+
+Needs repair
+
+Start/Stop requires confirmation.
+
+No launchd/service install in MVP.
+
+⸻
+
+A.10. Agent URL computation
+
+A.10.1. MVP
+
+Agent URL is computed from:
+
+operations manifest
+port
+healthcheck result
+access mode
+
+Possible outputs:
+
+http://localhost:3021
+http://192.168.1.50:3021
+https://<tailscale-host>:3021
+
+A.10.2. UI states
+
+URL available
+URL unavailable
+Healthcheck failed
+LAN unavailable
+Tailscale not configured
+
+If URL unavailable, hide Open/Copy or show disabled with reason.
+
+⸻
+
+A.11. Phone access / QR link
+
+A.11.1. Supported modes
+
+localhost-on-device
+LAN
+Tailscale
+QR-link from desktop
+
+A.11.2. MVP behavior
+
+Control Center may show QR code only if it can compute reachable URL.
+
+Examples:
+
+LAN connected -> QR points to http://192.168.1.50:<port>/voice
+Tailscale connected -> QR points to Tailscale URL
+No reachable mobile URL -> show setup hint, no QR
+
+A.11.3. Safety
+
+Connecting beyond localhost requires explicit user awareness.
+
+UI text:
+
+This exposes Pritha Control Center on your local/private network.
+
+No public exposure in MVP.
+
+⸻
+
+A.12. Codex settings and model selection
+
+A.12.1. MVP
+
+Codex settings may be partially implemented.
+
+UI must distinguish:
+
+Current Codex surface
+Desired/default profile
+Actually applied model
+Unavailable
+
+If Pritha cannot change the Codex model from the selected surface, UI must not pretend that it can.
+
+A.12.2. Codex surface
+
+Possible values:
+
+Codex App
+Codex CLI
+Codex app-server
+Codex task bridge
+mixed
+unknown
+
+Pritha should record which Codex surface is selected when Codex is involved.  ￼
+
+A.12.3. UI rule
+
+If model selection is not supported:
+
+Model selection: unavailable in this Codex surface
+
+If only stored as preference:
+
+Default preference saved. Apply in Codex when supported.
+
+⸻
+
+A.13. Limits and telemetry
+
+A.13.1. MVP
+
+Limits UI should be honest.
+
+Possible states:
+
+Codex limits: unavailable
+Codex limits: app-server available
+API usage: configured
+API usage: unavailable
+Budget: manual
+
+Do not show fake percentages.
+
+A.13.2. Codex limits
+
+Pritha must not scrape local auth files, env vars or workspace state to infer Codex quota. Codex account/rate-limit telemetry is only allowed when an app-server-backed module explicitly exposes it.  ￼
+
+A.13.3. API usage
+
+For OpenAI API usage, MVP can show:
+
+configured
+unavailable
+manual budget
+warning threshold
+
+Actual spend tracking requires a separate billing/usage integration and should not be assumed.
+
+⸻
+
+A.14. Voice tools and Codex task bridge
+
+A.14.1. MVP voice tools
+
+Voice Control can expose a small, explicit tool surface.
+
+Allowed initial tool classes:
+
+memory search/read summary
+Pritha status
+child agent status
+manual audit request
+Codex task request
+show updates
+open/route UI intent
+
+A.14.2. Forbidden direct voice actions
+
+Realtime model must not directly:
+
+write files
+edit memory
+deploy
+publish
+install services
+delete agents
+copy secrets
+run arbitrary shell
+
+Voice workflow already requires server-side API keys, narrow tools, Codex task bridge, result validation and confirmation gates.  ￼
+
+A.14.3. Decision gate
+
+Voice can request an action, but durable actions require UI confirmation.
+
+Examples:
+
+Apply update
+Restore agent
+Rollback
+Start/stop agent
+Run audit that writes report
+Create Codex task
+
+⸻
+
+A.15. Developer page corrections
+
+The visual mockups may contain buttons such as:
+
+Run Self-test
+Rescan
+Clear
+View Raw
+View Full Logs
+
+But /dev is read-only in v1.
+
+Therefore:
+
+Allowed in /dev
+
+view diagnostics
+copy diagnostics
+view parsed registry
+view scan result
+view latest logs summary
+view latest reports
+copy command
+open file/folder path if safe
+
+Not allowed in /dev v1
+
+run self-test
+clear logs
+clear cache
+rescan if it writes state
+repair manifest
+start/stop service
+edit config
+delete anything
+
+If a button is needed, it should be read-only:
+
+Copy command
+Copy JSON
+Open in Codex
+
+Dangerous/admin actions move to a future developer tools mode, not v1.
+
+⸻
+
+A.16. Add New Agent shortcut
+
+The UI mockup may show:
+
+Add New Agent
+
+But web UI does not implement full agent creation in MVP.
+
+Behavior:
+
+Add New Agent -> Open in Codex / Start Voice
+
+No long web form for agent contract in MVP.
+
+Suggested UI:
+
+Create new agents in Codex or Voice.
+[Open in Codex] [Start Voice]
+
+Reason: полноценное создание agent contract остаётся Codex-native/Voice Control scenario, not Control Center form.
+
+⸻
+
+A.17. Command box
+
+Command box is a command palette, not full chat.
+
+Allowed examples:
+
+show missing agents
+check agents
+open voice
+show updates
+run manual audit
+copy diagnostics
+
+If user asks for complex conversation:
+
+This belongs in Codex or Voice.
+[Open in Codex] [Start Voice]
+
+Command box must not become a third full Pritha chat surface.
+
+⸻
+
+A.18. UI implementation gates
+
+Each UI feature should be gated by a backend capability.
+
+Required gates
+
+type ControlCenterCapabilities = {
+  agents_registry: CapabilityStatus;
+  sibling_scan: CapabilityStatus;
+  operations_manifest: CapabilityStatus;
+  start_stop: CapabilityStatus;
+  restore: CapabilityStatus;
+  snapshots: CapabilityStatus;
+  rollback: CapabilityStatus;
+  update_suggestions: CapabilityStatus;
+  voice_realtime: CapabilityStatus;
+  voice_tools: CapabilityStatus;
+  codex_bridge: CapabilityStatus;
+  codex_limits: CapabilityStatus;
+  api_usage: CapabilityStatus;
+  proactivity: CapabilityStatus;
+  cron_adapter: CapabilityStatus;
+  phone_access_lan: CapabilityStatus;
+  phone_access_tailscale: CapabilityStatus;
+  developer_diagnostics: CapabilityStatus;
+};
+
+UI rule
+
+If capability is not ready, UI must either:
+
+show disabled state with reason
+show planned placeholder
+hide action
+offer Open in Codex / Start Voice
+
+⸻
+
+A.19. Suggested CLI/API surface for coding agent
+
+Exact command names can be chosen by Pritha, but Control Center needs equivalent JSON endpoints.
+
+Recommended CLI shapes:
+
+node scripts/pritha.mjs control-center status --json
+node scripts/pritha.mjs control-center agents --json
+node scripts/pritha.mjs control-center agent <agent-id> --json
+node scripts/pritha.mjs control-center restore-plan <agent-id> --json
+node scripts/pritha.mjs control-center restore <agent-id> --yes
+node scripts/pritha.mjs control-center snapshots <agent-id> --json
+node scripts/pritha.mjs control-center rollback-plan <agent-id> --json
+node scripts/pritha.mjs control-center proactivity status --json
+node scripts/pritha.mjs control-center proactivity run <job-id> --dry-run --json
+node scripts/pritha.mjs control-center voice status --json
+node scripts/pritha.mjs control-center diagnostics --json
+
+For web app, these can be wrapped by local API routes:
+
+/api/status
+/api/agents
+/api/agents/:id
+/api/agents/:id/restore-plan
+/api/agents/:id/restore
+/api/agents/:id/snapshots
+/api/agents/:id/rollback-plan
+/api/proactivity/status
+/api/proactivity/run
+/api/voice/status
+/api/diagnostics
+
+⸻
+
+A.20. Implementation phases
+
+Phase 0 — honest placeholders
+
+Implement UI with real statuses and disabled/planned states.
+
+Must include:
+
+Agents from registry if available
+Capability status model
+Proactivity Off / cron not installed
+Codex limits unavailable unless backed
+Developer read-only
+Voice UI shell
+
+Phase 1 — control center backend
+
+Implement:
+
+registry parser
+sibling folder scan
+operations manifest reader
+healthcheck reader
+URL computation
+restore plan
+snapshot metadata
+diagnostics JSON
+
+Phase 2 — safe actions
+
+Implement:
+
+guided restore
+start/stop via operations manifest
+snapshot creation
+rollback
+manual audit
+update suggestion display
+
+Phase 3 — voice integration
+
+Implement:
+
+Realtime session endpoint
+voice status
+narrow voice tools
+Codex task bridge
+decision gates
+mobile QR access
+
+Phase 4 — cron/proactivity
+
+Implement:
+
+proactivity manifest
+manual job runner
+run history
+cron adapter
+source policy
+child-agent drift audit
+knowledge-to-agent update matching
+scheduled reports
+kill switch
+
+⸻
+
+A.21. Non-goals until backend exists
+
+Do not implement as fake UI:
+
+working cron
+automatic self-improvement polling
+automatic child-agent updates
+accurate Codex quota
+full Codex model switching
+public phone access
+full chat in web UI
+developer write/admin actions
+automatic source selection without policy
+agent deletion
+service install/autostart
+
+⸻
+
+A.22. Summary
+
+This appendix turns UI placeholders into explicit future modules.
+
+MVP rule:
+
+Show the shape of the future Control Center, but only enable actions that Pritha can verify and perform safely today.
+
+Cron/proactivity is planned but disabled until adapter, run history, source policy, memory-write policy, approval gates and kill switch exist. Child-agent management can start with registry + folder scan + operations manifest. Voice can start as a compact mobile-first control surface with narrow tools and explicit decisions. Developer page remains read-only.

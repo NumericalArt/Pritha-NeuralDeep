@@ -1,0 +1,24 @@
+{
+  "name": "{{pritha:value0}}",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "smoke": "node scripts/smoke-test.mjs",
+    "health": "node scripts/healthcheck.mjs",
+    "help": "node scripts/agent-cli.mjs help",
+    "status": "node scripts/agent-cli.mjs status",
+    "interfaces": "node scripts/interface-status.mjs",
+{{pritha:value1}}
+{{pritha:value2}}
+{{pritha:value3}}
+    "operations": "node scripts/operations-status.mjs",
+    "control-center:status": "node scripts/control-center-runtime.mjs status",
+    "control-center:start": "node scripts/control-center-runtime.mjs start",
+    "control-center:stop": "node scripts/control-center-runtime.mjs stop",
+    "deploy:plan": "node scripts/deploy-service.mjs plan",
+    "deploy:status": "node scripts/deploy-service.mjs status",
+    "deploy:install": "node scripts/deploy-service.mjs install",
+    "deploy:uninstall": "node scripts/deploy-service.mjs uninstall"{{pritha:value4}}
+  }
+}

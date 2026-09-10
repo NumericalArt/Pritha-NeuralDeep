@@ -1,0 +1,76 @@
+#!/usr/bin/env node
+
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
+import path from "node:path";
+
+const ROOT = process.cwd();
+const requiredPaths = [
+  "AGENTS.md",
+  "README.md",
+  ".gitignore",
+  ".env.example",
+  "package.json",
+  "operations/manifest.json",
+  "interfaces/manifest.json",
+{{pritha:value0}}
+{{pritha:value1}}
+{{pritha:value2}}
+{{pritha:value3}}
+{{pritha:value4}}
+  "scripts/control-center-agent-service.mjs",
+  "scripts/control-center-runtime.mjs",
+  "scripts/smoke-test.mjs"
+];
+{{pritha:value5}}
+
+const forbiddenPaths = [
+  ".memory",
+  ".memory-private",
+  ".private",
+  ".queue",
+  ".logs"
+];
+
+const issues = [];
+for (const relPath of requiredPaths) {
+  if (!existsSync(path.join(ROOT, relPath))) issues.push(`missing ${relPath}`);
+}
+for (const relPath of forbiddenPaths) {
+  if (existsSync(path.join(ROOT, relPath))) issues.push(`forbidden path present: ${relPath}`);
+}
+const gitignore = existsSync(path.join(ROOT, ".gitignore")) ? readFileSync(path.join(ROOT, ".gitignore"), "utf8") : "";
+for (const entry of [".env*", "!.env.example", ".state/", ".memory-private/", ".private/", "logs/*", "data/telegram-queue/**/*.json", "data/telegram-state.json"]) {
+  if (!gitignore.split(/\r?\n/).includes(entry)) issues.push(`missing privacy ignore rule: ${entry}`);
+}
+{{pritha:value6}}
+
+const manifestPath = path.join(ROOT, "operations", "manifest.json");
+if (existsSync(manifestPath)) {
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  const runtime = manifest.control_center_runtime || {};
+  const healthcheckArgv = Array.isArray(manifest.healthcheck_argv) ? manifest.healthcheck_argv : [];
+  if (manifest.control_center_managed !== true) issues.push("operations manifest must be control_center_managed");
+  if (!manifest.control_center_contract) issues.push("operations manifest missing control_center_contract");
+  if (!Array.isArray(manifest.start_command?.argv) || !manifest.start_command.argv.length) issues.push("start_command argv missing");
+  if (!Array.isArray(manifest.stop_command?.argv) || !manifest.stop_command.argv.length) issues.push("stop_command argv missing");
+  if (manifest.start_command?.control_center_managed !== true) issues.push("start_command must be control_center_managed");
+  if (manifest.stop_command?.control_center_managed !== true) issues.push("stop_command must be control_center_managed");
+  if (!runtime.manager || runtime.manager === "none") issues.push("control_center_runtime manager missing");
+  if (!Array.isArray(runtime.start_argv) || !runtime.start_argv.length) issues.push("control_center_runtime start_argv missing");
+  if (!manifest.local_upstream_url) issues.push("local_upstream_url missing");
+  if (!manifest.health_url && !runtime.health_url) issues.push("health_url missing");
+  if (healthcheckArgv.join(" ") !== "node scripts/healthcheck.mjs") issues.push("healthcheck_argv must point to scripts/healthcheck.mjs");
+  if (manifest.healthcheck_command_executable !== true) issues.push("healthcheck_command_executable must be true");
+  if (!["disabled", "optional", "external", "launchd-on-approval"].includes(manifest.autostart)) {
+    issues.push("autostart mode is invalid");
+  }
+}
+
+if (issues.length > 0) {
+  console.error("Healthcheck failed:");
+  for (const issue of issues) console.error(`- ${issue}`);
+  process.exit(1);
+}
+
+console.log("Healthcheck passed.");

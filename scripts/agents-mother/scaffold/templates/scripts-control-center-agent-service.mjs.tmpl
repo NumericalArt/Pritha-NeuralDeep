@@ -1,0 +1,110 @@
+#!/usr/bin/env node
+
+import { createServer } from "node:http";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+
+const ROOT = process.cwd();
+const manifestPath = path.join(ROOT, "operations", "manifest.json");
+const manifest = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, "utf8")) : {};
+const runtime = manifest.control_center_runtime || {};
+const port = Number(process.env.CONTROL_CENTER_AGENT_PORT || runtime.port || new URL(manifest.local_upstream_url || {{pritha:value0}}).port || {{pritha:value1}});
+const host = process.env.CONTROL_CENTER_AGENT_HOST || "127.0.0.1";
+
+function json(res, status, payload) {
+  const body = JSON.stringify(payload);
+  res.writeHead(status, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
+    "content-length": Buffer.byteLength(body),
+  });
+  res.end(body);
+}
+
+function html(res, status, body) {
+  res.writeHead(status, {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store",
+    "content-length": Buffer.byteLength(body),
+  });
+  res.end(body);
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+const startedAt = new Date().toISOString();
+const server = createServer((req, res) => {
+  const url = new URL(req.url || "/", `http://${req.headers.host || `${host}:${port}`}`);
+  if (url.pathname === "/" || url.pathname === "/index.html") {
+    const agent = escapeHtml(manifest.agent || {{pritha:value2}});
+    const serviceMode = escapeHtml(manifest.service_mode || "manual");
+    const started = escapeHtml(startedAt);
+    html(res, 200, `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${agent}</title>
+  <style>
+    :root { color-scheme: light dark; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: Canvas; color: CanvasText; }
+    main { width: min(720px, calc(100vw - 32px)); }
+    h1 { margin: 0 0 12px; font-size: 28px; line-height: 1.1; letter-spacing: 0; }
+    p { margin: 0 0 20px; color: color-mix(in srgb, CanvasText 72%, transparent); line-height: 1.55; }
+    dl { display: grid; grid-template-columns: max-content 1fr; gap: 10px 16px; margin: 0 0 24px; }
+    dt { color: color-mix(in srgb, CanvasText 60%, transparent); }
+    dd { margin: 0; font-weight: 600; }
+    nav { display: flex; gap: 10px; flex-wrap: wrap; }
+    a { color: CanvasText; border: 1px solid color-mix(in srgb, CanvasText 28%, transparent); border-radius: 8px; padding: 9px 12px; text-decoration: none; }
+    a:hover { border-color: CanvasText; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>${agent}</h1>
+    <p>Control Center managed local runtime is running.</p>
+    <dl>
+      <dt>Status</dt><dd>running</dd>
+      <dt>Service mode</dt><dd>${serviceMode}</dd>
+      <dt>Started</dt><dd>${started}</dd>
+    </dl>
+    <nav>
+      <a href="/api/health">Health</a>
+      <a href="/api/status">Status</a>
+    </nav>
+  </main>
+</body>
+</html>`);
+    return;
+  }
+  if (url.pathname === "/api/health" || url.pathname === "/api/status") {
+    json(res, 200, {
+      ok: true,
+      status: "ok",
+      agent: manifest.agent || {{pritha:value3}},
+      service: "control-center-agent-service",
+      startedAt,
+    });
+    return;
+  }
+  json(res, 404, { ok: false, error: "not_found", status_endpoint: "/api/status" });
+});
+
+server.listen(port, host, () => {
+  console.log(`Control Center agent service listening on http://${host}:${port}`);
+});
+
+function shutdown() {
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 3000).unref();
+}
+
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);

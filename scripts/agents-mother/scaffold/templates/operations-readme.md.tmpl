@@ -1,0 +1,48 @@
+# Operations Profile
+
+Deployment target: {{pritha:value0}}
+Deployment profile: {{pritha:value1}}
+Service mode: `{{pritha:value2}}`
+Autostart: `{{pritha:value3}}`
+Proactive mode: `{{pritha:value4}}`
+
+## Commands
+
+```sh
+node scripts/operations-status.mjs
+{{pritha:value5}}
+```
+
+## Policy
+
+- Scaffold never starts long-running processes.
+- Scaffold never installs autostart.
+- Autostart is configurable through the contract, but enabling it requires an explicit user-approved deployment step.
+- Control Center start/stop use structured argv only. Legacy command strings are planning evidence, not executable input.
+- Healthcheck execution uses `healthcheck_argv` only. Legacy `healthcheck_command` is planning/display metadata.
+- Keep healthcheck argv, runtime manager, start argv, stop behavior and log paths documented before treating this as a service.
+- Deployment automation is available through `node scripts/deploy-service.mjs plan|status|install|uninstall`.
+- `install` and `uninstall` require `--yes` and refuse incompatible service/autostart modes.
+
+## Current Profile
+
+- Control Center managed: `false`
+- Runtime manager: `none`
+- Planned start command: {{pritha:value6}}
+- Planned stop command: {{pritha:value7}}
+- Healthcheck argv: `{{pritha:value8}}`
+- Legacy healthcheck command: `{{pritha:value9}}`
+- Log path: {{pritha:value10}}
+- Restart policy: {{pritha:value11}}
+- Service label: `{{pritha:value12}}`
+
+## Proactivity
+
+- Mode: `{{pritha:value13}}`
+- Trigger sources: {{pritha:value14}}
+- Schedule: {{pritha:value15}}
+- Heartbeat interval: {{pritha:value16}}
+- Idle behavior: {{pritha:value17}}
+- User interruption policy: {{pritha:value18}}
+
+{{pritha:value19}}

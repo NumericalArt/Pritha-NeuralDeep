@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pritha first-run setup state",
+  "type": "object",
+  "required": ["schema", "version", "status", "updated", "root", "sections"],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "techscope-setup-state-v1"
+    },
+    "version": { "type": "integer", "minimum": 1 },
+    "status": {
+      "type": "string",
+      "enum": ["not-configured", "completed", "completed-with-warnings"]
+    },
+    "updated": { "type": "string" },
+    "root": { "type": "string" },
+    "interfaces": { "type": "object" },
+    "realtime": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "mode": { "type": "string" },
+        "tools": {
+          "type": "object",
+          "properties": {
+            "internet": { "type": "boolean" },
+            "memory": { "type": "boolean" },
+            "codexCli": { "type": "boolean" }
+          },
+          "additionalProperties": { "type": "boolean" }
+        }
+      }
+    },
+    "modules": {
+      "type": "object",
+      "properties": {
+        "harness": { "$ref": "#/$defs/moduleStatus" },
+        "memory": { "$ref": "#/$defs/moduleStatus" },
+        "data": { "$ref": "#/$defs/moduleStatus" },
+        "skills": { "$ref": "#/$defs/moduleStatus" },
+        "mcp": { "$ref": "#/$defs/moduleStatus" }
+      },
+      "additionalProperties": { "$ref": "#/$defs/moduleStatus" }
+    },
+    "tailscale": {
+      "type": "object",
+      "properties": {
+        "app": { "type": "string" },
+        "port": { "type": "integer" },
+        "installed": { "type": "boolean" },
+        "authenticated": { "type": "boolean" },
+        "serve_configured": { "type": "boolean" },
+        "tailscale_url": { "type": "string" },
+        "local_upstream_health": { "type": "string" },
+        "peer_access_not_tested": { "type": "boolean" },
+        "updated": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "sections": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["configured", "configured-externally", "skipped", "pending", "failed", "pending-auth"]
+          },
+          "detail": { "type": "string" }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "maskedEnv": { "type": "object" }
+  },
+  "$defs": {
+    "moduleStatus": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["configured", "configured-externally", "skipped", "pending", "failed", "pending-auth"]
+        },
+        "detail": { "type": "string" }
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+---
+description: Pritha NeuralDeep setup and development
+alwaysApply: true
+---
+Read START_HERE.md and AGENTS.md. Use the NeuralDeep bootstrap for setup requests.
+The project can be installed from a ZIP; do not depend on another local checkout.
+Ask the user to enter credentials in local Settings, never in chat.

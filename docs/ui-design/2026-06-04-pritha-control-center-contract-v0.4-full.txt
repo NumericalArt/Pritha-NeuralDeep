@@ -1,0 +1,763 @@
+Ниже — зафиксированная версия ТЗ v0.4: Pritha Control Center с учётом последних решений. Продуктовые вопросы для MVP закрыты; дальше это можно переводить в issue/implementation plan.
+
+ТЗ v0.4: Pritha Control Center
+
+1. Назначение
+
+Pritha Control Center — локальное web-приложение для управления самой Pritha и её child agents.
+
+Главная задача UI: дать создателю агентов простой способ видеть, какие агенты существуют, какие из них “живые”, какие активны, что можно запустить/остановить/восстановить, какие обновления предлагает Pritha, и как включить voice-интерфейс без знания структуры репозитория.
+
+Web UI не заменяет Codex App. Полноценная работа с Pritha, глубокое проектирование, изменение кода, создание новых agent contracts и сложные обсуждения остаются в Codex-native интерфейсе. Web UI — это control center: состояние, управление, voice, настройки и read-only техническая диагностика.
+
+Это соответствует модели Pritha: интерфейс является частью agent harness, а rich UI выбирается только там, где workflow требует видимости, контроля, approvals, управления состоянием или интерактивных элементов.  ￼
+
+2. Название
+
+Публичное название интерфейса:
+
+Pritha Control Center
+
+Короткое отображение в UI:
+
+Pritha
+Control Center
+
+Не использовать “Dashboard” как основное имя продукта. Dashboard — это функция внутри Control Center.
+
+3. Размещение в репозитории
+
+Путь UI в репозитории не фиксируется в ТЗ.
+
+Решение принимает Pritha на этапе реализации, исходя из текущей структуры проекта. Допустимые варианты:
+
+apps/control-center/
+ui/control-center/
+interfaces/control-center/
+
+Требование: выбранный путь должен быть зафиксирован в README/manifest UI-модуля и не должен конфликтовать с существующей структурой interfaces/.
+
+4. Runtime
+
+Один local web server для desktop и mobile.
+
+http://localhost:<port>/
+
+Основные routes:
+
+/agents
+/voice
+/settings
+/dev
+
+Один адрес, одна кодовая база, responsive layout.
+
+5. Default behavior
+
+Desktop/laptop:
+
+/ -> /agents
+
+Phone/mobile:
+
+/ -> /voice
+
+QR-link с desktop ведёт сразу на:
+
+/voice
+
+Решение: не делать отдельный address/port для mobile voice. Voice, Agents, Settings и Dev живут в одном Pritha Control Center.
+
+6. Основные разделы
+
+MVP-разделы:
+
+Agents
+Voice
+Settings
+Dev
+
+Не выносить Lineage и Map в отдельные вкладки в MVP. Они встраиваются в Agents.
+
+Agents
+  - Child agent cards
+  - Pritha status strip
+  - Update suggestions
+  - Lineage-lite
+  - Cards/Map toggle later
+Voice
+  - Mobile-first voice control
+  - Voice visualization
+  - Context reset
+  - Task/decision state
+Settings
+  - Language
+  - Access
+  - Codex
+  - Voice
+  - Limits
+  - Proactivity placeholder
+Dev
+  - Read-only diagnostics
+
+7. Принципы UI
+
+Главный принцип: минимализм без потери функций.
+
+Практические правила:
+
+1. Один главный экран для desktop — Agents.
+2. Один главный экран для mobile — Voice.
+3. В карточке агента — один главный action.
+4. Для missing agent — только Restore.
+5. Лишние технические детали скрыты в /dev.
+6. Settings-lite, без перегруженной админ-панели.
+7. Никакого полноценного chat внутри web UI.
+8. Только маленький command box/palette для dashboard actions, если он реально нужен.
+9. Dangerous actions всегда требуют confirmation.
+10. 3D не должно становиться обязательным способом управления.
+
+8. Agents screen
+
+Назначение
+
+Главный desktop-экран отвечает на вопрос:
+
+Какие child agents есть у Pritha, какие из них живые, какие активны, что с ними можно сделать сейчас?
+
+Верхняя статусная строка
+
+Компактная строка состояния:
+
+Pritha: Ready / Warning / Needs setup
+Voice: Off / Ready / Active
+Proactivity: Off / Manual / Planned
+Agents: 4 total · 3 alive · 1 missing
+
+Строка не должна занимать много места и не должна превращаться в dashboard с множеством карточек.
+
+Карточка живого агента
+
+Минимальный вид:
+
+Funny Teacher
+v1.3 · Voice learning agent
+Alive · Inactive
+[Start]
+localhost:3021   [open] [copy]
+Update available
+
+Поля:
+
+* имя агента;
+* версия;
+* краткое описание в одну строку;
+* liveness state;
+* active/inactive state;
+* URL, если доступен;
+* open URL;
+* copy URL;
+* главный action: Start или Stop;
+* update badge, если есть предложение обновления;
+* compact readiness indicator.
+
+Карточка missing agent
+
+Если Pritha помнит агента, но sibling folder отсутствует:
+
+FESPA26
+v1.1 · Event/media processing workbench
+Missing
+[Restore]
+
+Для missing agent активна только одна возможность:
+
+Restore
+
+Никаких Start/Stop/Open URL.
+
+Карточка broken/unknown agent
+
+Если папка есть, но Pritha не может корректно прочитать manifest/healthcheck:
+
+Agent Name
+v1.2 · Short description
+Needs check
+[Check]
+
+Start/Stop не показывать, пока неизвестно, что именно запускать.
+
+9. Child agent state model
+
+Источники истины:
+
+Сущность	Источник
+Pritha помнит агента	Pritha registry + lifecycle reports
+Агент физически существует	sibling folder scan
+Агент активен	operations/manifest.json + healthcheck
+Как запускать/останавливать	operations/manifest.json
+URL	вычисляется по ports + healthcheck
+Версия	Pritha registry / Pritha-assigned version
+История	reports + lineage records
+
+Pritha уже ведёт registry с агентами, mission/runtime/interface/deployment/proactivity/evidence; UI должен использовать registry как память и историю, но liveness проверять по фактической папке и healthcheck.  ￼
+
+10. Start/Stop
+
+Start/Stop child agent зависит от:
+
+operations/manifest.json
+
+UI не должен hardcode-ить команды запуска для разных агентов.
+
+Примерная логика:
+
+if agent has operations manifest:
+  read service/process/web/voice start and stop commands
+  show one primary action
+else:
+  show "Needs check"
+
+Start/Stop требуют confirmation.
+
+11. URL агента
+
+URL агента в v1:
+
+вычисляется по ports + healthcheck
+
+UI может показывать:
+
+localhost:<port>
+
+или LAN/Tailscale URL, если access mode настроен.
+
+На карточке:
+
+[open] [copy]
+
+Не перегружать карточку множеством ссылок.
+
+12. Версионирование
+
+Версию child agent присваивает Pritha.
+
+Источник отображаемой версии:
+
+Pritha registry
+
+Git не обязателен для child agents. package.json тоже не обязателен.
+
+Минимальные правила версий:
+
+Событие	Изменение версии
+небольшое harness/prompt/readiness изменение	patch/minor
+новая capability	minor
+изменение UI/voice/tools/operations	minor
+изменение mission/runtime/security boundary	major
+restore без изменения поведения	та же версия + recovery note
+изменение пользователем напрямую через Codex	observed change record
+
+На карточке показывать только текущую версию:
+
+v1.3
+
+История — в details/lineage, не на главной карточке.
+
+13. Restore
+
+Restore для missing agent:
+
+пересобрать sibling folder из contract + reports + selected modules
+
+Не хранить полный агент в памяти Pritha как архив.
+
+Restore flow:
+
+1. Pritha видит агента в registry.
+2. Pritha не видит sibling folder.
+3. UI показывает missing card.
+4. Доступно только действие Restore.
+5. Restore открывает guided flow.
+6. Пользователь видит, что будет восстановлено.
+7. Перед созданием sibling folder требуется final confirmation.
+8. Pritha пересобирает scaffold из contract/reports.
+9. Pritha запускает readiness check.
+10. Pritha создаёт recovery/evolution report.
+11. Карточка становится alive.
+
+Решение: guided restore + final confirmation.
+
+14. Snapshots и rollback
+
+Rollback делается через:
+
+Pritha-generated snapshot
+
+Не требовать git от child agent.
+
+Snapshot retention:
+
+2 snapshots per child agent
+
+Модель:
+
+Before applying update:
+  create safe snapshot
+  keep only selected files
+  exclude secrets, .env, runtime state, logs, queues
+  store snapshot outside curated memory
+  write metadata record into Pritha memory/reports
+
+Память Pritha хранит metadata, а не полные копии файлов.
+
+Пример:
+
+.snapshots/child-agents/<agent-id>/<snapshot-id>/
+
+Точный путь может выбрать Pritha при реализации.
+
+UI states:
+
+Rollback available
+Rollback unavailable
+
+Rollback требует confirmation.
+
+15. Update suggestions
+
+Update suggestion появляется, когда Pritha получила новое знание, провела аудит child agent и считает, что агенту полезно обновление.
+
+На карточке минимально:
+
+Update available
+
+При hover/tap:
+
+Voice UI improvement
+Reason: better context reset handling
+
+Типы update:
+
+security
+capability
+prompt/harness
+dependency
+UI
+voice
+memory
+operations
+readiness
+
+Severity:
+
+low
+medium
+high
+critical
+
+В UI не перегружать карточку severity. Показывать явно только high и critical.
+
+Механизм обнаружения updates будет описан позже в спецификации cron/proactivity.
+
+16. Voice screen
+
+Voice screen — главный mobile-first экран.
+
+Он не является дублем полноценного чата. Полноценные каналы общения с Pritha:
+
+Codex App
+Voice Control
+
+Voice screen нужен для:
+
+* быстрых голосовых команд;
+* обращения к памяти Pritha;
+* постановки задач Codex;
+* проверки статуса;
+* запуска безопасных dashboard actions;
+* подтверждения или отмены действий.
+
+Минимальный UI:
+
+Pritha Voice
+[Start Listening]
+Status: Ready
+Mute: Off
+Context: none [clear]
+Last:
+You: ...
+Pritha: ...
+Task:
+No active task
+
+Состояния:
+
+idle
+connecting
+listening
+muted
+working
+decision_required
+error
+
+Pritha voice UI standard уже задаёт компактный Realtime voice surface: start/stop, mute, reconnect, status, transcript, context reset, task status и confirmation gates.  ￼
+
+17. Voice visualization
+
+Voice visualization входит в MVP.
+
+Формат:
+
+* compact waveform;
+* или breathing orb;
+* или лёгкий 3D/2D visual object.
+
+Состояния визуализации:
+
+idle
+listening
+working
+decision_required
+error
+
+Требования:
+
+* визуализация не заменяет текстовый status;
+* должна быть lightweight;
+* должна иметь fallback без 3D;
+* не должна мешать управлению одной рукой на телефоне.
+
+18. 3D / Pritha organism map
+
+Pritha organism / agent map — P1, не MVP.
+
+Решение:
+
+MVP: voice visualization
+P1: Pritha organism / agent map
+
+Organism map позже будет встроена в Agents screen как toggle:
+
+Cards / Map
+
+Map показывает:
+
+* Pritha как центральный узел/организм;
+* child agents как связанные живые/неживые узлы;
+* active/inactive;
+* update available;
+* missing dimmed node.
+
+Все основные действия должны оставаться доступны через карточки. Map — обзор и навигация, не единственный способ управления.
+
+3D-слой в Pritha должен иметь конкретную пользовательскую задачу, fallback, performance budget и проверку, иначе его нужно отложить или упростить.  ￼  ￼
+
+19. Settings-lite
+
+Settings не должны быть большим центром управления всем подряд.
+
+Разделы:
+
+Language
+Access
+Codex
+Voice
+Limits
+Proactivity
+
+Language
+
+Default language:
+
+English
+
+Переключатель:
+
+EN / RU
+
+Русский — равноправный переключатель UI.
+
+Canonical project files, manifests, IDs and filenames остаются English-first.
+
+Access
+
+Поддержать:
+
+localhost-on-device
+LAN
+Tailscale
+QR-link from desktop
+
+Desktop может показывать QR-code на /voice.
+
+Codex
+
+Показывать:
+
+* выбранный Codex surface;
+* выбранную модель/profile, если доступно;
+* Codex transport status;
+* fallback Open in Codex.
+
+Pritha должна фиксировать Codex surface profile, если Codex участвует: App, CLI, app-server, worker, workspace, mixed и т.д.  ￼
+
+Voice
+
+Показывать:
+
+* Realtime availability;
+* microphone permission;
+* selected voice model/profile;
+* server credential readiness;
+* allowed voice tools;
+* confirmation policy.
+
+Browser не получает OpenAI API key. Server выдаёт только ephemeral/session credentials для Realtime. Voice workflow Pritha уже фиксирует server-side key boundary, narrow tools, Codex task bridge и confirmation gates.  ￼
+
+Limits
+
+В v1 только честная индикация:
+
+Codex limits: unavailable / app-server available / manual
+API usage: unavailable / configured / warning
+
+Не обещать точные Codex лимиты, если выбранный runtime их не предоставляет. Pritha standard запрещает пытаться читать Codex quota через env/local auth/workspace state; telemetry допустима только как выбранный app-server-backed module.  ￼
+
+Proactivity
+
+Cron adapter ещё не создан.
+
+В v1:
+
+Proactivity: Off
+Manual checks: available
+Cron adapter: not installed
+
+Допустимо:
+
+* посмотреть planned jobs;
+* запустить manual check;
+* настроить draft;
+* увидеть, что cron disabled.
+
+Недопустимо в v1:
+
+* включить cron;
+* включить heartbeat;
+* включить autostart;
+* включить background source polling.
+
+Pritha scheduling standard требует, чтобы cron/heartbeat/scheduled jobs не включались без явного выбора, scheduler owner, schedule policy, memory-write policy, monitoring, kill switch и approval gates.  ￼
+
+20. Command box
+
+Полноценный chat в web UI не нужен.
+
+Допустим маленький command box как dashboard command palette.
+
+Примеры команд:
+
+show missing agents
+check Funny Teacher
+open voice
+run manual audit
+show updates
+
+Если команда сложная или требует полноценного общения:
+
+Continue in Codex or Voice
+[Open Codex] [Start Voice]
+
+Command box не должен становиться третьим самостоятельным интерфейсом общения с Pritha.
+
+21. Developer page
+
+/dev — read-only в v1.
+
+Содержимое:
+
+* raw readiness JSON;
+* registry parse result;
+* sibling folder scan;
+* operations manifest status;
+* child agent healthcheck details;
+* voice diagnostics;
+* proactivity draft config;
+* memory index status;
+* latest reports;
+* warnings;
+* logs summary.
+
+Нет dangerous/admin actions.
+
+Dev page можно скрыть из mobile bottom nav, чтобы не перегружать phone UI.
+
+22. Navigation
+
+Desktop
+
+Top nav:
+
+Agents | Voice | Settings | Dev
+
+Default:
+
+Agents
+
+Mobile
+
+Bottom nav:
+
+Voice | Agents | Settings
+
+Default:
+
+Voice
+
+Dev на mobile скрыт или доступен через Settings → Developer details.
+
+23. Actions policy
+
+Read-only
+
+* view agents;
+* view Pritha status;
+* view readiness;
+* view URL;
+* copy URL;
+* open URL;
+* view lineage-lite;
+* view update suggestion;
+* view developer diagnostics.
+
+One-click safe
+
+* switch language;
+* switch Cards/Map, когда Map появится;
+* open voice;
+* copy URL;
+* refresh visible status.
+
+Confirmation-required
+
+* start agent;
+* stop agent;
+* restore missing agent;
+* apply update;
+* rollback;
+* run manual audit if it writes reports;
+* change Codex model/profile;
+* change API budget;
+* connect phone access beyond localhost;
+* start voice tool that can create Codex tasks;
+* any durable memory write.
+
+Not in v1
+
+* delete child agent;
+* edit raw memory;
+* enable cron;
+* install launchd/service;
+* run background heartbeat;
+* automatically browse self-improvement sources;
+* full chat agent inside web UI;
+* full 3D organism map.
+
+24. MVP scope
+
+Must have
+
+* Pritha Control Center local web app.
+* One app for desktop and mobile.
+* Desktop / → /agents.
+* Mobile / → /voice.
+* English default.
+* Russian equal UI switch.
+* Agents screen.
+* Child agent cards.
+* Alive/missing/broken/unknown states.
+* Missing agent: only Restore.
+* Guided Restore with final confirmation.
+* Start/Stop via operations/manifest.json.
+* URL computed by ports/healthcheck.
+* Open URL + Copy URL.
+* Version from Pritha registry.
+* Settings-lite.
+* Voice screen.
+* Voice visualization.
+* QR-link from desktop to /voice.
+* Proactivity placeholder, no cron adapter.
+* Snapshot retention: 2 per child agent.
+* Rollback state: available/unavailable.
+* Developer read-only page.
+
+Should have
+
+* update suggestion badge;
+* lineage-lite inside agent details;
+* LAN/Tailscale access status;
+* command box as command palette;
+* manual check button for safe/read-only audits.
+
+P1
+
+* Pritha organism / agent map;
+* richer update workflow;
+* real cron adapter;
+* self-improvement source policy;
+* automatic child agent audits;
+* Codex app-server telemetry;
+* snapshot management UI;
+* richer developer tools.
+
+25. Acceptance criteria
+
+MVP готов, если:
+
+1. Пользователь запускает local Pritha Control Center.
+2. Desktop открывает Agents-first UI.
+3. Mobile открывает Voice-first UI.
+4. Есть RU/EN switch, default English.
+5. UI показывает child agents из registry + sibling folder scan.
+6. Missing agent показывает только Restore.
+7. Restore работает как guided restore с final confirmation.
+8. Living agent показывает Start/Stop, URL, Open, Copy.
+9. Start/Stop берутся из operations/manifest.json.
+10. URL вычисляется по ports/healthcheck.
+11. Версия берётся из Pritha registry.
+12. Snapshot retention — 2 snapshots per child agent.
+13. Rollback показывается только если snapshot доступен.
+14. Voice screen имеет Start/Stop, Mute, Status, Context clear, Transcript, Decision state.
+15. Voice visualization работает и имеет fallback.
+16. Settings не перегружены.
+17. Proactivity отображается как planned/off/manual, cron не включается.
+18. Developer page read-only.
+19. Web UI не дублирует полноценный Codex chat.
+20. Основной UI не перегружен деталями, кнопками и вводами.
+
+26. Итоговое решение по спорным зонам
+
+Вопрос	Решение
+Product name	Pritha Control Center
+One app or separate mobile/desktop	One app
+Desktop default	/agents
+Mobile default	/voice
+Language default	English
+Russian	Equal UI switch
+Phone access	localhost-on-device, LAN, Tailscale, QR-link
+Restore	guided restore + final confirmation
+Restore source	contract + reports + selected modules
+Version	Pritha registry / Pritha-assigned
+Agent URL	computed by ports/healthcheck
+Start/Stop	operations/manifest.json
+Cron	later, not MVP
+Proactivity UI	placeholder/manual/off
+Update suggestions	shown on agent cards
+Rollback	Pritha-generated snapshots
+Snapshot retention	2 per child agent
+3D organism map	P1
+Voice visualization	MVP
+Chat in web UI	command box only, not full chat
+Developer page	read-only in v1
+Repo path	Pritha decides during implementation

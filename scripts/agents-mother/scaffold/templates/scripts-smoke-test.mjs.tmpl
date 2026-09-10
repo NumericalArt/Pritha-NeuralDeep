@@ -1,0 +1,68 @@
+#!/usr/bin/env node
+
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
+import path from "node:path";
+
+const ROOT = process.cwd();
+const required = [
+  "AGENTS.md",
+  "README.md",
+  ".gitignore",
+  ".env.example",
+  "package.json",
+  "interfaces/manifest.json",
+  "interfaces/README.md",
+{{pritha:value0}}
+{{pritha:value1}}
+{{pritha:value2}}
+{{pritha:value3}}
+{{pritha:value4}}
+{{pritha:value5}}
+{{pritha:value6}}
+{{pritha:value7}}
+  "operations/manifest.json",
+  "operations/README.md",
+  "07_workflows/agent-operating-workflow.md",
+  "delivery/README.md",
+  "delivery/outcome-lineage.json",
+  "docs/user-training-guide.md",
+  "scripts/agent-cli.mjs",
+  "scripts/interface-status.mjs",
+  "scripts/healthcheck.mjs",
+  "scripts/control-center-agent-service.mjs",
+{{pritha:value8}}
+{{pritha:value9}}
+{{pritha:value10}}
+{{pritha:value11}}
+  "scripts/operations-status.mjs",
+  "scripts/deploy-service.mjs"
+];
+
+{{pritha:value12}}
+{{pritha:value13}}
+{{pritha:value14}}
+
+const issues = [];
+for (const relPath of required) {
+  if (!existsSync(path.join(ROOT, relPath))) issues.push(`missing ${relPath}`);
+}
+const gitignore = existsSync(path.join(ROOT, ".gitignore")) ? readFileSync(path.join(ROOT, ".gitignore"), "utf8") : "";
+for (const entry of [".env*", "!.env.example", ".state/", ".memory-private/", ".private/", "logs/*", "data/telegram-queue/**/*.json", "data/telegram-state.json"]) {
+  if (!gitignore.split(/\r?\n/).includes(entry)) issues.push(`missing privacy ignore rule: ${entry}`);
+}
+{{pritha:value15}}
+
+const envExample = existsSync(path.join(ROOT, ".env.example"))
+  ? readFileSync(path.join(ROOT, ".env.example"), "utf8")
+  : "";
+
+{{pritha:value16}}
+
+if (issues.length > 0) {
+  console.error("Smoke test failed:");
+  for (const issue of issues) console.error(`- ${issue}`);
+  process.exit(1);
+}
+
+console.log("Smoke test passed.");

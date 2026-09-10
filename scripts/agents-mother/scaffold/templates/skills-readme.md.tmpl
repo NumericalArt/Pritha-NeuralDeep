@@ -1,0 +1,25 @@
+# Skills
+
+Skills are reviewed procedural knowledge for this agent. Use `skills/manifest.json` as the source of truth.
+
+## Policy
+
+- Skill needs: `{{pritha:value0}}`
+- Allowed sources: `{{pritha:value1}}`
+- Install mode: `{{pritha:value2}}`
+- Mutation policy: `{{pritha:value3}}`
+- Generated wiki pages allowed as direct provenance: `false`
+
+## Rules
+
+- Run `node scripts/skills-status.mjs` successfully before reading an installed skill.
+- Read only the exact audited `SKILL.md` after the deterministic audit succeeds; fail closed on drift.
+- Check `When to Use`, `Pitfalls` and `Verification`.
+- Treat `skills/candidates.json` as recommendations only.
+- Do not install, link, runtime-install or modify external skills without explicit approval.
+
+## Commands
+
+```sh
+{{pritha:value4}}
+```

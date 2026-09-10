@@ -1,0 +1,29 @@
+{
+  "agent": "Pritha",
+  "generated_by": "Pritha rename hygiene migration",
+  "deployment_target": "Mac mini",
+  "deployment_profile": "mac-mini-service",
+  "service_mode": "launchd",
+  "autostart": "launchd-on-approval",
+  "autostart_policy": "Legacy web and Telegram bot services may run from TECHSCOPE_ROOT after explicit approval. New agents must not inherit this automatically.",
+  "service_label": "com.techscope-dasha",
+  "start_command": "launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.techscope.web-dasha.plist && launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.techscope.telegram-bot-dasha.plist",
+  "stop_command": "launchctl bootout gui/$(id -u)/com.techscope.web-dasha; launchctl bootout gui/$(id -u)/com.techscope.telegram-bot-dasha",
+  "smoke_test_command": "node scripts/smoke-test.mjs",
+  "healthcheck_command": "node scripts/healthcheck.mjs",
+  "healthcheck_argv": [
+    "node",
+    "scripts/healthcheck.mjs"
+  ],
+  "healthcheck_command_executable": false,
+  "log_path": ".logs/",
+  "launchd_template": "launchd/com.techscope.web.plist",
+  "proactivity": {
+    "mode": "queue-watcher",
+    "trigger_sources": "Telegram getUpdates polling, manual Codex thread work, local scripts",
+    "schedule": "none",
+    "heartbeat_interval": "Telegram long polling timeout 30s",
+    "idle_behavior": "Stay resident as launchd service; process queued intake only when messages arrive.",
+    "user_interruption_policy": "User can stop launchd services or ask Codex to pause work."
+  }
+}

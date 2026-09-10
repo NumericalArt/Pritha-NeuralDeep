@@ -1,0 +1,30 @@
+#!/usr/bin/env node
+
+import { readFileSync } from "node:fs";
+
+const command = process.argv[2] || "help";
+
+function readText(path) {
+  return readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+}
+
+if (command === "help") {
+  console.log(`Usage:
+  node scripts/agent-cli.mjs help
+  node scripts/agent-cli.mjs status`);
+  process.exit(0);
+}
+
+if (command === "status") {
+  const readme = readText("README.md");
+  const title = readme.match(/^#\\s+(.+)$/m)?.[1] || {{pritha:value0}};
+  console.log(`Agent: ${title}`);
+  console.log("Runtime: " + {{pritha:value1}});
+  console.log("Interface: " + {{pritha:value2}});
+  console.log("Telegram: " + {{pritha:value3}});
+  console.log("Smoke test: node scripts/smoke-test.mjs");
+  process.exit(0);
+}
+
+console.error(`Unknown command: ${command}`);
+process.exit(1);

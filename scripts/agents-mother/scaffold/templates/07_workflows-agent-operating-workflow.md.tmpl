@@ -1,0 +1,22 @@
+# Workflow: agent operating workflow
+
+## Goal
+
+Run {{pritha:value0}} in small, verifiable steps.
+
+## Steps
+
+1. Read `AGENTS.md` and the current task.
+2. Confirm the target input, expected output and constraints.
+3. Use local files and scripts before adding external tools.
+4. If external information may be stale, verify current sources.
+5. Execute the smallest useful step.
+6. Run `node scripts/smoke-test.mjs`.
+7. Report what changed, what was verified and what remains open.
+
+## Completion Criteria
+
+- The requested output exists.
+- Smoke test passes.
+- Missing secrets or external dependencies are clearly documented.
+- User can reproduce the first check from `docs/user-training-guide.md`.

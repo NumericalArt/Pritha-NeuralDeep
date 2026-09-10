@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "generated_by": "Pritha",
+  "policy": {
+    "scope": "local reviewed procedural skills for Pritha-created agents",
+    "external_skills": "candidate-only until explicit approval workflow exists",
+    "generated_wiki_allowed": false,
+    "agent_mutation": "disabled"
+  },
+  "skills": [
+    "telegram-intake-triage",
+    "evidence-classification",
+    "markdown-memory-update",
+    "raster-ui-asset-design"
+  ]
+}

@@ -1,0 +1,157 @@
+#!/usr/bin/env node
+
+import { randomUUID } from "node:crypto";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
+const ROOT = process.cwd();
+const QUEUE_INBOX = path.join(ROOT, "data", "telegram-queue", "inbox");
+const STATE_PATH = path.join(ROOT, "data", "telegram-state.json");
+
+function loadEnv() {
+  const envPath = path.join(process.cwd(), ".env");
+  if (!existsSync(envPath)) return;
+  if ((statSync(envPath).mode & 0o077) !== 0) {
+    console.error("Refusing to read .env with group/world permissions; run chmod 600 .env");
+    process.exit(1);
+  }
+  for (const line of readFileSync(envPath, "utf8").split(/\r?\n/)) {
+    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (match && process.env[match[1]] === undefined) process.env[match[1]] = match[2];
+  }
+}
+
+loadEnv();
+
+const command = process.argv[2] || "help";
+const dryRun = process.argv.includes("--dry-run");
+const token = process.env.TELEGRAM_BOT_TOKEN || "";
+const allowedUsers = (process.env.TELEGRAM_ALLOWED_USER_IDS || "")
+  .split(",")
+  .map((item) => item.trim())
+  .filter(Boolean);
+
+function ensureQueue() {
+  mkdirSync(QUEUE_INBOX, { recursive: true, mode: 0o700 });
+  chmodSync(path.dirname(QUEUE_INBOX), 0o700);
+  chmodSync(QUEUE_INBOX, 0o700);
+  if (!existsSync(STATE_PATH)) writeFileSync(STATE_PATH, JSON.stringify({ last_update_id: 0 }, null, 2), { mode: 0o600 });
+  chmodSync(STATE_PATH, 0o600);
+}
+
+function readState() {
+  ensureQueue();
+  return JSON.parse(readFileSync(STATE_PATH, "utf8"));
+}
+
+function writeState(state) {
+  ensureQueue();
+  const temporaryPath = `${STATE_PATH}.${process.pid}.tmp`;
+  writeFileSync(temporaryPath, JSON.stringify(state, null, 2), { mode: 0o600 });
+  renameSync(temporaryPath, STATE_PATH);
+  chmodSync(STATE_PATH, 0o600);
+}
+
+function queueUpdate(update) {
+  ensureQueue();
+  const updateId = Number(update?.update_id);
+  const id = Number.isSafeInteger(updateId) && updateId >= 0 ? String(updateId) : `${Date.now()}-${randomUUID()}`;
+  const filePath = path.join(QUEUE_INBOX, `${id}.json`);
+  writeFileSync(filePath, JSON.stringify(update, null, 2), { mode: 0o600, flag: "wx" });
+  chmodSync(filePath, 0o600);
+  return filePath;
+}
+
+function userIdFromUpdate(update) {
+  return update.message?.from?.id || update.edited_message?.from?.id || update.callback_query?.from?.id || "";
+}
+
+function isAllowed(update) {
+  const userId = String(userIdFromUpdate(update));
+  return allowedUsers.includes(userId);
+}
+
+if (command === "help") {
+  console.log(`Usage:
+  node scripts/telegram-bot.mjs help
+  node scripts/telegram-bot.mjs healthcheck
+  node scripts/telegram-bot.mjs queue-status
+  node scripts/telegram-bot.mjs poll-once [--dry-run]`);
+  process.exit(0);
+}
+
+if (command === "queue-status") {
+  ensureQueue();
+  const inbox = readdirSync(QUEUE_INBOX).filter((entry) => entry.endsWith(".json")).length;
+  console.log(`Telegram queue: pending=${inbox}`);
+  process.exit(0);
+}
+
+if (command === "healthcheck") {
+  if (!token) {
+    console.error("Missing TELEGRAM_BOT_TOKEN in .env");
+    process.exit(1);
+  }
+  if (allowedUsers.length === 0) {
+    console.error("Missing TELEGRAM_ALLOWED_USER_IDS in .env");
+    process.exit(1);
+  }
+  const response = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+  const data = await response.json();
+  if (!data.ok) {
+    console.error(JSON.stringify(data, null, 2));
+    process.exit(1);
+  }
+  console.log("Telegram bot authentication: ok");
+  console.log(`Allowed user entries configured: ${allowedUsers.length}`);
+  process.exit(0);
+}
+
+if (command === "poll-once") {
+  ensureQueue();
+  if (dryRun) {
+    const sample = {
+      update_id: Date.now(),
+      message: {
+        message_id: 1,
+        date: Math.floor(Date.now() / 1000),
+        chat: { id: allowedUsers[0] || 0, type: "private" },
+        from: { id: Number(allowedUsers[0] || 0), is_bot: false, first_name: "DryRun" },
+        text: "Dry-run Telegram update"
+      }
+    };
+    const filePath = queueUpdate(sample);
+    console.log(`Queued dry-run update: ${path.relative(ROOT, filePath)}`);
+    process.exit(0);
+  }
+  if (!token) {
+    console.error("Missing TELEGRAM_BOT_TOKEN in .env");
+    process.exit(1);
+  }
+  if (allowedUsers.length === 0) {
+    console.error("Missing TELEGRAM_ALLOWED_USER_IDS in .env");
+    process.exit(1);
+  }
+  const state = readState();
+  const offset = Number(state.last_update_id || 0) + 1;
+  const url = `https://api.telegram.org/bot${token}/getUpdates?timeout=0&offset=${offset}`;
+  const response = await fetch(url);
+  const data = await response.json();
+  if (!data.ok) {
+    console.error(JSON.stringify(data, null, 2));
+    process.exit(1);
+  }
+  let queued = 0;
+  for (const update of data.result || []) {
+    state.last_update_id = Math.max(Number(state.last_update_id || 0), Number(update.update_id || 0));
+    if (!isAllowed(update)) continue;
+    queueUpdate(update);
+    queued += 1;
+  }
+  writeState(state);
+  console.log(`Telegram poll complete: queued=${queued}`);
+  process.exit(0);
+}
+
+console.error(`Unknown command: ${command}`);
+process.exit(1);

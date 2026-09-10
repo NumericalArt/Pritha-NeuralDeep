@@ -1,0 +1,571 @@
+Implementation Guide: /dev page
+
+Использовать общие tokens, sidebar, typography, glass panels, status strip и navigation из предыдущих страниц. Ниже — только специфика страницы Developer (Read-only).
+
+1. Route and purpose
+
+Route: /dev
+Desktop nav active item: Dev (Read-only)
+Page title: Developer (Read-only)
+Subtitle: Diagnostics and internal state for advanced users.
+
+Страница предназначена для диагностики, а не для управления. В v1 она read-only: показывает внутреннее состояние, registry, scans, logs, reports, warnings, но не выполняет destructive/admin actions.
+
+⸻
+
+2. Desktop layout
+
+<DevPage>
+  <Header />
+  <div className="dev-layout">
+    <main className="dev-main">
+      <SystemReadinessPanel />
+      <RegistrySummaryPanel />
+      <div className="dev-two-columns">
+        <DiscoveredFoldersPanel />
+        <RecentLogsPanel />
+      </div>
+      <WarningsPanel />
+    </main>
+    <aside className="dev-rail">
+      <EnvironmentCard />
+      <VoiceDiagnosticsCard />
+      <MemoryIndexCard />
+      <LatestReportsCard />
+    </aside>
+  </div>
+</DevPage>
+
+CSS:
+
+.dev-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 20px;
+}
+.dev-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.dev-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.dev-two-columns {
+  display: grid;
+  grid-template-columns: 0.9fr 1.2fr;
+  gap: 14px;
+}
+
+⸻
+
+3. Header status strip
+
+Right side:
+
+Pritha Ready | Codex Connected | Voice Off | Proactivity Off | Open in Codex
+
+Отличие от Settings/Voice: добавить Voice Off как отдельный segment.
+
+⸻
+
+4. System Readiness panel
+
+Верхняя широкая панель.
+
+System Readiness (modules)                 Last self-test: 2h ago   [Run Self-test]
+
+Modules row:
+
+Harness       Ready
+Memory        Ready
+Tools         Ready
+Interfaces    Ready
+Operations    Ready
+Voice         Ready
+Proactivity   Not installed
+Connectors    None
+
+Visual:
+
+* каждый модуль — compact item;
+* icon сверху/слева;
+* name;
+* status под name;
+* лёгкий вертикальный divider между item groups;
+* Ready зелёный;
+* Not installed оранжевый/серый;
+* None muted.
+
+.readiness-panel {
+  min-height: 122px;
+}
+.module-row {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 0;
+  margin-top: 18px;
+}
+.module-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border-right: 1px solid var(--border-soft);
+}
+.module-item:last-child {
+  border-right: 0;
+}
+.module-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: rgba(124, 92, 255, 0.14);
+  color: var(--accent-purple-2);
+}
+.module-status.ready {
+  color: var(--accent-green);
+}
+.module-status.not-installed {
+  color: var(--accent-orange);
+}
+.module-status.none {
+  color: var(--text-muted);
+}
+
+Run Self-test behavior
+
+В mock можно показать кнопку, как в дизайне, но v1 page read-only.
+
+Behavior:
+
+Click -> show "Copy command" / "Open in Codex" prompt
+Do not run self-test directly from /dev in v1.
+
+Допустимый modal:
+
+Run self-test from Codex or terminal:
+node scripts/self-test.mjs
+[Copy command] [Open in Codex]
+
+⸻
+
+5. Registry Summary panel
+
+Большая таблица под readiness.
+
+Header:
+
+Registry Summary
+Parsed from 11_agents/registry.md                            [View Raw]
+
+Table columns:
+
+Agent | Version | Mission | Interface | Deployment | Status | Updated | >
+
+Rows:
+
+● Funny Teacher     v1.3    Voice learning agent...        Voice + Web   Local (3001)   Alive     2h ago
+● FESPA26           v1.1    Event & media...               Web           Local (3002)   Alive     5h ago
+● Research Helper   v0.9.4  Academic research assistant    Web           Local (3003)   Alive     3h ago
+● Market Scout      v0.8.0  Market analysis...             Web           —              Missing   1d ago
+● Code Auditor      v1.0.0  Security and code quality...    CLI           —              Unknown   8h ago
+
+Visual:
+
+* no heavy table borders;
+* row height 48–56px;
+* subtle separators;
+* status pills;
+* right chevron for details, not edit.
+
+.registry-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.registry-table th {
+  color: var(--text-muted);
+  font-weight: 500;
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.registry-table td {
+  padding: 11px 8px;
+  border-bottom: 1px solid rgba(122, 139, 180, 0.08);
+  color: var(--text-secondary);
+}
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.status-pill.alive {
+  color: #bfffd6;
+  background: rgba(47, 230, 122, 0.16);
+  border: 1px solid rgba(47, 230, 122, 0.22);
+}
+.status-pill.missing {
+  color: #ff9aa9;
+  background: rgba(255, 79, 104, 0.13);
+  border: 1px solid rgba(255, 79, 104, 0.20);
+}
+.status-pill.unknown {
+  color: #ffc96c;
+  background: rgba(255, 173, 32, 0.13);
+  border: 1px solid rgba(255, 173, 32, 0.20);
+}
+
+View Raw behavior
+
+Read-only.
+
+View Raw -> open modal/drawer with parsed JSON or raw markdown preview.
+No editing.
+
+⸻
+
+6. Discovered Sibling Folders panel
+
+Lower left card.
+
+Discovered Sibling Folders
+Scanned in workspace root                         [Rescan]
+
+Rows:
+
+folder icon  funny-teacher/       ● OK              Mar 26, 10:12
+folder icon  fespa26/             ● OK              Mar 26, 10:11
+folder icon  research-helper/     ● OK              Mar 26, 10:11
+folder icon  market-scout/        ● Not found       —
+folder icon  code-auditor/        ● Manifest issue  Mar 26, 09:58
+folder icon  archive/ (ignored)   ● Ignored         —
+
+Footer:
+
+Scan path: /Users/<user>/Pritha
+
+Behavior:
+
+* Rescan is not allowed to mutate state in read-only mode.
+* If implemented as pure read-only scan, allow.
+* If scan writes cache/report, require moving it out of /dev or show copy command.
+
+Recommended v1 behavior:
+
+Rescan -> disabled or "Copy command"
+
+⸻
+
+7. Recent Logs panel
+
+Lower right card.
+
+Recent Logs (last 100 lines)                         [View Full Logs]
+
+Monospace log block:
+
+[10:21:08] INFO  Voice server: connected (codec: opus, 24kHz)
+[10:21:10] INFO  Memory index: loaded (12345 entries)
+[10:21:12] INFO  Registry: parsed 5 agents
+[10:21:13] INFO  Sibling scan: 5 found, 1 missing
+[10:21:15] WARN  Code Auditor: manifest missing "start"
+[10:21:16] INFO  Healthcheck Funny Teacher: http://localhost:3021 OK
+...
+
+CSS:
+
+.log-box {
+  height: 196px;
+  overflow: auto;
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(4, 9, 18, 0.68);
+  border: 1px solid var(--border-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.log-level.info {
+  color: var(--accent-green);
+}
+.log-level.warn {
+  color: var(--accent-orange);
+}
+.log-level.error {
+  color: var(--accent-red);
+}
+
+Footer filters:
+
+☑ INFO   ☑ WARN   ☐ ERROR
+
+These are client-side display filters only.
+
+Clear behavior
+
+The screenshot has Clear, but /dev is read-only.
+
+For v1:
+
+Clear button hidden or disabled.
+
+If kept visually:
+
+Clear local view only
+
+It must not delete log files.
+
+⸻
+
+8. Warnings & Notices panel
+
+Bottom full-width panel.
+
+Warnings & Notices                                      2 items  v
+⚠ Code Auditor: operations/manifest.json is missing required fields (start).
+ⓘ Proactivity module is not installed. Scheduled jobs are disabled.
+
+Visual:
+
+* orange warning for actionable issue;
+* blue/purple info for notice;
+* collapsible allowed;
+* default expanded if warnings exist.
+
+.warning-panel {
+  border-color: rgba(255, 173, 32, 0.18);
+}
+.warning-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.warning-row.critical {
+  color: #ffc96c;
+}
+
+⸻
+
+9. Right rail
+
+9.1. Environment
+
+Environment
+Platform       macOS 14.4 (arm64)
+Node.js        v20.11.1
+App Port       3000
+Data Path      .pritha/data
+Timezone       Europe/Moscow
+Git (Pritha)   main (a1b2c3d)
+[Copy Info]
+
+Copy Info copies diagnostic summary to clipboard. Safe.
+
+9.2. Voice Diagnostics
+
+Voice Diagnostics                              [Details]
+Realtime Connection    Good
+Model                  gpt-4o-realtime-preview
+Latency                28 ms
+Turn Detection         Server VAD
+Last Session           Today, 10:19
+
+Details opens read-only drawer with JSON/details.
+
+9.3. Memory Index
+
+Memory Index                                  [Details]
+Status          ● Up to date
+Documents       1,234
+Chunks          12,345
+Last Updated    2h ago
+
+No rebuild button here.
+
+9.4. Latest Reports
+
+Latest Reports                                [Open Folder]
+self-test-2025-03-26-10-19.md       2h ago   >
+evolution-funny-teacher-v1.3.md     3h ago   >
+audit-research-helper-2025-03-26.md 5h ago   >
+recovery-fespa26-v1.1.md            1d ago   >
+registry-snapshot-2025-03-26.md     1d ago   >
+View All Reports →
+
+Behavior:
+
+* Open Folder may open local folder if safe; otherwise copy path.
+* Row click opens read-only preview.
+* No editing.
+
+⸻
+
+10. Data model
+
+export type DevCapabilityStatus =
+  | "ready"
+  | "not_installed"
+  | "none"
+  | "failed"
+  | "unknown";
+export type DevModule = {
+  id: string;
+  label: string;
+  status: DevCapabilityStatus;
+  icon: string;
+};
+export type RegistryRow = {
+  id: string;
+  agent: string;
+  version: string;
+  mission: string;
+  interface: string;
+  deployment: string;
+  status: "alive" | "missing" | "unknown" | "needs_check";
+  updated: string;
+};
+export type FolderScanRow = {
+  path: string;
+  status: "ok" | "not_found" | "manifest_issue" | "ignored";
+  updated?: string;
+};
+export type LogLine = {
+  time: string;
+  level: "INFO" | "WARN" | "ERROR";
+  message: string;
+};
+export type LatestReport = {
+  path: string;
+  title: string;
+  updated: string;
+  type: "self_test" | "evolution" | "audit" | "recovery" | "registry";
+};
+
+Mock page state:
+
+export type DevPageState = {
+  modules: DevModule[];
+  registry: RegistryRow[];
+  folders: FolderScanRow[];
+  logs: LogLine[];
+  warnings: string[];
+  environment: {
+    platform: string;
+    node: string;
+    appPort: number;
+    dataPath: string;
+    timezone: string;
+    git: string;
+  };
+  voiceDiagnostics: {
+    connection: "good" | "degraded" | "bad" | "unknown";
+    model: string;
+    latencyMs?: number;
+    turnDetection: string;
+    lastSession: string;
+  };
+  memoryIndex: {
+    status: "up_to_date" | "stale" | "failed" | "unknown";
+    documents: number;
+    chunks: number;
+    lastUpdated: string;
+  };
+  reports: LatestReport[];
+};
+
+⸻
+
+11. Read-only action policy
+
+Allowed:
+
+View Raw
+Details
+Copy Info
+Copy command
+Copy JSON
+Open in Codex
+Open safe local folder
+Open read-only report preview
+Client-side log filtering
+
+Not allowed in /dev v1:
+
+Run Self-test directly
+Clear actual logs
+Clear cache
+Repair manifest
+Rescan if it writes cache/report
+Start/stop services
+Rebuild memory index
+Edit registry
+Delete anything
+Install cron/launchd
+
+If a visual button exists but action is not allowed:
+
+disable it
+or convert to Copy command / Open in Codex
+
+⸻
+
+12. Responsive behavior
+
+Tablet
+
+Right rail moves below main:
+
+@media (max-width: 1279px) {
+  .dev-layout {
+    grid-template-columns: 1fr;
+  }
+  .dev-rail {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+Mobile
+
+/dev is not part of primary mobile nav.
+
+If opened manually:
+
+* hide sidebar;
+* show compact top nav;
+* stack all panels;
+* registry table becomes horizontal scroll;
+* logs stay monospace with horizontal scroll;
+* latest reports collapsible.
+
+⸻
+
+13. Visual checklist
+
+Verify against reference:
+
+* active sidebar item is Dev (Read-only);
+* page title says Developer (Read-only);
+* readiness panel is the first and widest block;
+* module row has 8 compact module items;
+* registry table is the visual center;
+* folder scan and logs are side-by-side;
+* warnings panel spans bottom of main area;
+* right rail order is Environment → Voice Diagnostics → Memory Index → Latest Reports;
+* log block uses monospace;
+* INFO/WARN/ERROR colors are distinct;
+* all dangerous-looking actions are disabled, read-only, or converted to copy/open commands;
+* no page element suggests that cron/proactivity is installed;
+* no editing UI appears anywhere.

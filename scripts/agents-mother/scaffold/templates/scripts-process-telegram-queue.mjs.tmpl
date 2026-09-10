@@ -1,0 +1,45 @@
+#!/usr/bin/env node
+
+import { chmodSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
+const ROOT = process.cwd();
+const INBOX = path.join(ROOT, "data", "telegram-queue", "inbox");
+const LOG_PATH = path.join(ROOT, "logs", "telegram-queue.log");
+
+mkdirSync(INBOX, { recursive: true, mode: 0o700 });
+mkdirSync(path.dirname(LOG_PATH), { recursive: true, mode: 0o700 });
+chmodSync(path.dirname(INBOX), 0o700);
+chmodSync(INBOX, 0o700);
+chmodSync(path.dirname(LOG_PATH), 0o700);
+
+const files = readdirSync(INBOX).filter((entry) => entry.endsWith(".json")).sort();
+if (files.length === 0) {
+  console.log("Telegram queue is empty.");
+  process.exit(0);
+}
+
+for (const file of files) {
+  if (!/^d+(?:-[a-f0-9-]{36})?.json$/i.test(file)) {
+    console.error("Refusing unsafe Telegram queue filename.");
+    process.exit(1);
+  }
+  const inputPath = path.join(INBOX, file);
+  const fileStat = lstatSync(inputPath);
+  if (!fileStat.isFile() || fileStat.isSymbolicLink() || fileStat.size > 2_000_000) {
+    console.error("Refusing unsafe or oversized Telegram queue item.");
+    process.exit(1);
+  }
+  const update = JSON.parse(readFileSync(inputPath, "utf8"));
+  const text = update.message?.text || update.message?.caption || "";
+  const event = {
+    processed_at: new Date().toISOString(),
+    event: "telegram-update-processed",
+    content_kind: text ? "text" : "non-text",
+    content_length: text.length
+  };
+  writeFileSync(LOG_PATH, JSON.stringify(event) + "\n", { flag: "a", mode: 0o600 });
+  chmodSync(LOG_PATH, 0o600);
+  rmSync(inputPath);
+  console.log("Processed one Telegram update; raw queue item purged.");
+}

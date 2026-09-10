@@ -1,0 +1,14 @@
+{
+  "schema": "pritha-distribution-v1",
+  "name": "Pritha NeuralDeep",
+  "version": "0.1.0",
+  "repository": "NumericalArt/Pritha-NeuralDeep",
+  "node": ">=24",
+  "platform": "macos-verified; linux/windows self-managed",
+  "examples": [
+    "brief-desk-nd"
+  ],
+  "voiceTransport": "neuraldeep_chained",
+  "access": "localhost",
+  "history": "empty"
+}

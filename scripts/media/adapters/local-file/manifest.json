@@ -1,0 +1,7 @@
+{
+  "id": "local-file",
+  "version": 1,
+  "description": "Generic local media file adapter.",
+  "sourceKinds": ["local-file"],
+  "removable": false
+}

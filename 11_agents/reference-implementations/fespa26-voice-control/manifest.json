@@ -1,0 +1,56 @@
+{
+  "id": "fespa26-voice-control-reference",
+  "type": "reference-implementation",
+  "status": "active",
+  "created": "2026-05-30",
+  "updated": "2026-05-30",
+  "source_agent": "FESPA26",
+  "source_version": "FESPA26 local implementation inspected 2026-05-30",
+  "purpose": "Reusable Pritha reference pack for browser Realtime voice control, server-side tool routing and Codex deep-task transport.",
+  "use_when": [
+    "A descendant contract explicitly selects realtime voice control.",
+    "The agent needs live voice UX plus durable server-side tools.",
+    "Complex voice-triggered work must be routed to Codex App, Codex CLI or a queue instead of being performed by the voice model directly."
+  ],
+  "do_not_use_when": [
+    "The agent only needs transcription or simple chat.",
+    "There is no trusted server boundary for OpenAI API keys and durable tools.",
+    "The user has not approved microphone, cost, privacy and deployment constraints."
+  ],
+  "lanes": [
+    "browser voice lane",
+    "server deterministic tool lane",
+    "Codex deep-task lane",
+    "durable artifact/state lane",
+    "operator review/publication gate"
+  ],
+  "source_files": [
+    "source/lib/openai/create-ephemeral-session.ts",
+    "source/lib/openai/realtime-config.ts",
+    "source/lib/openai/realtime-tools.ts",
+    "source/lib/realtime/instructions.ts",
+    "source/hooks/use-realtime-call.ts",
+    "source/app/api/realtime/session.route.ts",
+    "source/app/api/realtime/call.route.ts",
+    "source/app/api/realtime/tool.route.ts",
+    "source/lib/codex-task/types.ts",
+    "source/lib/codex-task/service.ts",
+    "source/lib/codex-task/factory.ts",
+    "source/lib/codex-task/adapters/codex-app-server-client.ts",
+    "source/lib/codex-task/adapters/codex-auto-client.ts",
+    "source/lib/codex-task/adapters/codex-session-contract-client.ts",
+    "source/lib/codex-task/voice-codex-registry.ts"
+  ],
+  "required_adaptation": [
+    "Replace FESPA-specific repos, tool names, env prefixes and feed/media domain logic.",
+    "Define descendant-specific tool schemas and publication/destructive-action confirmation gates.",
+    "Keep OPENAI_API_KEY server-side and issue only ephemeral Realtime credentials to the browser.",
+    "Select Codex transport per contract: codex-app-server, codex-auto, codex-session or codex-app-http.",
+    "Add readiness checks for internet, memory and Codex CLI/App transport when selected."
+  ],
+  "commands": {
+    "plan": "node scripts/voice-control-kit.mjs plan",
+    "list": "node scripts/voice-control-kit.mjs list",
+    "copy": "node scripts/voice-control-kit.mjs copy --target ../child-agent"
+  }
+}

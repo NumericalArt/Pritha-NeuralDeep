@@ -1,0 +1,15 @@
+import type { CatalogOptions } from "./identity.mjs";
+import type { DeliveryTask } from "./task-delivery.mjs";
+export function recordParentUsage(task: DeliveryTask, observation: { attemptId: string; turnId?: string | null; counterTotal?: number | null; turnStatus?: string;
+  runtimeVersion?: string | null; modelRequested?: string | null; effortRequested?: string | null; modelObserved?: string | null }, options?: CatalogOptions): unknown;
+export type ParentUsageView = { scope: string; observedTokens: number | null; coverage: string; allocation: string; counterSemantics: string;
+  observedTurns: number; unknownAttempts: number; receiptIssues: number; truncated: boolean; counterRegression: boolean; runtimeVersions: string[]; source: string };
+export type TrialUsageView = { scope: string; tokensUsed: null; coverage: string; attempts: number; unknownAttempts: number; unconfirmedTerminals: number;
+  receiptIssues: number; truncated: boolean; legacyEvidenceUnaccounted: boolean; runtimeVersions: string[] };
+export type DeliveryUsageView = { schema: string; runId: string; build: { scope: string; tokensUsed: number; coverage: string; measuredTurns: number; unknownAttempts: number };
+  parent: ParentUsageView | { scope: string; observedTokens: null; coverage: string; allocation: string }; trials: TrialUsageView;
+  other: { scope: string; coverage: string; tokensUsed: null }; totalTokens: null; totalStatus: string };
+export function readParentUsage(task: DeliveryTask, options?: CatalogOptions): ParentUsageView;
+export function recordTrialUsage(runRoot: string, attempt: Record<string, unknown>, options?: CatalogOptions): unknown;
+export function readTrialUsage(runRoot: string, state: Record<string, any>, options?: CatalogOptions): TrialUsageView;
+export function readDeliveryUsage(runRoot: string, state: Record<string, any>, task: DeliveryTask | null, options?: CatalogOptions): DeliveryUsageView;

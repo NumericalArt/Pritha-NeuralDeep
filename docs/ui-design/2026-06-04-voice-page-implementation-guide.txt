@@ -1,0 +1,553 @@
+Implementation Guide: /voice page
+
+Использовать общие tokens, sidebar, glass panels, typography, status strip и navigation из инструкции для /agents. Ниже — только специфика страницы Voice Control.
+
+1. Route and purpose
+
+Route: /voice
+Mobile default: / -> /voice
+Desktop nav active item: Voice
+
+Страница — компактный realtime voice control surface для Pritha. Это не полноценный чат и не замена Codex. Главная функция: старт/стоп голосовой сессии, состояние Realtime, контекст, активная задача, approval gate.
+
+⸻
+
+2. Desktop layout
+
+<VoicePage>
+  <Header />
+  <div className="voice-layout">
+    <main className="voice-main">
+      <VoiceSessionPanel />
+      <ConversationPanel />
+    </main>
+    <aside className="voice-rail">
+      <CurrentContextCard />
+      <ActiveTaskCard />
+      <DecisionRequiredCard />
+      <ConnectionCard />
+    </aside>
+  </div>
+</VoicePage>
+
+CSS:
+
+.voice-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 390px;
+  gap: 20px;
+}
+.voice-main {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.voice-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+Header:
+
+Voice Control
+Talk to Pritha. Give commands. Get things done.
+
+Right side of header:
+
+Pritha Ready | Codex Connected | Proactivity Off | Open in Codex
+
+⸻
+
+3. Main voice session panel
+
+Большая центральная card.
+
+Structure
+
+<VoiceSessionPanel>
+  <div className="voice-panel-top">
+    <VoiceStatus />
+    <VoiceModel />
+  </div>
+  <VoiceVisualization />
+  <VoiceTimer />
+  <VoiceSubtitle />
+  <VoiceControls />
+  <QuickVoiceActions />
+</VoiceSessionPanel>
+
+Panel height примерно:
+
+.voice-session-panel {
+  min-height: 596px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+Top left status
+
+Status
+Listening  [small waveform icon]
+
+States:
+
+type VoiceState =
+  | "idle"
+  | "connecting"
+  | "listening"
+  | "muted"
+  | "working"
+  | "decision_required"
+  | "error";
+
+State labels:
+
+idle: Ready
+connecting: Connecting
+listening: Listening
+muted: Muted
+working: Working
+decision_required: Waiting for approval
+error: Connection issue
+
+Colors:
+
+Ready/listening: purple
+Working: blue
+Decision required: orange
+Error: red
+
+Top right model block
+
+Model
+gpt-4o-realtime-preview v
+▮▮▮ Good connection
+
+If unavailable:
+
+Model unavailable
+Connection unknown
+
+⸻
+
+4. Voice visualization
+
+Центр страницы — главный визуальный элемент.
+
+Composition:
+
+* horizontal waveform across the panel;
+* glowing orb in the center;
+* purple/pink/blue gradient;
+* dark glass background;
+* subtle pulse while listening;
+* fallback without animation for reduced motion.
+
+Use CSS/SVG. No need for Three.js here.
+
+.voice-visualization {
+  position: relative;
+  height: 260px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.voice-wave {
+  position: absolute;
+  width: 86%;
+  height: 180px;
+  opacity: 0.78;
+}
+.voice-orb {
+  width: 128px;
+  height: 128px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 50% 50%, #ffffff 0%, #d86bff 8%, #8a48ff 36%, #33227c 68%, transparent 100%);
+  box-shadow:
+    0 0 22px rgba(155, 109, 255, 0.9),
+    0 0 70px rgba(236, 79, 211, 0.38),
+    inset 0 0 28px rgba(255, 255, 255, 0.20);
+}
+
+State animation:
+
+.voice-orb[data-state="listening"] {
+  animation: voicePulse 2.4s ease-in-out infinite;
+}
+.voice-orb[data-state="working"] {
+  animation: voicePulse 1.3s ease-in-out infinite;
+}
+@keyframes voicePulse {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.045); filter: brightness(1.18); }
+}
+
+Waveform can be SVG with multiple blurred paths:
+
+<svg className="voice-wave" viewBox="0 0 900 180">
+  <path className="wave wave-1" d="..." />
+  <path className="wave wave-2" d="..." />
+  <path className="wave wave-3" d="..." />
+</svg>
+
+⸻
+
+5. Timer and subtitle
+
+Below visualization:
+
+00:00:18
+Listening for you...
+
+CSS:
+
+.voice-timer {
+  font-size: 28px;
+  font-weight: 650;
+  color: var(--accent-purple-2);
+  text-align: center;
+}
+.voice-subtitle {
+  margin-top: 4px;
+  font-size: 18px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+Subtitle by state:
+
+idle: Ready when you are.
+connecting: Connecting microphone and Realtime...
+listening: Listening for you...
+muted: Microphone muted.
+working: Pritha is working...
+decision_required: Approval needed.
+error: Reconnect to continue.
+
+⸻
+
+6. Voice controls
+
+Desktop layout:
+
+[Mute]   [Stop Listening]   [Cancel]
+
+Main button centered, wide.
+
+.voice-controls {
+  display: grid;
+  grid-template-columns: 96px minmax(260px, 320px) 96px;
+  justify-content: center;
+  align-items: center;
+  gap: 34px;
+  margin-top: 26px;
+}
+
+Main button:
+
+.voice-primary-button {
+  height: 76px;
+  border-radius: 12px;
+  font-size: 18px;
+  font-weight: 650;
+  color: white;
+  background: linear-gradient(135deg, #4f63ff 0%, #8b3dff 45%, #ed4fd5 100%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 18px 50px rgba(124, 92, 255, 0.28);
+}
+
+Button labels:
+
+idle: Start Listening
+connecting: Connecting...
+listening: Stop Listening
+muted: Stop Listening
+working: Stop Listening
+error: Reconnect
+
+Secondary buttons:
+
+Mute / Unmute
+Cancel
+
+Neutral dark square cards, 96 × 76.
+
+⸻
+
+7. Quick actions row
+
+Inside bottom strip of main panel.
+
+Quick Actions
+[Check Agents] [Run Manual Audit] [Show Updates] [Memory Summary] [... More]
+
+CSS:
+
+.quick-actions {
+  margin-top: 28px;
+  padding: 18px 22px;
+  border-top: 1px solid var(--border-soft);
+  background: rgba(7, 13, 24, 0.40);
+}
+.quick-action-list {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+Action chips:
+
+* dark glass;
+* small icon left;
+* purple/blue accent on hover;
+* no destructive actions here.
+
+Run Manual Audit should only trigger read-only/dry-run until backend supports write reports.
+
+⸻
+
+8. Conversation panel
+
+Purpose: compact transcript + command palette. Not full chat.
+
+Structure
+
+Conversation                                      Auto-scroll [toggle]
+You       Check for updates for all my agents.          10:21:08
+Pritha    I'll check all child agents...                10:21:10
+Pritha    Update available for Funny Teacher...         10:21:22
+[ Type a command (e.g., “check agents”, “open voice”, “show updates”) ] [send]
+
+CSS:
+
+.conversation-panel {
+  min-height: 284px;
+  border-radius: 12px;
+  padding: 18px;
+}
+.conversation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 168px;
+  overflow: auto;
+}
+.command-input-row {
+  display: grid;
+  grid-template-columns: 1fr 48px;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+Input behavior:
+
+* accepts dashboard commands only;
+* if user writes complex prompt, show suggestion:
+
+Continue in Codex or Voice.
+
+⸻
+
+9. Right rail cards
+
+All cards reuse .side-card.
+
+9.1. Current Context
+
+Current Context                                      Clear
+Memory Focus
+General (Global)
+Pritha has full context access.
+Active Tools
+[book] [code] [folder] [database] [4 active]
+
+Clear action resets selected context. It should be one-click safe.
+
+Tool icons are display chips, not buttons unless backend supports selection.
+
+9.2. Active Task
+
+Active Task                               ● Working
+Task for Codex
+Audit Funny Teacher for possible updates
+[progress bar] 65%
+Analyzing operations and recent changes...
+View Task Details v
+
+Progress bar:
+
+.task-progress-track {
+  height: 7px;
+  border-radius: 99px;
+  background: rgba(72, 88, 120, 0.28);
+}
+.task-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #705cff, #4b8dff);
+}
+
+If no task:
+
+No active task
+
+9.3. Decision Required
+
+Decision Required                         Approval needed
+Apply suggested update to “Funny Teacher”?
+[Approve] [Decline]
+View Details v
+
+Approve button purple gradient. Decline neutral.
+
+All approval actions must call confirmation/backend later. In static phase, show toast only.
+
+9.4. Connection
+
+Connection                                Good
+Realtime     Connected
+Server       Local (localhost)
+Latency      28 ms
+[Reconnect]
+
+Reconnect button only active when backend exists or in mock mode.
+
+⸻
+
+10. Voice page data model
+
+export type VoiceState =
+  | "idle"
+  | "connecting"
+  | "listening"
+  | "muted"
+  | "working"
+  | "decision_required"
+  | "error";
+export type VoiceTask = {
+  id: string;
+  title: string;
+  target: "Codex" | "Pritha" | "Child Agent";
+  status: "queued" | "working" | "decision_required" | "done" | "failed";
+  progress?: number;
+  summary?: string;
+};
+export type VoiceDecision = {
+  id: string;
+  title: string;
+  description: string;
+  severity: "low" | "medium" | "high";
+  status: "pending" | "approved" | "declined";
+};
+export type VoiceContext = {
+  memoryFocus: string;
+  description: string;
+  activeTools: string[];
+};
+export type VoiceConnection = {
+  realtime: "connected" | "connecting" | "disconnected" | "failed";
+  server: "local" | "lan" | "tailscale" | "unavailable";
+  latencyMs?: number;
+  quality: "good" | "degraded" | "bad" | "unknown";
+};
+
+Mock default matching screenshot:
+
+const voiceMock = {
+  state: "listening",
+  model: "gpt-4o-realtime-preview",
+  elapsedSec: 18,
+  context: {
+    memoryFocus: "General (Global)",
+    description: "Pritha has full context access.",
+    activeTools: ["memory", "codex", "files", "database"]
+  },
+  task: {
+    title: "Audit Funny Teacher for possible updates",
+    target: "Codex",
+    status: "working",
+    progress: 65,
+    summary: "Analyzing operations and recent changes..."
+  },
+  decision: {
+    title: "Apply suggested update to “Funny Teacher”?",
+    description: "Approval needed",
+    severity: "medium",
+    status: "pending"
+  },
+  connection: {
+    realtime: "connected",
+    server: "local",
+    latencyMs: 28,
+    quality: "good"
+  }
+};
+
+⸻
+
+11. Mobile specifics
+
+On mobile /voice:
+
+* hide desktop sidebar;
+* show compact header with Pritha logo/title;
+* status chips under header;
+* voice panel first;
+* current context, active task, decision cards below;
+* bottom nav: Voice | Agents | Settings.
+
+Main button must remain thumb-friendly:
+
+.voice-primary-button {
+  min-height: 58px;
+}
+
+On mobile, controls become:
+
+[Stop Listening]
+[Mute] [Cancel]
+
+not three equal desktop columns.
+
+⸻
+
+12. Safety and placeholder rules
+
+Do not fake these as working:
+
+real microphone access
+real Realtime session
+real Codex task creation
+real approval application
+real memory writes
+real audit reports
+
+Until backend exists:
+
+* buttons show mock state/toast;
+* labels must not imply durable action completed;
+* destructive/durable actions require disabled state or explicit confirmation.
+
+Browser must never receive OpenAI API key. Future Realtime integration must use server-issued ephemeral credentials.
+
+⸻
+
+13. Visual checklist
+
+Before finishing /voice, verify:
+
+* active sidebar item is Voice;
+* main voice card dominates the page;
+* orb and waveform are centered and visually close to reference;
+* timer is purple and centered;
+* Stop Listening button is pink-purple gradient;
+* Mute and Cancel are neutral dark buttons;
+* Quick Actions are small chips, not large cards;
+* Conversation panel is below voice card;
+* right rail order is Context → Active Task → Decision → Connection;
+* approval card uses orange warning state;
+* progress bar is blue/purple and shows percent;
+* connection card is compact;
+* page does not look like a generic chat app.

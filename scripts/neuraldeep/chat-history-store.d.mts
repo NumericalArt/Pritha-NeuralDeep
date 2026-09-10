@@ -1,0 +1,52 @@
+import type { ChatBinding, MessageReceipt } from '../../interfaces/control-center/src/lib/codex-chat/private-store';
+import type { NeuralDeepChatSummaries } from './chat-summary-projection.mjs';
+import type { DeliveryBudgetReceipt } from '../../interfaces/control-center/src/lib/codex-chat/delivery-types';
+import type { TurnView, ChatItemView, TurnPage, HistoryItemsPage, HistoryContentPage } from '../../interfaces/control-center/src/lib/codex-chat/types';
+export const HISTORY_PAGE_BYTES: number;
+export const HISTORY_CONTENT_BYTES: number;
+export class ChatHistoryError extends Error { code: string; status: number; }
+export class NeuralDeepChatHistoryStore {
+  constructor(options: { databasePath: string; instanceScope: string; readOnly?: boolean });
+  generation: string;
+  meta(key: string): string | null;
+  setMeta(key: string, value: string): void;
+  transaction<T>(work: () => T): T;
+  close(): void;
+  summaries(): NeuralDeepChatSummaries;
+  body(value: string): string;
+  event(chat: string, kind: string, record: Record<string, unknown>): void;
+  sourceRaw(chat: string, turnId: string, raw: string): void;
+  replayedOperation(chat: string, id: string, input: unknown): ChatBinding | null;
+  operation(chat: string, id: string, input: unknown, expectedRevision: number, update: (binding: ChatBinding) => void): { binding: ChatBinding; replayed: boolean };
+  archive(chat: string, archived: boolean, id: string, expectedRevision: number): { binding: ChatBinding; replayed: boolean };
+  aliasScope(binding: ChatBinding): string;
+  put(binding: ChatBinding, options?: { legacy?: boolean }): ChatBinding;
+  putIfAbsent(binding: ChatBinding): { binding: ChatBinding; created: boolean };
+  get(chat: string, options?: { turnLimit?: number; includeTurnId?: string }): ChatBinding | null;
+  all(): ChatBinding[];
+  findByClient(clientId: string): ChatBinding | null;
+  receipt(chat: string, id: string): { kind: 'message'; value: MessageReceipt } | { kind: 'budget'; value: DeliveryBudgetReceipt } | null;
+  mutate(chat: string, update: (binding: ChatBinding, created: boolean) => ChatBinding, create?: () => ChatBinding, includeTurnId?: string): { binding: ChatBinding; created: boolean } | null;
+  putTurn(chat: string, turn: TurnView): TurnView;
+  mutateTurn(chat: string, turnId: string, update: (turn: TurnView) => TurnView): TurnView | null;
+  turn(chat: string, turnId: string, options?: { itemLimit?: number; compact?: boolean }): TurnView | null;
+  putItem(chat: string, turnId: string, item: ChatItemView, originalText?: string): ChatItemView;
+  item(chat: string, itemId: string): ChatItemView | null;
+  turnIdForTask(chat: string, taskId: string): string | null;
+  taskStatus(chat: string, taskId: string): string | null;
+  turnState(chat: string, id: string): TurnView | null;
+  liveTurns(chat: string): TurnView[];
+  reconcileInactiveDirectChats(): number;
+  originalUserText(chat: string, turnId: string, maxBytes?: number): string;
+  chatForTask(taskId: string): string | null;
+  attachmentInSession(chatId: string, file?: { sha256: string; mediaType: string; size: number } | null): boolean;
+  activeTurns(): Iterable<{ chatId: string; turn: TurnView }>;
+  turnsPage(chat: string, input?: { cursor?: string; limit?: number }): TurnPage;
+  itemsPage(chat: string, turnId: string, cursor: string, activity?: boolean): HistoryItemsPage;
+  content(chat: string, itemId: string, cursor: string): HistoryContentPage;
+  verifySource(): { count: number; digest: string; generation: string };
+  audit(options?: { after?: number; chatId?: string | null }): Iterable<{ sequence: number; kind: string; hash: string; record: Record<string, unknown>; checkpoint: { sequence: number; high: number; hash: string; generation: string } }>;
+  rebuildProjection(): { count: number; digest: string; generation: string };
+}
+
+export function readHistoryMigrationInput(file: string, stateRoot: string): string;

@@ -1,0 +1,21 @@
+# Interface Adapters
+
+Interfaces are selected by the agent contract. This scaffold includes only the adapters needed for v1 plus CLI as a local maintenance surface.
+
+## Selected Adapters
+
+{{pritha:value0}}
+
+## Rules
+
+- Do not add Telegram, web, API or other external adapters unless the contract selects them.
+- Keep each adapter behind a small local command and a clear environment contract.
+- Never store secrets in this directory.
+- User-facing replies should be concise and useful; technical file paths belong in logs unless the user asks.
+
+## Commands
+
+```sh
+node scripts/interface-status.mjs
+{{pritha:value1}}
+```

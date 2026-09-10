@@ -1,0 +1,47 @@
+import type { NeuralDeepVoiceJournal } from './voice-journal.mjs';
+import type { ExecutionResourceClaim } from "./execution-resources.mjs";
+import type { NeuralDeepHandoffBarriers } from "./handoff-barriers.mjs";
+export type AdmissionStatus = "queued" | "active" | "completed" | "failed" | "cancelled" | "waiting_for_provider" | "waiting_for_operator" | "resume_confirmation_required";
+export type StoredAdmission = {
+  attemptId: string; surface: "task_chat" | "voice" | "delivery" | "voice_dialogue"; workloadId: string; coordinationKeyHash: string;
+  status: AdmissionStatus; queuedAt: string; admittedAt: string | null; finishedAt: string | null;
+  ownerToken: string | null; generation: number; workerId: string | null; sessionKeyHash: string | null; payload: unknown;
+};
+export function coordinationHash(value: string): string;
+export function neuralDeepCoordinationPaths(stateRoot: string, codeRoot?: string): { databasePath: string; legacyPath: string };
+export class NeuralDeepCoordinationStore {
+  voiceJournal: NeuralDeepVoiceJournal;
+  handoffs: NeuralDeepHandoffBarriers;
+  constructor(options?: { databasePath?: string; legacyPath?: string | null; workerId?: string });
+  enqueue(input: { attemptId: string; surface: "task_chat" | "voice" | "delivery" | "voice_dialogue"; workloadId: string; coordinationKeyHash: string; queuedAt: string; payload?: unknown; resources?: ExecutionResourceClaim[]; predecessorPriority?: boolean; resumePausedKey?: boolean; sessionKeyHash?: string | null }): StoredAdmission & { duplicate: boolean };
+  get(id: string): StoredAdmission | null;
+  claim(id: string, limit?: number): StoredAdmission | null;
+  finish(id: string, token: string, outcome?: "completed" | "failed" | "cancelled" | "waiting_for_provider" | "waiting_for_operator"): boolean;
+  cancelQueued(id: string): boolean;
+  requeueUnstarted(id: string, token: string): StoredAdmission;
+  cancelUnstarted(id: string, token: string): boolean;
+  pause(scope: string, reason: string): void;
+  resume(scope: string): void;
+  holdLogicalOwner(scope: string, owner: string, expectedGeneration?: number | null): { scope: string; owner: string; generation: number };
+  releaseLogicalOwner(scope: string, owner: string, generation: number): boolean;
+  logicalOwner(scope: string): { owner: string; generation: number; held: number } | null;
+  bindSession(id: string, token: string, sessionKeyHash: string): void;
+  reconcileWorkload(workload: string, outcome?: "failed" | "cancelled"): number;
+  reconcileStoppedTaskChats(): number;
+  beginRuntimeRun(input: { runId: string; requestHash: string; receipt: Record<string, unknown> }): Record<string, unknown>;
+  updateRuntimeRun(runId: string, update: Record<string, unknown>): Record<string, unknown>;
+  claimProviderRequest(runId: string, requestHash: string, metadata?: Record<string, unknown>): number;
+  runtimeRun(runId: string): Record<string, unknown> | null;
+  reconcileRuntimeRunExit(runId: string): boolean;
+  assertAttemptRuntimeExited(id: string, token: string): void;
+  snapshot(): { active: StoredAdmission[]; queued: StoredAdmission[]; unresolved: StoredAdmission[]; pausedCoordinationKeyHashes: string[] };
+  journal(): { version: 1; updatedAt: string; attempts: StoredAdmission[] };
+  acquireSessionControl(scope: string, owner: string, resources?:ExecutionResourceClaim[]): boolean;
+  heldHostControls(): {scope:string;owner:string}[];
+  releaseSessionControl(scope: string, owner: string): boolean;
+  resourceWaitReason(id:string): "workspace_conflict" | null;
+  assertRuntimeResources(id:string,resources:ExecutionResourceClaim[]):void;
+  invalidateIdleOwner(scope: string, operationId: string): number;
+  close(): void;
+  reconcileDeadWorkers(): number;
+}

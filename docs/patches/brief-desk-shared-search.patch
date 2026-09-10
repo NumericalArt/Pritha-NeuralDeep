@@ -1,0 +1,36 @@
+--- a/lib-runtime.mjs
++++ b/lib-runtime.mjs
+@@ -1,4 +1,5 @@
+ import fs from 'node:fs';
++import {pathToFileURL} from 'node:url';
+ import path from 'node:path';
+ import {fileURLToPath} from 'node:url';
+ import {parseEnv} from 'node:util';
+@@ -12,7 +13,7 @@
+     if(fs.existsSync(path.join(root,f))) for(const [k,v] of Object.entries(parseEnv(fs.readFileSync(path.join(root,f),'utf8')))) if(v)local[k]=v;
+   }
+   const e={...local,...env};
+-  return {port:Number(e.BRIEF_DESK_ND_PORT||3435),dataDir:e.BRIEF_DESK_ND_DATA_DIR||path.join(root,'.data'),
++  return {searchRoot:e.PRITHA_SEARCH_CODE_ROOT||e.TECHSCOPE_ROOT,searchState:e.PRITHA_SEARCH_STATE_ROOT||e.PRITHA_STATE_ROOT,searchInstance:e.PRITHA_INSTANCE_ID,searchKeychainService:e.PRITHA_NEURALDEEP_KEYCHAIN_SERVICE,searchMode:e.BRIEF_DESK_ND_SEARCH_MODE||'shared',port:Number(e.BRIEF_DESK_ND_PORT||3435),dataDir:e.BRIEF_DESK_ND_DATA_DIR||path.join(root,'.data'),
+     key:e.NEURALDEEP_API_KEY||'',model:e.BRIEF_DESK_ND_MODEL||'qwen3.8-27b',token:e.TELEGRAM_BOT_TOKEN||'',
+     allowedIds:(e.TELEGRAM_ALLOWED_USER_IDS||'').split(',').map(s=>s.trim()).filter(Boolean),chatId:e.TELEGRAM_PUBLISH_CHAT_ID||'',
+     publicUrl:e.BRIEF_DESK_ND_PUBLIC_URL||'',webhookSecret:e.TELEGRAM_WEBHOOK_SECRET||'',
+@@ -54,13 +55,17 @@
+ }
+ export function providers(config){
+   const auth={Authorization:`Bearer ${config.key}`};
++  let shared;
++  async function sharedAdapter(){if(!shared){if(!config.searchRoot||!config.searchState)throw new UserError('Настройте подключение к общему поиску Pritha.',503);const module=await import(pathToFileURL(path.join(config.searchRoot,'scripts/search/child-client.mjs')).href);shared=module.createChildSearchAdapter({codeRoot:config.searchRoot,stateRoot:config.searchState,instance:config.searchInstance,owner:'brief-desk-nd',allowedHosts:config.allowedHosts,keychainService:config.searchKeychainService});}return shared;}
++
+   return {
+     async search(topic,signal){
++      if(config.searchMode!=='legacy')return (await sharedAdapter()).search(topic,signal);
+       if(!config.key)throw new UserError('Не настроен ключ NeuralDeep.',503);
+       const r=await jsonRequest('https://api.neuraldeep.ru/v1/search/web',{query:topic,limit:8},auth,signal);
+       return (r.results||r.web?.results||r.data?.results||[]).map(x=>({url:x.url||x.link,title:x.title||'',snippet:x.snippet||x.description||x.content||''}));
+     },
+-    read:(u,signal)=>readSource(u,config.allowedHosts,AbortSignal.any([signal,AbortSignal.timeout(14000)])),
++    read:async(u,signal)=>{sourceUrl(u,config.allowedHosts);return config.searchMode==='legacy'?readSource(u,config.allowedHosts,AbortSignal.any([signal,AbortSignal.timeout(14000)])):(await sharedAdapter()).read(u,signal);},
+     async draft(topic,sources,signal){
+       if(!config.key)throw new UserError('Не настроен ключ NeuralDeep.',503);
+       const r=await jsonRequest('https://api.neuraldeep.ru/v1/chat/completions',{model:config.model,temperature:0.2,max_tokens:2200,chat_template_kwargs:{enable_thinking:false},messages:[

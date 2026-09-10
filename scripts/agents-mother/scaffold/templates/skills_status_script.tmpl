@@ -1,0 +1,254 @@
+#!/usr/bin/env node
+
+import { createHash } from "node:crypto";
+import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync } from "node:fs";
+import path from "node:path";
+import { containsHighRiskInstruction, redactSensitiveText } from "./redaction.mjs";
+
+const ROOT = realpathSync(process.cwd());
+const SKILLS_PATH = path.join(ROOT, "skills");
+const issues = [];
+
+function inside(candidate, root) {
+  return candidate === root || candidate.startsWith(`${root}${path.sep}`);
+}
+
+let SKILLS_ROOT = "";
+try {
+  const stat = lstatSync(SKILLS_PATH);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("unsafe skills root");
+  SKILLS_ROOT = realpathSync(SKILLS_PATH);
+  if (!inside(SKILLS_ROOT, ROOT)) throw new Error("skills root outside project");
+} catch {
+  console.error("Skill status failed:\n- missing or unsafe skills directory");
+  process.exit(1);
+}
+
+function readSafe(relativePath, maxBytes) {
+  const requested = path.resolve(ROOT, relativePath);
+  if (!inside(requested, SKILLS_PATH)) throw new Error("path outside skills root");
+  const requestedStat = lstatSync(requested);
+  if (!requestedStat.isFile() || requestedStat.isSymbolicLink()) throw new Error("file must be regular and not symlink");
+  const real = realpathSync(requested);
+  if (!inside(real, SKILLS_ROOT)) throw new Error("resolved path outside skills root");
+  const fd = openSync(real, constants.O_RDONLY | (constants.O_NOFOLLOW || 0) | (constants.O_NONBLOCK || 0));
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.size > maxBytes) throw new Error("file size limit exceeded");
+    const buffer = Buffer.alloc(maxBytes + 1);
+    let offset = 0;
+    while (offset < buffer.length) {
+      const count = readSync(fd, buffer, offset, buffer.length - offset, offset);
+      if (count === 0) break;
+      offset += count;
+    }
+    if (offset > maxBytes) throw new Error("file size limit exceeded");
+    return buffer.subarray(0, offset).toString("utf8");
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function validateJson(value) {
+  const stack = [{ value, depth: 0 }];
+  let nodes = 0;
+  while (stack.length) {
+    const current = stack.pop();
+    nodes += 1;
+    if (nodes > 20000 || current.depth > 16) throw new Error("JSON structure limit exceeded");
+    if (!current.value || typeof current.value !== "object") continue;
+    if (Array.isArray(current.value)) {
+      if (current.value.length > 1000) throw new Error("JSON array limit exceeded");
+      for (const child of current.value) stack.push({ value: child, depth: current.depth + 1 });
+      continue;
+    }
+    const keys = Object.keys(current.value);
+    if (keys.length > 1000 || keys.some((key) => ["__proto__", "constructor", "prototype"].includes(key))) {
+      throw new Error("JSON object shape rejected");
+    }
+    for (const child of Object.values(current.value)) stack.push({ value: child, depth: current.depth + 1 });
+  }
+}
+
+function readJson(relativePath) {
+  const text = readSafe(relativePath, 1_000_000);
+  if (redactSensitiveText(text) !== text || containsHighRiskInstruction(text)) {
+    throw new Error("metadata contains secret-like, private-endpoint or high-risk instruction material");
+  }
+  const value = JSON.parse(text);
+  validateJson(value);
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("JSON root must be object");
+  return value;
+}
+
+function sha256(text) {
+  return `sha256:${createHash("sha256").update(text).digest("hex")}`;
+}
+
+function safeName(value) {
+  return /^[a-z0-9][a-z0-9-]*$/.test(String(value || ""));
+}
+
+function safeSourcePath(value) {
+  const candidate = String(value || "").trim().replaceAll("\\", "/");
+  if (!candidate || candidate.length > 500 || path.posix.isAbsolute(candidate)) return "";
+  const segments = candidate.split("/");
+  if (segments.some((segment) => !segment || segment === "." || segment === "..")) return "";
+  if (segments.some((segment) => /^(?:\.env(?:\..*)?|\.private|\.memory(?:-private)?|\.queue|\.logs|\.snapshots|\.state)$/i.test(segment))) return "";
+  if (candidate.startsWith("10_wiki/")) return "";
+  return candidate;
+}
+
+function safeSourcePaths(value) {
+  return Array.isArray(value)
+    && value.length <= 100
+    && value.every((item) => typeof item === "string" && safeSourcePath(item) === item);
+}
+
+function securityTuple(value = {}) {
+  return {
+    name: String(value.name || ""),
+    version: String(value.version || ""),
+    source: String(value.source || ""),
+    trust_level: String(value.trust_level || ""),
+    review_status: String(value.review_status || ""),
+    risk_level: String(value.risk_level || ""),
+    requires_toolsets: Array.isArray(value.requires_toolsets) ? value.requires_toolsets.map(String) : [],
+    source_paths: Array.isArray(value.source_paths) ? value.source_paths.map(String) : [],
+  };
+}
+
+function unquoteScalar(value) {
+  const text = String(value || "").trim();
+  if (text.startsWith('"') && text.endsWith('"')) {
+    try { return JSON.parse(text); } catch { return ""; }
+  }
+  if (text.startsWith("'") && text.endsWith("'")) return text.slice(1, -1).replaceAll("''", "'");
+  return text;
+}
+
+function parseSkillSecurityMetadata(text) {
+  const source = String(text || "");
+  if (!source.startsWith("---\n")) return {};
+  const end = source.indexOf("\n---\n", 4);
+  if (end === -1) return {};
+  const wanted = new Set(["name", "version", "source", "trust_level", "review_status", "risk_level", "requires_toolsets", "source_paths"]);
+  const listFields = new Set(["requires_toolsets", "source_paths"]);
+  const result = {};
+  let activeList = "";
+  for (const line of source.slice(4, end).split(/\r?\n/)) {
+    const keyMatch = line.match(/^([a-z_]+):(?:\s*(.*))?$/);
+    if (keyMatch) {
+      activeList = "";
+      const key = keyMatch[1];
+      if (!wanted.has(key)) continue;
+      if (listFields.has(key)) {
+        result[key] = [];
+        activeList = key;
+      } else {
+        result[key] = unquoteScalar(keyMatch[2]);
+      }
+      continue;
+    }
+    const listMatch = activeList ? line.match(/^\s+-\s+(.+)$/) : null;
+    if (listMatch) result[activeList].push(unquoteScalar(listMatch[1]));
+    else if (line.trim()) activeList = "";
+  }
+  return result;
+}
+
+function validSecurityTuple(value) {
+  const tuple = securityTuple(value);
+  return safeName(tuple.name)
+    && tuple.version.length > 0
+    && tuple.source.length > 0
+    && ["local", "local-reviewed", "trusted"].includes(tuple.trust_level)
+    && ["reviewed", "accepted"].includes(tuple.review_status)
+    && ["low", "medium", "high"].includes(tuple.risk_level)
+    && tuple.requires_toolsets.length > 0
+    && tuple.requires_toolsets.every((item) => typeof item === "string" && item.length > 0 && item.length <= 200)
+    && safeSourcePaths(tuple.source_paths);
+}
+
+let manifest = { installed: [], candidates: [] };
+let candidates = { candidates: [] };
+let lock = { installed: [] };
+try {
+  readSafe("skills/README.md", 1_000_000);
+  manifest = readJson("skills/manifest.json");
+  candidates = readJson("skills/candidates.json");
+  lock = readJson("skills/lock.json");
+} catch {
+  issues.push("missing, unsafe, oversized or invalid required skills metadata");
+}
+
+for (const [label, value] of [["manifest", manifest], ["candidates", candidates], ["lock", lock]]) {
+  if (value.version !== 1) issues.push(`${label} schema version must be 1`);
+}
+if (!Array.isArray(manifest.installed) || !Array.isArray(manifest.candidates)) issues.push("manifest skill lists must be arrays");
+if (!Array.isArray(candidates.candidates)) issues.push("candidates list must be an array");
+if (!Array.isArray(lock.installed)) issues.push("lock installed list must be an array");
+
+const installed = Array.isArray(manifest.installed) ? manifest.installed.slice(0, 101) : [];
+const lockedEntries = Array.isArray(lock.installed) ? lock.installed.slice(0, 101) : [];
+if (installed.length > 100 || lockedEntries.length > 100) issues.push("installed skill count exceeds limit");
+const names = installed.map((entry) => String(entry?.name || ""));
+if (new Set(names).size !== names.length) issues.push("duplicate installed skill names");
+const lockNames = lockedEntries.map((entry) => String(entry?.name || ""));
+if (new Set(lockNames).size !== lockNames.length) issues.push("duplicate lock skill names");
+
+const locked = new Map();
+for (const entry of lockedEntries) {
+  if (!safeName(entry?.name) || !/^sha256:[a-f0-9]{64}$/i.test(String(entry?.hash || ""))) {
+    issues.push("invalid lock entry");
+    continue;
+  }
+  if (!safeSourcePaths(entry.source_paths)) issues.push(`invalid lock source_paths for ${entry.name}`);
+  if (!validSecurityTuple(entry)) issues.push(`invalid lock security metadata for ${entry.name}`);
+  locked.set(entry.name, entry);
+}
+
+for (const entry of installed) {
+  if (!safeName(entry?.name)) {
+    issues.push("invalid installed skill name");
+    continue;
+  }
+  if (!/^sha256:[a-f0-9]{64}$/i.test(String(entry.hash || ""))) {
+    issues.push(`invalid installed skill hash for ${entry.name}`);
+    continue;
+  }
+  if (!safeSourcePaths(entry.source_paths)) issues.push(`invalid installed source_paths for ${entry.name}`);
+  if (!validSecurityTuple(entry)) issues.push(`invalid installed security metadata for ${entry.name}`);
+  let skillText = "";
+  try {
+    skillText = readSafe(`skills/${entry.name}/SKILL.md`, 256_000);
+  } catch {
+    issues.push(`missing or unsafe installed skill: ${entry.name}`);
+    continue;
+  }
+  if (redactSensitiveText(skillText) !== skillText) issues.push(`sensitive material detected in installed skill: ${entry.name}`);
+  if (containsHighRiskInstruction(skillText)) issues.push(`high-risk instruction detected in installed skill: ${entry.name}`);
+  if (sha256(skillText) !== entry.hash) issues.push(`hash drift for ${entry.name}`);
+  const lockedEntry = locked.get(entry.name);
+  if (lockedEntry?.hash !== entry.hash) issues.push(`lock mismatch for ${entry.name}`);
+  if (JSON.stringify(lockedEntry?.source_paths) !== JSON.stringify(entry.source_paths)) issues.push(`source_paths lock mismatch for ${entry.name}`);
+  if (JSON.stringify(securityTuple(lockedEntry)) !== JSON.stringify(securityTuple(entry))) issues.push(`security metadata lock mismatch for ${entry.name}`);
+  const frontmatterMetadata = parseSkillSecurityMetadata(skillText);
+  if (JSON.stringify(securityTuple(frontmatterMetadata)) !== JSON.stringify(securityTuple(entry))) {
+    issues.push(`skill frontmatter security metadata mismatch for ${entry.name}`);
+  }
+}
+if (locked.size !== installed.length) issues.push("lock and manifest installed sets differ");
+
+if (issues.length > 0) {
+  console.error("Skill status failed:");
+  for (const issue of issues) console.error(`- ${issue}`);
+  process.exit(1);
+}
+
+console.log(`Agent: ${manifest.agent || "unknown"}`);
+console.log(`Skill policy: needs=${manifest.policy?.skill_needs || "unknown"}; install=${manifest.policy?.install_mode || "unknown"}; mutation=${manifest.policy?.agent_mutation || "unknown"}`);
+console.log(`Installed skills: ${installed.length}`);
+for (const entry of installed) console.log(`- ${entry.name}: ${entry.version}; ${entry.trust_level}; ${entry.risk_level}`);
+console.log(`Candidate skills: ${candidates.candidates.length}`);
+

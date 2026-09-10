@@ -1,0 +1,77 @@
+{
+  "agent": "brief-desk-nd",
+  "display_name": "Brief Desk ND",
+  "service_mode": "process",
+  "autostart": "disabled",
+  "control_center_managed": true,
+  "local_upstream_url": "http://127.0.0.1:3435",
+  "health_url": "http://127.0.0.1:3435/health",
+  "version": "0.2.0",
+  "agent_id": "brief-desk-nd",
+  "agent_kind": "service",
+  "runtime_family": "api",
+  "control_center_runtime": {
+    "manager": "detached-node-process",
+    "start_argv": [
+      "node",
+      "server.mjs"
+    ],
+    "pid_file": ".data/service.pid.json",
+    "readiness_timeout_ms": 5000,
+    "stop_timeout_ms": 5000
+  },
+  "start_command": {
+    "argv": [
+      "node",
+      "scripts/service-control.mjs",
+      "start"
+    ],
+    "cwd": ".",
+    "control_center_managed": true,
+    "background": false,
+    "timeout_ms": 15000,
+    "success_exit_codes": [
+      0
+    ],
+    "env_allowlist": [
+      "PATH"
+    ]
+  },
+  "stop_command": {
+    "argv": [
+      "node",
+      "scripts/service-control.mjs",
+      "stop"
+    ],
+    "cwd": ".",
+    "control_center_managed": true,
+    "background": false,
+    "timeout_ms": 15000,
+    "success_exit_codes": [
+      0
+    ],
+    "env_allowlist": [
+      "PATH"
+    ]
+  },
+  "credentials": [
+    {
+      "name": "NEURALDEEP_API_KEY",
+      "label": "Own NeuralDeep key (select in agent Settings)",
+      "provider": "generic",
+      "required": false,
+      "storage_target": ".env.local",
+      "browser_exposure": "server_only",
+      "validation": "none"
+    },
+    {
+      "name": "TELEGRAM_BOT_TOKEN",
+      "label": "Telegram Bot Token",
+      "provider": "telegram",
+      "required": false,
+      "storage_target": ".env.local",
+      "browser_exposure": "server_only",
+      "validation": "format"
+    }
+  ]
+}

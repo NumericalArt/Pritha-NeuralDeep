@@ -1,0 +1,12 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allow generated memory SQL content hashes"
+paths = [
+  '''^\.memory/last-rebuild\.sql$''',
+]
+regexes = [
+  '''[0-9a-f]{64}''',
+]
+condition = "AND"

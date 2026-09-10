@@ -1,0 +1,202 @@
+#!/usr/bin/env node
+
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+const ROOT = process.cwd();
+const manifestPath = path.join(ROOT, "operations", "manifest.json");
+const command = process.argv[2] || "plan";
+const confirmed = process.argv.includes("--yes");
+const allowedCommands = new Set(["plan", "status", "install", "uninstall"]);
+
+if (!allowedCommands.has(command)) {
+  console.error("Usage: node scripts/deploy-service.mjs plan|status|install|uninstall [--yes]");
+  process.exit(1);
+}
+
+if (!existsSync(manifestPath)) {
+  console.error("Missing operations/manifest.json");
+  process.exit(1);
+}
+
+const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+const uid = process.getuid ? process.getuid() : "";
+const serviceLabel = manifest.service_label || {{pritha:value0}};
+if (!/^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$/.test(serviceLabel) || serviceLabel.includes("..")) {
+  console.error("Invalid service_label in operations/manifest.json");
+  process.exit(1);
+}
+const launchAgentDir = path.join(os.homedir(), "Library", "LaunchAgents");
+const launchAgentPath = path.join(launchAgentDir, `${serviceLabel}.plist`);
+const launchctlTarget = uid === "" ? serviceLabel : `gui/${uid}/${serviceLabel}`;
+
+function run(commandName, args, options = {}) {
+  try {
+    const output = execFileSync(commandName, args, {
+      cwd: ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: options.timeout || 30000,
+    }).trim();
+    return { ok: true, output };
+  } catch (error) {
+    const output = [error.stdout, error.stderr, error.message].filter(Boolean).join("\n").trim();
+    if (options.allowFail) return { ok: false, output };
+    console.error(output || error.message);
+    process.exit(1);
+  }
+}
+
+function commandSummary(command) {
+  if (!command) return "not defined";
+  if (typeof command === "string") return `${command} (legacy/planning only)`;
+  if (Array.isArray(command.argv)) {
+    return `${command.argv.join(" ")}; managed=${command.control_center_managed === true}`;
+  }
+  return JSON.stringify(command);
+}
+
+function healthcheckArgv() {
+  if (!Array.isArray(manifest.healthcheck_argv)) return [];
+  return manifest.healthcheck_argv.map((part) => String(part || "")).filter(Boolean);
+}
+
+function healthcheckSummary() {
+  const argv = healthcheckArgv();
+  if (argv.length > 0) return argv.join(" ");
+  return `${manifest.healthcheck_command || "not configured"} (legacy/planning only)`;
+}
+
+function escapeXmlText(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function renderTemplate() {
+  if (!manifest.launchd_template) {
+    console.error("No launchd template selected in operations/manifest.json");
+    process.exit(1);
+  }
+  const allowedTemplateRoot = path.join(ROOT, "operations", "launchd");
+  const templatePath = path.resolve(ROOT, manifest.launchd_template);
+  if (!templatePath.startsWith(allowedTemplateRoot + path.sep)) {
+    console.error("launchd template must remain inside operations/launchd");
+    process.exit(1);
+  }
+  if (!existsSync(templatePath)) {
+    console.error(`Missing launchd template: ${manifest.launchd_template}`);
+    process.exit(1);
+  }
+  const templateStat = lstatSync(templatePath);
+  if (!templateStat.isFile() || templateStat.isSymbolicLink() || !realpathSync(templatePath).startsWith(realpathSync(allowedTemplateRoot) + path.sep)) {
+    console.error("launchd template must be a regular in-project file");
+    process.exit(1);
+  }
+  return readFileSync(templatePath, "utf8").replaceAll("__PROJECT_ROOT__", escapeXmlText(ROOT));
+}
+
+function requireInstallAllowed() {
+  if (!confirmed) {
+    console.error("Refusing to mutate launchd state without --yes.");
+    process.exit(1);
+  }
+  if (manifest.service_mode !== "launchd") {
+    console.error(`Install requires service_mode=launchd, got ${manifest.service_mode || "missing"}.`);
+    process.exit(1);
+  }
+  if (manifest.autostart !== "launchd-on-approval") {
+    console.error(`Install requires autostart=launchd-on-approval, got ${manifest.autostart || "missing"}.`);
+    process.exit(1);
+  }
+}
+
+function printPlan() {
+  console.log(`Agent: ${manifest.agent}`);
+  console.log(`Deployment target: ${manifest.deployment_target || "unknown"}`);
+  console.log(`Deployment profile: ${manifest.deployment_profile || "unknown"}`);
+  console.log(`Service mode: ${manifest.service_mode}`);
+  console.log(`Autostart: ${manifest.autostart}`);
+  console.log(`Proactive mode: ${manifest.proactivity?.mode || "unknown"}`);
+  console.log(`Service label: ${serviceLabel}`);
+  console.log(`LaunchAgent path: ${launchAgentPath}`);
+  console.log(`Healthcheck: ${healthcheckSummary()}`);
+  console.log(`Start: ${commandSummary(manifest.start_command)}`);
+  console.log(`Stop: ${commandSummary(manifest.stop_command)}`);
+  if (manifest.service_mode !== "launchd") {
+    console.log("Plan:");
+    console.log("- No launchd install is configured for this agent.");
+    console.log("- Use this script for visibility until the contract selects service_mode=launchd.");
+    console.log("- To make it a service, update the contract, scaffold/profile, and rerun operations checks.");
+    return;
+  }
+  console.log("Plan:");
+  console.log("- Render launchd template with the current project path.");
+  console.log("- Run healthcheck before install.");
+  console.log("- Copy plist to ~/Library/LaunchAgents.");
+  console.log("- Run plutil -lint.");
+  console.log("- bootstrap, enable and kickstart the LaunchAgent.");
+  console.log("- Use uninstall --yes to bootout and remove the plist.");
+  console.log("Mutation requires: node scripts/deploy-service.mjs install --yes");
+}
+
+function printStatus() {
+  console.log(`Service label: ${serviceLabel}`);
+  console.log(`LaunchAgent plist exists: ${existsSync(launchAgentPath) ? "yes" : "no"}`);
+  const result = run("launchctl", ["print", launchctlTarget], { allowFail: true });
+  console.log(`launchctl status: ${result.ok ? "loaded" : "not-loaded"}`);
+  if (result.output) console.log(result.output.slice(0, 1200));
+}
+
+function runHealthcheck() {
+  const argv = healthcheckArgv();
+  if (argv.length === 0) {
+    console.error("No healthcheck_argv (array) in operations/manifest.json. Legacy healthcheck_command is display-only.");
+    process.exit(1);
+  }
+  console.log(`Running healthcheck: ${argv.join(" ")}`);
+  const result = run(argv[0], argv.slice(1), { timeout: 60000 });
+  if (result.output) console.log(result.output);
+}
+
+if (command === "plan") {
+  printPlan();
+  process.exit(0);
+}
+
+if (command === "status") {
+  printStatus();
+  process.exit(0);
+}
+
+if (command === "install") {
+  requireInstallAllowed();
+  runHealthcheck();
+  mkdirSync(launchAgentDir, { recursive: true });
+  writeFileSync(launchAgentPath, renderTemplate());
+  run("plutil", ["-lint", launchAgentPath]);
+  run("launchctl", ["bootout", `gui/${uid}`, launchAgentPath], { allowFail: true });
+  run("launchctl", ["bootstrap", `gui/${uid}`, launchAgentPath]);
+  run("launchctl", ["enable", launchctlTarget], { allowFail: true });
+  run("launchctl", ["kickstart", "-k", launchctlTarget], { allowFail: true });
+  console.log(`Installed LaunchAgent: ${launchAgentPath}`);
+  printStatus();
+  process.exit(0);
+}
+
+if (command === "uninstall") {
+  if (!confirmed) {
+    console.error("Refusing to mutate launchd state without --yes.");
+    process.exit(1);
+  }
+  run("launchctl", ["bootout", `gui/${uid}`, launchAgentPath], { allowFail: true });
+  if (existsSync(launchAgentPath)) rmSync(launchAgentPath);
+  console.log(`Removed LaunchAgent: ${launchAgentPath}`);
+  printStatus();
+  process.exit(0);
+}

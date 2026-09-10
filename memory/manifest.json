@@ -1,0 +1,32 @@
+{
+  "agent": "Pritha",
+  "generated_by": "Pritha rename hygiene migration",
+  "profile": "markdown-canonical-external-generated-index",
+  "canonical_authored_knowledge": "Markdown artifacts in 00_inbox, 01_sources, 02_briefs, 03_reviews, 04_standards, 05_decisions, 07_workflows, 10_wiki and 11_agents",
+  "portable_snapshot": [
+    ".memory/schema.sql",
+    ".memory/README.md",
+    "tracked Markdown authored knowledge",
+    "10_wiki generated pages"
+  ],
+  "derived_indexes": [
+    "<state-root>/memory/techscope.sqlite",
+    "sentence-transformer embeddings in <state-root>/memory/techscope.sqlite",
+    "<state-root>/memory/last-rebuild.sql",
+    "<state-root>/memory/last-self-test.json"
+  ],
+  "source_of_truth": "Markdown is canonical authored knowledge; generated memory indexes are instance-local and must remain rebuildable.",
+  "directories": [
+    "00_inbox",
+    "01_sources/notes",
+    "01_sources/signals",
+    "02_briefs",
+    "03_reviews",
+    "04_standards",
+    "05_decisions",
+    "07_workflows",
+    "10_wiki",
+    "11_agents"
+  ],
+  "raw_material_policy": "01_sources/raw text, JSON, transcripts, PDFs and small supporting images are part of the portable Git snapshot. Heavy audio/video media are local-only until a Git LFS/archive policy is selected. Raw material is not treated as curated source of truth until summarized into notes, signals, briefs or assessments."
+}

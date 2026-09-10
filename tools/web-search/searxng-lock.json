@@ -1,0 +1,18 @@
+{
+  "schema": "pritha-web-search-tools-v1",
+  "tools": {
+    "searxng": {
+      "name": "searxng",
+      "repo": "https://github.com/searxng/searxng.git",
+      "commit": "e3126b89e69d1a56488f54f27928581a897cb058",
+      "version": "2026.6.24+e3126b89e",
+      "pythonRequirement": ">=3.11",
+      "install_path": ".tools/web-search/searxng/main",
+      "venv_path": ".tools/web-search/searxng/venv",
+      "settings_path": "private/services/searxng/settings.yml",
+      "pid_path": "private/services/searxng/searxng.pid",
+      "log_path": "private/services/searxng/logs/searxng.log",
+      "url": "http://127.0.0.1:8080/search"
+    }
+  }
+}

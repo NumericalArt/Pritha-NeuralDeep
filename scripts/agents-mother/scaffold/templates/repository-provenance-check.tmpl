@@ -1,0 +1,76 @@
+
+const repositoryManifestPath = path.join(ROOT, "sources", "repository-modules.json");
+const expectedRepositoryManifestSha256 = {{pritha:value0}};
+const expectedRepositoryResearchLock = {{pritha:value1}};
+function readSafeRepositoryManifest() {
+  const parent = path.dirname(repositoryManifestPath);
+  const parentStat = lstatSync(parent);
+  if (!parentStat.isDirectory() || parentStat.isSymbolicLink()) throw new Error("repository manifest parent must be a regular directory");
+  const manifestStat = lstatSync(repositoryManifestPath);
+  if (!manifestStat.isFile() || manifestStat.isSymbolicLink() || manifestStat.size > 1_000_000) throw new Error("repository manifest must be a bounded regular file");
+  const canonicalRoot = realpathSync(ROOT);
+  const canonicalManifest = realpathSync(repositoryManifestPath);
+  if (!canonicalManifest.startsWith(canonicalRoot + path.sep)) throw new Error("repository manifest resolves outside project");
+  return readFileSync(canonicalManifest, "utf8");
+}
+function githubContentUrlMatches(value, repositoryValue, kind, pin, relativePath) {
+  try {
+    const url = new URL(String(value || ""));
+    const repository = new URL(String(repositoryValue || ""));
+    if (url.protocol !== "https:" || repository.protocol !== "https:" || url.hostname.toLowerCase() !== "github.com" || repository.hostname.toLowerCase() !== "github.com" || url.search || url.hash || url.username || url.password) return false;
+    const parts = url.pathname.split("/").filter(Boolean).map((part) => decodeURIComponent(part));
+    const repositoryParts = repository.pathname.split("/").filter(Boolean).map((part) => decodeURIComponent(part));
+    return parts.length >= 5
+      && repositoryParts.length === 2
+      && parts[0].toLowerCase() === repositoryParts[0].toLowerCase()
+      && parts[1].toLowerCase() === repositoryParts[1].toLowerCase()
+      && parts[2] === kind
+      && parts[3].toLowerCase() === String(pin || "").toLowerCase()
+      && parts.slice(4).join("/") === relativePath;
+  } catch {
+    return false;
+  }
+}
+if (existsSync(repositoryManifestPath)) {
+  try {
+    const repositoryManifestText = readSafeRepositoryManifest();
+    const actualManifestSha256 = "sha256:" + createHash("sha256").update(repositoryManifestText).digest("hex");
+    if (actualManifestSha256 !== expectedRepositoryManifestSha256) issues.push("repository manifest content lock mismatch");
+    const repositoryManifest = JSON.parse(repositoryManifestText);
+    const repositories = Array.isArray(repositoryManifest.repositories) ? repositoryManifest.repositories : [];
+    if (repositoryManifest.version !== 1) issues.push("repository manifest version must be 1");
+    if (repositoryManifest.adoption_mode !== "selected-module") issues.push("repository manifest adoption_mode must be selected-module");
+    if (repositories.length !== 1 || !/^https:\/\/github\.com\/[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9_.-]{1,100}$/.test(repositories[0] || "")) issues.push("repository manifest must contain one canonical repository");
+    if (!repositoryManifest.module || /^(?:pending|none|not-applicable)$/i.test(repositoryManifest.module)) issues.push("repository manifest module missing");
+    if (String(repositoryManifest.module || "").split("/").some((segment) => !segment || segment === "." || segment === ".." || !/^[A-Za-z0-9._@+-]+$/.test(segment))) issues.push("repository manifest module must be a safe repository-relative path");
+    const pin = String(repositoryManifest.immutable_pin || "");
+    const immutableSha = /^(?:(?:commit|tree-sha):)?[a-f0-9]{40}$/i.test(pin);
+    if (!immutableSha) issues.push("repository manifest immutable_pin must be a commit/tree SHA");
+    const pinSha = pin.replace(/^(?:commit|tree-sha):/i, "").toLowerCase();
+    if (repositoryManifest.verification_status === "verified-by-pritha-research-gate") {
+      if (!/^sha256:[a-f0-9]{64}$/i.test(expectedRepositoryResearchLock) || repositoryManifest.repository_research_lock !== expectedRepositoryResearchLock) issues.push("repository manifest research lock mismatch");
+      if (String(repositoryManifest.verified_pin_sha || "").toLowerCase() !== pinSha) issues.push("repository manifest verified_pin_sha mismatch");
+      if (repositoryManifest.verified_module_path !== repositoryManifest.module) issues.push("repository manifest verified module path mismatch");
+      if (!/^[a-f0-9]{40}$/i.test(String(repositoryManifest.verified_module_sha || ""))) issues.push("repository manifest verified_module_sha invalid");
+      if (repositoryManifest.verified_module_type !== "tree") issues.push("repository manifest verified_module_type must be tree");
+      if (!githubContentUrlMatches(repositoryManifest.verification_source_url, repositories[0], "tree", pinSha, repositoryManifest.module)) issues.push("repository manifest verification source invalid");
+      if (!String(repositoryManifest.verified_license_path || "").startsWith(repositoryManifest.module + "/")) issues.push("repository manifest module-local license path invalid");
+      if (!/^[a-f0-9]{40}$/i.test(String(repositoryManifest.verified_license_blob_sha || ""))) issues.push("repository manifest license blob SHA invalid");
+      if (!/^[a-f0-9]{64}$/i.test(String(repositoryManifest.verified_license_content_sha256 || ""))) issues.push("repository manifest license content SHA-256 invalid");
+      if (!repositoryManifest.verified_license_spdx) issues.push("repository manifest verified license SPDX missing");
+      if (repositoryManifest.verified_license_scope !== "module-local") issues.push("repository manifest license scope must be module-local");
+      if (repositoryManifest.license_evidence_source_url !== repositoryManifest.verified_license_source_url) issues.push("repository manifest license evidence source mismatch");
+      if (!githubContentUrlMatches(repositoryManifest.verified_license_source_url, repositories[0], "blob", pinSha, repositoryManifest.verified_license_path)) issues.push("repository manifest pin-bound license evidence invalid");
+    } else if (repositoryManifest.verification_status === "experimental-unverified") {
+      if (repositoryManifest.experimental_scaffold !== true) issues.push("unverified repository manifest must be experimental");
+    } else {
+      issues.push("repository manifest verification_status invalid");
+    }
+    for (const field of ["license_decision", "security_review", "permissions", "eval_status", "user_approval"]) {
+      if (!repositoryManifest[field] || /^(?:pending|unknown|not-applicable)$/i.test(String(repositoryManifest[field]))) issues.push("repository manifest " + field + " missing");
+    }
+    if (repositoryManifest.installation_status !== "not-installed") issues.push("repository module must remain not-installed at scaffold");
+  } catch (error) {
+    issues.push("repository manifest is invalid JSON: " + (error instanceof Error ? error.message : String(error)));
+  }
+}

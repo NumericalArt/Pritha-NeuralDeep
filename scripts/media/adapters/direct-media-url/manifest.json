@@ -1,0 +1,7 @@
+{
+  "id": "direct-media-url",
+  "version": 1,
+  "description": "Generic direct remote media file adapter.",
+  "sourceKinds": ["remote-url"],
+  "removable": false
+}

@@ -1,0 +1,46 @@
+#!/usr/bin/env node
+
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+
+const manifestPath = path.join(process.cwd(), "operations", "manifest.json");
+if (!existsSync(manifestPath)) {
+  console.error("Missing operations/manifest.json");
+  process.exit(1);
+}
+
+const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+function commandSummary(command) {
+  if (!command) return "not defined";
+  if (typeof command === "string") return `${command} (legacy/planning only)`;
+  if (Array.isArray(command.argv)) {
+    return `${command.argv.join(" ")}; managed=${command.control_center_managed === true}`;
+  }
+  return JSON.stringify(command);
+}
+
+console.log(`Agent: ${manifest.agent}`);
+console.log(`Deployment target: ${manifest.deployment_target || "unknown"}`);
+console.log(`Deployment profile: ${manifest.deployment_profile || "unknown"}`);
+console.log(`Service mode: ${manifest.service_mode}`);
+console.log(`Autostart: ${manifest.autostart}`);
+console.log(`Autostart policy: ${manifest.autostart_policy}`);
+console.log(`Control Center managed: ${manifest.control_center_managed === true}`);
+console.log(`Control Center runtime: ${manifest.control_center_runtime?.manager || "none"}`);
+console.log(`Start: ${commandSummary(manifest.start_command)}`);
+console.log(`Stop: ${commandSummary(manifest.stop_command)}`);
+console.log(`Healthcheck argv: ${Array.isArray(manifest.healthcheck_argv) ? manifest.healthcheck_argv.join(" ") : "not configured"}`);
+console.log(`Legacy healthcheck command: ${manifest.healthcheck_command || "not documented"}`);
+console.log(`Logs: ${manifest.log_path}`);
+if (manifest.proactivity) {
+  console.log(`Proactive mode: ${manifest.proactivity.mode}`);
+  console.log(`Trigger sources: ${manifest.proactivity.trigger_sources}`);
+  console.log(`Schedule: ${manifest.proactivity.schedule}`);
+  console.log(`Heartbeat interval: ${manifest.proactivity.heartbeat_interval}`);
+}
+if (manifest.launchd_template) console.log(`launchd template: ${manifest.launchd_template}`);
+
+if (manifest.autostart !== "disabled" && manifest.autostart !== "optional" && manifest.autostart !== "external" && manifest.autostart !== "launchd-on-approval") {
+  console.error("Invalid autostart mode in operations manifest.");
+  process.exit(1);
+}

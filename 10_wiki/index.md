@@ -1,0 +1,312 @@
+---
+id: llm-wiki-index
+type: wiki-index
+status: generated
+created: 2026-05-15
+updated: 2026-05-18
+topics:
+  - llm-wiki
+  - generated-knowledge
+  - index
+tools:
+  - markdown
+  - codex
+sources:
+  - 07_workflows/llm-wiki-layer.md
+  - 02_briefs/2026-05-15-youtube-obsidian-wiki-instead-rag-brief.md
+  - 00_inbox/links/2026-05-15-youtube-obsidian-wiki-instead-rag-intake.md
+  - raw-source-purged
+  - https://www.youtube.com/watch?v=2ZHHzfMSeWc
+  - https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f
+  - https://community.obsidian.md/plugins/karpathywiki
+  - 02_briefs/2026-05-15-mcp-server-pitfalls-brief.md
+  - 00_inbox/links/2026-05-15-habr-mcp-server-pitfalls-intake.md
+  - 01_sources/notes/2026-05-15-habr-mcp-server-pitfalls-source-note.md
+  - 03_reviews/2026-05-15-mcp-server-pitfalls-assessment.md
+  - https://habr.com/ru/companies/bitrix/articles/1009150/
+  - 02_briefs/2026-05-16-openai-realtime-audio-models-voice-agents-brief.md
+  - 01_sources/signals/2026-05-16-youtube-transcript-we-re-introducing-three-audio-models-in-the-api-signal.md
+  - 01_sources/notes/2026-05-16-openai-realtime-audio-models-source-note.md
+  - 00_inbox/links/2026-05-16-youtube-openai-three-audio-models-api-intake.md
+  - 03_reviews/2026-05-16-2026-05-16-youtube-openai-three-audio-models-api-intake-auto-assessment.md
+  - raw-source-purged
+  - https://www.youtube.com/watch?v=JOu8v6CBjkE
+  - https://openai.com/index/advancing-voice-intelligence-with-new-models-in-the-api/
+  - 02_briefs/2026-05-17-codex-mobile-desktop-remote-connection-brief.md
+  - 01_sources/notes/2026-05-17-codex-mobile-desktop-remote-connection-source-note.md
+  - 01_sources/signals/2026-05-17-2026-05-17-telegram-telegram-user-53-telegram-photo-signal.md
+  - raw-source-purged
+  - https://openai.com/index/work-with-codex-from-anywhere/
+  - 02_briefs/2026-05-17-codex-remote-vps-connections-brief.md
+  - 01_sources/notes/2026-05-17-codex-remote-vps-connections-source-note.md
+  - 01_sources/signals/2026-05-17-2026-05-17-telegram-telegram-user-52-все-новостные-каналы-пишут-про-нативный-диспатчер-от-ope-signal.md
+  - raw-source-purged
+  - https://help.openai.com/en/articles/6825453-chatgpt-release-notes
+  - https://help.openai.com/en/articles/10128477-chatgpt-enterprise-edu-release-notes
+  - 02_briefs/2026-05-17-medium-harness-engineering-six-layer-brief.md
+  - 01_sources/notes/2026-05-17-medium-harness-engineering-six-layer-source-note.md
+  - 01_sources/signals/2026-05-17-medium-harness-engineering-six-layer-signal.md
+  - raw-source-purged
+  - https://medium.com/%40bollen_en_kersen/list/ai-engineering-302c79906afa
+  - https://openai.com/index/harness-engineering/
+  - https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents
+  - https://www.anthropic.com/engineering/building-effective-agents
+  - 03_reviews/2026-05-16-test-first-agent-workflow-review.md
+  - 01_sources/signals/2026-05-16-2026-05-16-telegram-telegram-user-9-как-использовать-superpowers-в-codex-signal.md
+  - 00_inbox/telegram/2026-05-16-telegram-telegram-user-9-как-использовать-superpowers-в-codex.md
+  - 02_briefs/2026-05-15-harness-engineering-codex-agents-brief.md
+  - 01_sources/notes/2026-05-15-openai-harness-engineering-source-note.md
+  - https://t.me/tosoltaime/42
+  - 00_inbox/links/2026-05-15-youtube-harness-engineering-ryan-lopopolo-openai-intake.md
+  - 03_reviews/2026-05-15-2026-05-15-youtube-harness-engineering-ryan-lopopolo-openai-intake-auto-assessment.md
+  - raw-source-purged
+  - https://www.youtube.com/watch?v=am_oeAoUhew
+  - 03_reviews/2026-05-17-agent-shell-evaluation-review.md
+  - 03_reviews/2026-05-17-openclaw-hermes-codex-cli-advanced-user-assessment.md
+  - 02_briefs/2026-05-17-openclaw-hermes-codex-cli-advanced-user-brief.md
+  - 01_sources/notes/2026-05-17-openclaw-hermes-codex-cli-advanced-user-source-note.md
+  - 01_sources/signals/2026-05-17-youtube-transcript-openclaw-hermes-и-codex-cli-какой-ai-агент-выбрать-сейчас-signal.md
+  - https://www.youtube.com/watch?v=L-HAzfFWSto
+  - https://github.com/NousResearch/hermes-agent
+  - https://hermes-agent.nousresearch.com/docs/user-guide/features/codex-app-server-runtime
+  - https://github.com/openai/codex
+  - https://openai.com/index/introducing-the-codex-app/
+  - https://arxiv.org/abs/2603.07670
+  - 04_standards/agent-shell-evaluation.md
+  - raw-source-purged
+  - 02_briefs/2026-05-17-codex-xcode-simulator-screenshot-debugging-brief.md
+  - 01_sources/notes/2026-05-17-codex-xcode-simulator-screenshot-debugging-source-note.md
+  - 01_sources/signals/2026-05-17-2026-05-17-telegram-telegram-user-49-кстати-codex-умеет-сам-делать-скриншоты-приложений-на-те-signal.md
+  - raw-source-purged
+  - https://support.apple.com/guide/simulator/take-screenshots-or-record-video-devd49e021cc/mac
+related:
+  wiki_pages:
+    - 10_wiki/pages/concept-brief.md
+    - 10_wiki/pages/concept-harness.md
+    - 10_wiki/pages/concept-mcp-server-pitfalls.md
+    - 10_wiki/pages/concept-realtime.md
+    - 10_wiki/pages/concept-review.md
+    - 10_wiki/pages/concept-test-first-agent-workflow.md
+    - 10_wiki/pages/concept-youtube-obsidian-wiki-instead-rag.md
+    - 10_wiki/pages/tool-agents-md.md
+    - 10_wiki/pages/tool-agents-sdk.md
+    - 10_wiki/pages/tool-anthropic.md
+    - 10_wiki/pages/tool-chatgpt-mobile.md
+    - 10_wiki/pages/tool-chrome-devtools.md
+    - 10_wiki/pages/tool-ci.md
+    - 10_wiki/pages/tool-claude-code.md
+    - 10_wiki/pages/tool-claude-desktop.md
+    - 10_wiki/pages/tool-codex-desktop.md
+    - 10_wiki/pages/tool-codex.md
+    - 10_wiki/pages/tool-continue.md
+    - 10_wiki/pages/tool-cursor.md
+    - 10_wiki/pages/tool-gpt-realtime-2.md
+    - 10_wiki/pages/tool-gpt-realtime-translate.md
+    - 10_wiki/pages/tool-gpt-realtime-whisper.md
+    - 10_wiki/pages/tool-hermes.md
+    - 10_wiki/pages/tool-ios-simulator.md
+    - 10_wiki/pages/tool-iphone.md
+    - 10_wiki/pages/tool-langchain.md
+    - 10_wiki/pages/tool-lint.md
+    - 10_wiki/pages/tool-macos.md
+    - 10_wiki/pages/tool-markdown.md
+    - 10_wiki/pages/tool-mcp.md
+    - 10_wiki/pages/tool-medium.md
+    - 10_wiki/pages/tool-mlx-whisper.md
+    - 10_wiki/pages/tool-npm.md
+    - 10_wiki/pages/tool-oauth.md
+    - 10_wiki/pages/tool-obsidian.md
+    - 10_wiki/pages/tool-openai.md
+    - 10_wiki/pages/tool-openclaw.md
+    - 10_wiki/pages/tool-playwright.md
+    - 10_wiki/pages/tool-pnpm.md
+    - 10_wiki/pages/tool-realtime-api.md
+    - 10_wiki/pages/tool-ssh.md
+    - 10_wiki/pages/tool-superpowers.md
+    - 10_wiki/pages/tool-telegram-bot.md
+    - 10_wiki/pages/tool-telegram.md
+    - 10_wiki/pages/tool-vps.md
+    - 10_wiki/pages/tool-vscode.md
+    - 10_wiki/pages/tool-xcode.md
+    - 10_wiki/pages/tool-youtube.md
+    - 10_wiki/pages/tool-yt-dlp.md
+    - 10_wiki/pages/tool-zod.md
+    - 10_wiki/pages/topic-acceptance-criteria.md
+    - 10_wiki/pages/topic-agent-evals.md
+    - 10_wiki/pages/topic-agent-memory.md
+    - 10_wiki/pages/topic-agent-shell-evaluation.md
+    - 10_wiki/pages/topic-agent-tools.md
+    - 10_wiki/pages/topic-agent-ux.md
+    - 10_wiki/pages/topic-ai-agents.md
+    - 10_wiki/pages/topic-audio-models.md
+    - 10_wiki/pages/topic-ci.md
+    - 10_wiki/pages/topic-claude-code.md
+    - 10_wiki/pages/topic-codex-app.md
+    - 10_wiki/pages/topic-codex-cli.md
+    - 10_wiki/pages/topic-codex-desktop.md
+    - 10_wiki/pages/topic-codex-mobile.md
+    - 10_wiki/pages/topic-codex-remote-access.md
+    - 10_wiki/pages/topic-codex.md
+    - 10_wiki/pages/topic-coding-agents.md
+    - 10_wiki/pages/topic-context-engineering.md
+    - 10_wiki/pages/topic-context-management.md
+    - 10_wiki/pages/topic-dx.md
+    - 10_wiki/pages/topic-evals.md
+    - 10_wiki/pages/topic-evaluation.md
+    - 10_wiki/pages/topic-gemini-cli.md
+    - 10_wiki/pages/topic-harness-engineering.md
+    - 10_wiki/pages/topic-hermes.md
+    - 10_wiki/pages/topic-ios-simulator.md
+    - 10_wiki/pages/topic-knowledge-base.md
+    - 10_wiki/pages/topic-llm-wiki.md
+    - 10_wiki/pages/topic-markdown.md
+    - 10_wiki/pages/topic-mcp.md
+    - 10_wiki/pages/topic-mobile-agent-control.md
+    - 10_wiki/pages/topic-mobile-app-development.md
+    - 10_wiki/pages/topic-non-professional-users.md
+    - 10_wiki/pages/topic-observability.md
+    - 10_wiki/pages/topic-obsidian.md
+    - 10_wiki/pages/topic-openai.md
+    - 10_wiki/pages/topic-openclaw.md
+    - 10_wiki/pages/topic-rag.md
+    - 10_wiki/pages/topic-realtime-api.md
+    - 10_wiki/pages/topic-recovery.md
+    - 10_wiki/pages/topic-remote-connections.md
+    - 10_wiki/pages/topic-safety.md
+    - 10_wiki/pages/topic-screenshots.md
+    - 10_wiki/pages/topic-security.md
+    - 10_wiki/pages/topic-software-engineering.md
+    - 10_wiki/pages/topic-ssh.md
+    - 10_wiki/pages/topic-techscope.md
+    - 10_wiki/pages/topic-telegram-agents.md
+    - 10_wiki/pages/topic-test-first-development.md
+    - 10_wiki/pages/topic-tool-design.md
+    - 10_wiki/pages/topic-tool-use.md
+    - 10_wiki/pages/topic-transcription.md
+    - 10_wiki/pages/topic-translation.md
+    - 10_wiki/pages/topic-ui-debugging.md
+    - 10_wiki/pages/topic-user-experience.md
+    - 10_wiki/pages/topic-voice-agents.md
+    - 10_wiki/pages/topic-vps.md
+    - 10_wiki/pages/topic-xcode.md
+    - 10_wiki/pages/topic-youtube.md
+---
+# LLM Wiki Index
+
+Generated wiki index. Rebuild with:
+
+```sh
+node scripts/llm-wiki.mjs ingest <artifact-path>
+```
+
+## Pages
+
+- [[pages/concept-brief|concept: brief]] — youtube, obsidian, llm-wiki, rag, knowledge-base; sources: 38; review: unreviewed
+- [[pages/concept-harness|concept: harness]] — harness-engineering, ai-agents, context-engineering, agent-memory, evaluation; sources: 8; review: unreviewed
+- [[pages/concept-mcp-server-pitfalls|concept: mcp-server-pitfalls]] — mcp, tool-design, agent-tools, security, evals; sources: 5; review: unreviewed
+- [[pages/concept-realtime|concept: realtime]] — openai, audio-models, realtime-api, voice-agents, transcription; sources: 8; review: unreviewed
+- [[pages/concept-review|concept: review]] — coding-agents, agent-evals, test-first-development, harness-engineering, acceptance-criteria; sources: 7; review: unreviewed
+- [[pages/concept-test-first-agent-workflow|concept: test-first-agent-workflow]] — coding-agents, agent-evals, test-first-development, harness-engineering, acceptance-criteria; sources: 7; review: unreviewed
+- [[pages/concept-youtube-obsidian-wiki-instead-rag|concept: youtube-obsidian-wiki-instead-rag]] — youtube, obsidian, llm-wiki, rag, knowledge-base; sources: 6; review: unreviewed
+- [[pages/tool-agents-md|tool: agents-md]] — harness-engineering, coding-agents, agent-memory, agent-evals, ci; sources: 6; review: unreviewed
+- [[pages/tool-agents-sdk|tool: agents-sdk]] — openai, audio-models, realtime-api, voice-agents, transcription; sources: 8; review: unreviewed
+- [[pages/tool-anthropic|tool: anthropic]] — harness-engineering, ai-agents, context-engineering, agent-memory, evaluation; sources: 8; review: unreviewed
+- [[pages/tool-chatgpt-mobile|tool: chatgpt-mobile]] — codex-mobile, codex-desktop, remote-connections, ssh, mobile-agent-control; sources: 11; review: unreviewed
+- [[pages/tool-chrome-devtools|tool: chrome-devtools]] — harness-engineering, coding-agents, agent-memory, agent-evals, ci; sources: 6; review: unreviewed
+- [[pages/tool-ci|tool: ci]] — harness-engineering, coding-agents, agent-memory, agent-evals, ci; sources: 11; review: unreviewed
+- [[pages/tool-claude-code|tool: claude-code]] — youtube, obsidian, llm-wiki, rag, knowledge-base; sources: 18; review: unreviewed
+- [[pages/tool-claude-desktop|tool: claude-desktop]] — mcp, tool-design, agent-tools, security, evals; sources: 5; review: unreviewed
+- [[pages/tool-codex-desktop|tool: codex-desktop]] — codex-mobile, codex-desktop, remote-connections, ssh, mobile-agent-control; sources: 11; review: unreviewed
+- [[pages/tool-codex|tool: codex]] — youtube, obsidian, llm-wiki, rag, knowledge-base; sources: 47; review: unreviewed
+- [[pages/tool-continue|tool: continue]] — mcp, tool-design, agent-tools, security, evals; sources: 5; review: unreviewed
+- [[pages/tool-cursor|tool: cursor]] — mcp, tool-design, agent-tools, security, evals; sources: 5; review: unreviewed
+- [[pages/tool-gpt-realtime-2|tool: gpt-realtime-2]] — openai, audio-models, realtime-api, voice-agents, transcription; sources: 8; review: unreviewed
+- [[pages/tool-gpt-realtime-translate|tool: gpt-realtime-translate]] — openai, audio-models, realtime-api, voice-agents, transcription; sources: 8; review: unreviewed
+- [[pages/tool-gpt-realtime-whisper|tool: gpt-realtime-whisper]] — openai, audio-models, realtime-api, voice-agents, transcription; sources: 8; review: unreviewed
+- [[pages/tool-hermes|tool: hermes]] — openclaw, hermes, codex-cli, ai-agents, user-experience; sources: 14; review: unreviewed
+- [[pages/tool-ios-simulator|tool: ios-simulator]] — codex, xcode, ios-simulator, screenshots, ui-debugging; sources: 6; review: unreviewed
+- [[pages/tool-iphone|tool: iphone]] — codex-mobile, codex-desktop, remote-connections, ssh, mobile-agent-control; sources: 10; review: unreviewed
+- [[pages/tool-langchain|tool: langchain]] — harness-engineering, ai-agents, context-engineering, agent-memory, evaluation; sources: 8; review: unreviewed
+- [[pages/tool-lint|tool: lint]] — harness-engineering, coding-agents, agent-memory, agent-evals, ci; sources: 11; review: unreviewed
+- [[pages/tool-macos|tool: macos]] — codex-mobile, codex-desktop, remote-connections, ssh, mobile-agent-control; sources: 11; review: unreviewed
+- [[pages/tool-markdown|tool: markdown]] — youtube, obsidian, llm-wiki, rag, knowledge-base; sources: 13; review: unreviewed
+- [[pages/tool-mcp|tool: mcp]] — mcp, tool-design, agent-tools, security, evals; sources: 5; review: unreviewed
+- [[pages/tool-medium|tool: medium]] — harness-engineering, ai-agents, context-engineering, agent-memory, evaluation; sources: 8; review: unreviewed
+- [[pages/tool-mlx-whisper|tool: mlx-whisper]] — youtube, obsidian, llm-wiki, rag, knowledge-base; sources: 16; review: unreviewed
+- [[pages/tool-npm|tool: npm]] — coding-agents, agent-evals, test-first-development, harness-engineering, acceptance-criteria; sources: 7; review: unreviewed
+- [[pages/tool-oauth|tool: oauth]] — mcp, tool-design, agent-tools, security, evals; sources: 5; review: unreviewed
+- [[pages/tool-obsidian|tool: obsidian]] — youtube, obsidian, llm-wiki, rag, knowledge-base; sources: 16; review: unreviewed
+- [[pages/tool-openai|tool: openai]] — harness-engineering, coding-agents, agent-memory, agent-evals, ci; sources: 21; review: unreviewed
+- [[pages/tool-openclaw|tool: openclaw]] — openclaw, hermes, codex-cli, ai-agents, user-experience; sources: 14; review: unreviewed
+- [[pages/tool-playwright|tool: playwright]] — harness-engineering, coding-agents, agent-memory, agent-evals, ci; sources: 6; review: unreviewed
+- [[pages/tool-pnpm|tool: pnpm]] — harness-engineering, coding-agents, agent-memory, agent-evals, ci; sources: 6; review: unreviewed
+- [[pages/tool-realtime-api|tool: realtime-api]] — openai, audio-models, realtime-api, voice-agents, transcription; sources: 8; review: unreviewed
+- [[pages/tool-ssh|tool: ssh]] — codex-mobile, codex-desktop, remote-connections, ssh, mobile-agent-control; sources: 11; review: unreviewed
+- [[pages/tool-superpowers|tool: superpowers]] — coding-agents, agent-evals, test-first-development, harness-engineering, acceptance-criteria; sources: 7; review: unreviewed
+- [[pages/tool-telegram-bot|tool: telegram-bot]] — codex-mobile, codex-desktop, remote-connections, ssh, mobile-agent-control; sources: 11; review: unreviewed
+- [[pages/tool-telegram|tool: telegram]] — openclaw, hermes, codex-cli, ai-agents, user-experience; sources: 11; review: unreviewed
+- [[pages/tool-vps|tool: vps]] — codex-remote-access, codex-desktop, remote-connections, ssh, vps; sources: 7; review: unreviewed
+- [[pages/tool-vscode|tool: vscode]] — mcp, tool-design, agent-tools, security, evals; sources: 5; review: unreviewed
+- [[pages/tool-xcode|tool: xcode]] — codex, xcode, ios-simulator, screenshots, ui-debugging; sources: 6; review: unreviewed
+- [[pages/tool-youtube|tool: youtube]] — openclaw, hermes, codex-cli, ai-agents, user-experience; sources: 11; review: unreviewed
+- [[pages/tool-yt-dlp|tool: yt-dlp]] — youtube, obsidian, llm-wiki, rag, knowledge-base; sources: 6; review: unreviewed
+- [[pages/tool-zod|tool: zod]] — harness-engineering, coding-agents, agent-memory, agent-evals, ci; sources: 6; review: unreviewed
+- [[pages/topic-acceptance-criteria|topic: acceptance-criteria]] — acceptance-criteria, coding-agents, agent-evals, test-first-development, harness-engineering; sources: 7; review: unreviewed
+- [[pages/topic-agent-evals|topic: agent-evals]] — agent-evals, coding-agents, test-first-development, harness-engineering, acceptance-criteria; sources: 11; review: unreviewed
+- [[pages/topic-agent-memory|topic: agent-memory]] — agent-memory, harness-engineering, ai-agents, context-engineering, evaluation; sources: 32; review: unreviewed
+- [[pages/topic-agent-shell-evaluation|topic: agent-shell-evaluation]] — agent-shell-evaluation, ai-agents, coding-agents, codex-cli, codex-app; sources: 13; review: unreviewed
+- [[pages/topic-agent-tools|topic: agent-tools]] — agent-tools, mcp, tool-design, security, evals; sources: 5; review: unreviewed
+- [[pages/topic-agent-ux|topic: agent-ux]] — agent-ux, openai, audio-models, realtime-api, voice-agents; sources: 8; review: unreviewed
+- [[pages/topic-ai-agents|topic: ai-agents]] — ai-agents, harness-engineering, context-engineering, agent-memory, evaluation; sources: 22; review: unreviewed
+- [[pages/topic-audio-models|topic: audio-models]] — audio-models, openai, realtime-api, voice-agents, transcription; sources: 8; review: unreviewed
+- [[pages/topic-ci|topic: ci]] — ci, harness-engineering, coding-agents, agent-memory, agent-evals; sources: 6; review: unreviewed
+- [[pages/topic-claude-code|topic: claude-code]] — claude-code, agent-shell-evaluation, ai-agents, coding-agents, codex-cli; sources: 13; review: unreviewed
+- [[pages/topic-codex-app|topic: codex-app]] — codex-app, agent-shell-evaluation, ai-agents, coding-agents, codex-cli; sources: 13; review: unreviewed
+- [[pages/topic-codex-cli|topic: codex-cli]] — codex-cli, agent-shell-evaluation, ai-agents, coding-agents, codex-app; sources: 14; review: unreviewed
+- [[pages/topic-codex-desktop|topic: codex-desktop]] — codex-desktop, codex-remote-access, remote-connections, ssh, vps; sources: 11; review: unreviewed
+- [[pages/topic-codex-mobile|topic: codex-mobile]] — codex-mobile, codex-desktop, remote-connections, ssh, mobile-agent-control; sources: 5; review: unreviewed
+- [[pages/topic-codex-remote-access|topic: codex-remote-access]] — codex-remote-access, codex-desktop, remote-connections, ssh, vps; sources: 7; review: unreviewed
+- [[pages/topic-codex|topic: codex]] — codex, xcode, ios-simulator, screenshots, ui-debugging; sources: 6; review: unreviewed
+- [[pages/topic-coding-agents|topic: coding-agents]] — coding-agents, codex, xcode, ios-simulator, screenshots; sources: 6; review: unreviewed
+- [[pages/topic-context-engineering|topic: context-engineering]] — context-engineering, harness-engineering, ai-agents, agent-memory, evaluation; sources: 8; review: unreviewed
+- [[pages/topic-context-management|topic: context-management]] — context-management, mcp, tool-design, agent-tools, security; sources: 5; review: unreviewed
+- [[pages/topic-dx|topic: dx]] — dx, codex, xcode, ios-simulator, screenshots; sources: 21; review: unreviewed
+- [[pages/topic-evals|topic: evals]] — evals, mcp, tool-design, agent-tools, security; sources: 5; review: unreviewed
+- [[pages/topic-evaluation|topic: evaluation]] — evaluation, harness-engineering, ai-agents, context-engineering, agent-memory; sources: 8; review: unreviewed
+- [[pages/topic-gemini-cli|topic: gemini-cli]] — gemini-cli, agent-shell-evaluation, ai-agents, coding-agents, codex-cli; sources: 13; review: unreviewed
+- [[pages/topic-harness-engineering|topic: harness-engineering]] — harness-engineering, ai-agents, context-engineering, agent-memory, evaluation; sources: 23; review: unreviewed
+- [[pages/topic-hermes|topic: hermes]] — hermes, agent-shell-evaluation, ai-agents, coding-agents, codex-cli; sources: 14; review: unreviewed
+- [[pages/topic-ios-simulator|topic: ios-simulator]] — ios-simulator, codex, xcode, screenshots, ui-debugging; sources: 6; review: unreviewed
+- [[pages/topic-knowledge-base|topic: knowledge-base]] — knowledge-base, youtube, obsidian, llm-wiki, rag; sources: 6; review: unreviewed
+- [[pages/topic-llm-wiki|topic: llm-wiki]] — llm-wiki, openclaw, hermes, codex-cli, ai-agents; sources: 16; review: unreviewed
+- [[pages/topic-markdown|topic: markdown]] — markdown, youtube, obsidian, llm-wiki, rag; sources: 6; review: unreviewed
+- [[pages/topic-mcp|topic: mcp]] — mcp, tool-design, agent-tools, security, evals; sources: 5; review: unreviewed
+- [[pages/topic-mobile-agent-control|topic: mobile-agent-control]] — mobile-agent-control, codex-remote-access, codex-desktop, remote-connections, ssh; sources: 11; review: unreviewed
+- [[pages/topic-mobile-app-development|topic: mobile-app-development]] — mobile-app-development, codex, xcode, ios-simulator, screenshots; sources: 6; review: unreviewed
+- [[pages/topic-non-professional-users|topic: non-professional-users]] — non-professional-users, openclaw, hermes, codex-cli, ai-agents; sources: 11; review: unreviewed
+- [[pages/topic-observability|topic: observability]] — observability, harness-engineering, ai-agents, context-engineering, agent-memory; sources: 8; review: unreviewed
+- [[pages/topic-obsidian|topic: obsidian]] — obsidian, youtube, llm-wiki, rag, knowledge-base; sources: 6; review: unreviewed
+- [[pages/topic-openai|topic: openai]] — openai, audio-models, realtime-api, voice-agents, transcription; sources: 8; review: unreviewed
+- [[pages/topic-openclaw|topic: openclaw]] — openclaw, agent-shell-evaluation, ai-agents, coding-agents, codex-cli; sources: 14; review: unreviewed
+- [[pages/topic-rag|topic: rag]] — rag, youtube, obsidian, llm-wiki, knowledge-base; sources: 6; review: unreviewed
+- [[pages/topic-realtime-api|topic: realtime-api]] — realtime-api, openai, audio-models, voice-agents, transcription; sources: 8; review: unreviewed
+- [[pages/topic-recovery|topic: recovery]] — recovery, harness-engineering, ai-agents, context-engineering, agent-memory; sources: 8; review: unreviewed
+- [[pages/topic-remote-connections|topic: remote-connections]] — remote-connections, codex-remote-access, codex-desktop, ssh, vps; sources: 11; review: unreviewed
+- [[pages/topic-safety|topic: safety]] — safety, openai, audio-models, realtime-api, voice-agents; sources: 8; review: unreviewed
+- [[pages/topic-screenshots|topic: screenshots]] — screenshots, codex, xcode, ios-simulator, ui-debugging; sources: 6; review: unreviewed
+- [[pages/topic-security|topic: security]] — security, codex-remote-access, codex-desktop, remote-connections, ssh; sources: 36; review: unreviewed
+- [[pages/topic-software-engineering|topic: software-engineering]] — software-engineering, harness-engineering, coding-agents, agent-memory, agent-evals; sources: 6; review: unreviewed
+- [[pages/topic-ssh|topic: ssh]] — ssh, codex-remote-access, codex-desktop, remote-connections, vps; sources: 11; review: unreviewed
+- [[pages/topic-techscope|topic: techscope]] — techscope, harness-engineering, ai-agents, context-engineering, agent-memory; sources: 8; review: unreviewed
+- [[pages/topic-telegram-agents|topic: telegram-agents]] — telegram-agents, openclaw, hermes, codex-cli, ai-agents; sources: 11; review: unreviewed
+- [[pages/topic-test-first-development|topic: test-first-development]] — test-first-development, coding-agents, agent-evals, harness-engineering, acceptance-criteria; sources: 7; review: unreviewed
+- [[pages/topic-tool-design|topic: tool-design]] — tool-design, mcp, agent-tools, security, evals; sources: 5; review: unreviewed
+- [[pages/topic-tool-use|topic: tool-use]] — tool-use, harness-engineering, ai-agents, context-engineering, agent-memory; sources: 8; review: unreviewed
+- [[pages/topic-transcription|topic: transcription]] — transcription, openai, audio-models, realtime-api, voice-agents; sources: 8; review: unreviewed
+- [[pages/topic-translation|topic: translation]] — translation, openai, audio-models, realtime-api, voice-agents; sources: 8; review: unreviewed
+- [[pages/topic-ui-debugging|topic: ui-debugging]] — ui-debugging, codex, xcode, ios-simulator, screenshots; sources: 6; review: unreviewed
+- [[pages/topic-user-experience|topic: user-experience]] — user-experience, agent-shell-evaluation, ai-agents, coding-agents, codex-cli; sources: 14; review: unreviewed
+- [[pages/topic-voice-agents|topic: voice-agents]] — voice-agents, openai, audio-models, realtime-api, transcription; sources: 8; review: unreviewed
+- [[pages/topic-vps|topic: vps]] — vps, codex-remote-access, codex-desktop, remote-connections, ssh; sources: 7; review: unreviewed
+- [[pages/topic-xcode|topic: xcode]] — xcode, codex, ios-simulator, screenshots, ui-debugging; sources: 6; review: unreviewed
+- [[pages/topic-youtube|topic: youtube]] — youtube, obsidian, llm-wiki, rag, knowledge-base; sources: 6; review: unreviewed

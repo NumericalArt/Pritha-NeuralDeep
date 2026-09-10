@@ -1,0 +1,85 @@
+# {{pritha:value0}}: Codex Agent Instructions
+
+## Mission
+
+{{pritha:value1}}
+
+## Operating Rules
+
+- Work from the local project files first.
+- Keep changes scoped to the current agent project.
+- Do not copy secrets from Pritha or any other project.
+- Use `.env` for local secrets and keep `.env.example` as the documented contract.
+- Prefer small, verifiable steps and run the smoke test before handoff.
+- Treat the host-approved Outcome Spec and compiled Trials as immutable delivery inputs; never weaken the verifier to make a build pass.
+- If an external source, API, runtime or dependency may have changed, verify current documentation before relying on it.
+
+## User and Scope
+
+- Target user: {{pritha:value2}}
+- Success criteria: {{pritha:value3}}
+- Out of scope: {{pritha:value4}}
+
+## Runtime and Interface
+
+- Runtime family: {{pritha:value5}}
+- Primary interface: {{pritha:value6}}
+- Interface adapters: {{pritha:value7}}
+- Telegram mode: {{pritha:value8}}
+- Expected hosting: {{pritha:value9}}
+- Deployment target: {{pritha:value10}}
+- Deployment profile: {{pritha:value11}}
+- Service mode: {{pritha:value12}}
+- Autostart: {{pritha:value13}}
+- Proactive mode: {{pritha:value14}}
+
+## Harness Inventory
+
+- Information boundaries: keep project instructions concise; put detailed procedures in `07_workflows/`.
+- Tool system: use local scripts first; add external APIs only when documented in the contract.
+- Execution orchestration: follow `07_workflows/agent-operating-workflow.md`.
+- Memory and state: {{pritha:value15}} (`{{pritha:value16}}`)
+- Tool profiles: {{pritha:value17}}
+- Evaluation and observability: run `node scripts/smoke-test.mjs`; inspect logs before declaring done.
+- Constraints and recovery: stop on missing secrets, failed tests or unclear permissions.
+
+## Operations
+
+- Operations profile lives in `operations/manifest.json`.
+- Check service readiness with `node scripts/operations-status.mjs`.
+- Autostart is configurable, but must never be installed or enabled without explicit user approval.
+- If `launchd` is selected, use the generated plist as a reviewed template, not as an automatically installed service.
+- Proactivity must be explicit: no background pulse, heartbeat, queue watcher or scheduled task unless `operations/manifest.json` says so.
+
+## Telegram
+
+{{pritha:value18}}
+
+## Interface Adapter Policy
+
+- Interface adapters are specified by the contract and listed in `interfaces/manifest.json`.
+- CLI is always present as a local maintenance interface.
+- Telegram files are generated only when Telegram mode is not `none`.
+- Web/API/custom adapters start as documented placeholders until their runtime is explicitly implemented.
+
+## Memory and Tools
+
+{{pritha:value19}}
+{{pritha:value20}}
+- Add heavier memory or external tools only after updating the contract.
+
+## Harness Evolution Protocol
+
+When changing this agent's harness, do not rely only on local guesses or generic model knowledge.
+
+A harness change includes changes to instructions, memory, tools, skills, MCP, interfaces, operations, deployment, proactivity, security, model routing, evals, tests, or recovery behavior.
+
+Required order:
+
+1. Inspect this child agent's current project state and contract.
+2. Consult Pritha memory for relevant standards, workflows, prior decisions, and child-agent lifecycle evidence.
+3. If the affected technology may have changed, verify current primary documentation.
+4. Only then design and implement the harness change.
+5. Record the decision or result in this agent's local memory/report, and send reusable lessons back to Pritha when they may improve future agents.
+
+{{pritha:value21}}

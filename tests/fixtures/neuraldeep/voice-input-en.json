@@ -1,0 +1,9 @@
+{
+  "purpose": "Synthetic speech fixture for real browser AudioWorklet and Silero VAD regression testing",
+  "text": "Hello. Can you hear me? Please say hello. Do not use tools.",
+  "source": "Generated locally with macOS say; no user microphone recording or private content",
+  "generation": "say --file-format=WAVE --data-format=LEI16@16000 -o voice-input-en.wav 'Hello. Can you hear me? Please say hello. Do not use tools.'",
+  "format": "mono PCM16 WAV, 16000 Hz",
+  "test_volume": 0.03,
+  "test_input_level": 53
+}

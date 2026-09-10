@@ -1,0 +1,60 @@
+{
+  "id": "pritha-voice-control-experiment-v1",
+  "type": "interface-experiment",
+  "status": "deprecated",
+  "created": "2026-06-02",
+  "updated": "2026-06-02",
+  "owner": "Pritha",
+  "purpose": "Deprecated standalone browser voice interface retained as historical implementation evidence. Use Pritha Control Center /voice for current Realtime voice control.",
+  "runtime": {
+    "server": "node",
+    "entrypoint": "scripts/pritha-voice-control.mjs",
+    "default_host": "127.0.0.1",
+    "default_port": 3401,
+    "replacement": "interfaces/control-center / http://127.0.0.1:3420/voice"
+  },
+  "realtime": {
+    "transport": "WebRTC",
+    "official_api_route": "/v1/realtime/calls",
+    "default_model": "gpt-realtime",
+    "model_override_env": "TECHSCOPE_VOICE_MODEL",
+    "voice_override_env": "TECHSCOPE_VOICE_REALTIME_VOICE"
+  },
+  "tools": [
+    "get_pritha_status",
+    "search_pritha_memory",
+    "read_pritha_artifact",
+    "queue_codex_task"
+  ],
+  "privacy_boundary": {
+    "tracked": [
+      "experiment code",
+      "generic manifest",
+      "operator documentation",
+      "tests"
+    ],
+    "ignored_local_state": [
+      ".private/interface-lab/pritha-voice-control/",
+      ".env.local"
+    ],
+    "must_not_commit": [
+      "OPENAI_API_KEY",
+      "Tailscale URL",
+      "tailnet name",
+      "device hostnames",
+      "real voice transcripts",
+      "private Codex task outputs"
+    ]
+  },
+  "codex_bridge": {
+    "default_mode": "queue",
+    "exec_mode_env": "TECHSCOPE_VOICE_CODEX_MODE=exec",
+    "write_mode_env": "TECHSCOPE_VOICE_CODEX_WRITE_ENABLED=1",
+    "default_sandbox": "read-only"
+  },
+  "tailscale": {
+    "status": "local-only-until-operator-configures-serve",
+    "tracked_policy": "Do not store real Tailscale Serve URLs or host/device identifiers in tracked files."
+  },
+  "promotion_rule": "Do not promote this interface into a Pritha standard until experiment reports show repeated successful use and the local Tailscale/Codex settings are separated from portable code."
+}

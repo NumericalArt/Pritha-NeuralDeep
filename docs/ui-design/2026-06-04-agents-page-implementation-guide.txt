@@ -1,0 +1,1135 @@
+Ниже — инструкция для coding agent по реализации первой страницы Agents в Pritha Control Center по референсу. Новое лого Pritha пока не внедрять: оставить аккуратный placeholder/slot, чтобы позже заменить asset без переработки layout.
+
+Implementation Guide: Pritha Control Center / Agents Page
+
+1. Scope
+
+Реализовать первую страницу Control Center:
+
+Route: /agents
+Desktop default: / -> /agents
+Page name: Child Agents
+
+Цель — максимально точно повторить visual direction из референса:
+
+* тёмный glassmorphism UI;
+* мягкие неоновые акценты;
+* карточки child agents;
+* левый sidebar;
+* верхний status strip;
+* правый информационный rail;
+* нижняя lineage-lite панель;
+* минималистичные действия без перегруза.
+
+Не реализовывать пока новое лого Pritha. Сделать отдельный компонент:
+
+<PrithaLogoPlaceholder />
+
+Позже он будет заменён на финальный logo asset.
+
+⸻
+
+2. Recommended file structure
+
+Pritha может выбрать путь сама. Если в репозитории нет лучшего места, использовать:
+
+interfaces/control-center/
+
+Внутри:
+
+interfaces/control-center/
+  package.json
+  next.config.mjs
+  src/
+    app/
+      layout.tsx
+      page.tsx
+      agents/page.tsx
+    components/
+      AppShell.tsx
+      Sidebar.tsx
+      StatusStrip.tsx
+      AgentCard.tsx
+      AgentsGrid.tsx
+      RightRail.tsx
+      PrithaStatusCard.tsx
+      RecentActivityCard.tsx
+      QuickActionsCard.tsx
+      LineageLite.tsx
+      LanguageToggle.tsx
+      AccessPanel.tsx
+      Button.tsx
+      IconBadge.tsx
+    data/
+      mockAgents.ts
+    styles/
+      tokens.css
+      globals.css
+
+Если проект уже использует другой convention — сохранить смысл, но не ломать существующую структуру.
+
+⸻
+
+3. Tech stack
+
+Use:
+
+Next.js
+React
+TypeScript
+CSS variables or Tailwind with design tokens
+lucide-react for base icons
+
+Не использовать тяжёлый UI-kit. Дизайн должен выглядеть custom, а не как стандартная component library.
+
+Не использовать Three.js на этой странице в MVP. Lineage-lite сделать через SVG/CSS.
+
+⸻
+
+4. Global visual style
+
+Overall feel
+
+Страница должна выглядеть как локальная operator console:
+
+* глубокий navy/black фон;
+* мягкие границы;
+* glass panels;
+* тонкие неоновые обводки;
+* приглушённый текст;
+* акценты зелёный/фиолетовый/синий/оранжевый/красный;
+* без чрезмерного свечения.
+
+Base viewport
+
+Референс сделан примерно под:
+
+1536 × 1024
+
+Desktop layout должен хорошо выглядеть от:
+
+1280px width and above
+
+⸻
+
+5. Design tokens
+
+Создать tokens.css.
+
+:root {
+  /* background */
+  --bg-0: #060b14;
+  --bg-1: #08111f;
+  --bg-2: #0b1628;
+  /* panels */
+  --panel-0: rgba(10, 17, 30, 0.92);
+  --panel-1: rgba(13, 23, 40, 0.86);
+  --panel-2: rgba(17, 29, 48, 0.76);
+  --panel-hover: rgba(26, 39, 64, 0.82);
+  /* borders */
+  --border-soft: rgba(122, 139, 180, 0.14);
+  --border-medium: rgba(122, 139, 180, 0.22);
+  --border-strong: rgba(147, 164, 215, 0.34);
+  /* text */
+  --text-primary: #f4f7ff;
+  --text-secondary: #c5cee2;
+  --text-muted: #8f9bb3;
+  --text-faint: #5f6b82;
+  /* accents */
+  --accent-purple: #7c5cff;
+  --accent-purple-2: #9b6dff;
+  --accent-blue: #4b8dff;
+  --accent-cyan: #14d6f3;
+  --accent-green: #2fe67a;
+  --accent-orange: #ffad20;
+  --accent-red: #ff4f68;
+  /* state backgrounds */
+  --green-bg: rgba(38, 199, 104, 0.18);
+  --green-border: rgba(47, 230, 122, 0.50);
+  --red-bg: rgba(255, 79, 104, 0.18);
+  --red-border: rgba(255, 79, 104, 0.48);
+  --orange-bg: rgba(255, 173, 32, 0.14);
+  --orange-border: rgba(255, 173, 32, 0.46);
+  --purple-bg: rgba(124, 92, 255, 0.18);
+  --purple-border: rgba(124, 92, 255, 0.55);
+  /* geometry */
+  --radius-xs: 8px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  /* shadows */
+  --shadow-panel: 0 18px 60px rgba(0, 0, 0, 0.38);
+  --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --shadow-green: 0 0 0 1px rgba(47, 230, 122, 0.25), 0 0 26px rgba(47, 230, 122, 0.08);
+  --shadow-purple: 0 0 0 1px rgba(124, 92, 255, 0.25), 0 0 30px rgba(124, 92, 255, 0.16);
+  /* layout */
+  --sidebar-width: 254px;
+  --right-rail-width: 270px;
+  --page-gap: 24px;
+}
+
+⸻
+
+6. Typography
+
+Use one modern sans-serif.
+
+Preferred:
+
+Inter
+
+Fallback:
+
+font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+Font sizes:
+
+--font-xs: 12px;
+--font-sm: 13px;
+--font-md: 15px;
+--font-base: 16px;
+--font-lg: 18px;
+--font-xl: 24px;
+--font-2xl: 28px;
+
+Weights:
+
+400 normal
+500 medium
+600 semibold
+700 bold only for brand/title
+
+Do not use oversized type. The UI should feel compact.
+
+⸻
+
+7. Body background
+
+Global background should not be flat black.
+
+Use layered gradients:
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--text-primary);
+  background:
+    radial-gradient(circle at 72% 0%, rgba(67, 91, 166, 0.18), transparent 32%),
+    radial-gradient(circle at 18% 8%, rgba(124, 92, 255, 0.12), transparent 30%),
+    linear-gradient(180deg, #08111f 0%, #060b14 100%);
+}
+
+Add subtle noise only if already available as CSS/background. Do not add heavy bitmap textures.
+
+⸻
+
+8. Main layout
+
+Use fixed sidebar and full-height app shell.
+
+<AppShell>
+  <Sidebar />
+  <main>
+    <AgentsHeader />
+    <div className="agents-layout">
+      <section className="agents-main">
+        <AgentsGrid />
+        <LineageLite />
+      </section>
+      <RightRail />
+    </div>
+  </main>
+</AppShell>
+
+CSS:
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: var(--sidebar-width) 1fr;
+  background: transparent;
+}
+.main {
+  min-width: 0;
+  padding: 24px 28px 22px;
+}
+.agents-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--right-rail-width);
+  gap: 24px;
+}
+.agents-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+⸻
+
+9. Sidebar
+
+Dimensions
+
+.sidebar {
+  width: 254px;
+  min-height: 100vh;
+  padding: 28px 18px 24px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border-soft);
+  background:
+    radial-gradient(circle at 20% 6%, rgba(124, 92, 255, 0.13), transparent 24%),
+    linear-gradient(180deg, rgba(8, 15, 28, 0.96), rgba(5, 10, 19, 0.98));
+  box-shadow: var(--shadow-inner);
+}
+
+Brand block
+
+Current placeholder:
+
+[logo placeholder] Pritha
+                   Control Center
+
+Logo placeholder:
+
+* size: 44 × 44;
+* rounded/star-like placeholder allowed;
+* keep slot fixed for future logo;
+* do not hardcode final generated logo.
+
+Text:
+
+.brand-title {
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 700;
+}
+.brand-subtitle {
+  margin-top: 4px;
+  font-size: 18px;
+  color: var(--text-secondary);
+}
+
+Navigation
+
+Items:
+
+Agents
+Voice
+Settings
+Dev (Read-only)
+
+Use lucide icons or custom thin icons.
+
+Active item:
+
+* background: translucent purple/blue gradient;
+* border: subtle;
+* icon on small glowing square;
+* text white.
+
+.nav-item {
+  height: 54px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 16px;
+  color: var(--text-secondary);
+}
+.nav-item.active {
+  color: var(--text-primary);
+  background: linear-gradient(135deg, rgba(90, 78, 188, 0.75), rgba(52, 71, 116, 0.55));
+  border: 1px solid rgba(139, 153, 255, 0.24);
+  box-shadow: 0 10px 30px rgba(87, 73, 198, 0.18);
+}
+
+Lower sidebar
+
+At bottom:
+
+1. Language toggle.
+2. Access card.
+3. Version/uptime.
+
+Language toggle:
+
+EN | RU
+
+Active EN purple pill.
+
+Access card:
+
+Access
+● LAN    Connected
+http://192.168.1.50:3000
+[Show QR for Voice]
+
+Version:
+
+Pritha v0.3.0
+Uptime 2h 13m ●
+
+⸻
+
+10. Header
+
+Top area: title left, status strip right.
+
+Left title
+
+Child Agents  [4]
+Pritha remembers. You control.
+
+CSS:
+
+.page-title {
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.count-pill {
+  font-size: 13px;
+  padding: 4px 9px;
+  border-radius: 9px;
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text-secondary);
+}
+
+Status strip
+
+Right top capsule:
+
+Pritha Ready | Voice Off | Proactivity Off | Agents 4 total
+
+Use 4 segments inside one rounded container.
+
+.status-strip {
+  min-height: 66px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: rgba(10, 18, 31, 0.78);
+  box-shadow: var(--shadow-inner);
+}
+.status-segment {
+  min-width: 112px;
+  padding: 0 20px;
+  border-right: 1px solid var(--border-soft);
+}
+
+Colors:
+
+* Ready: green.
+* Voice icon: purple.
+* Proactivity: orange.
+* Agents: blue.
+
+⸻
+
+11. Agents grid
+
+Grid:
+
+.agent-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+
+Each card height:
+
+.agent-card {
+  min-height: 344px;
+}
+
+Card background:
+
+.agent-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  padding: 20px 18px 16px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(54, 78, 129, 0.16), transparent 50%),
+    linear-gradient(180deg, rgba(13, 23, 40, 0.90), rgba(8, 15, 26, 0.94));
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--shadow-inner);
+}
+
+State borders:
+
+.agent-card[data-state="alive"] {
+  border-color: rgba(47, 230, 122, 0.42);
+  box-shadow: var(--shadow-inner), 0 0 28px rgba(47, 230, 122, 0.06);
+}
+.agent-card[data-state="missing"] {
+  border-color: rgba(255, 79, 104, 0.46);
+}
+.agent-card[data-state="needs-check"] {
+  border-color: rgba(255, 173, 32, 0.46);
+}
+.agent-card[data-state="unknown"] {
+  border-color: rgba(124, 139, 170, 0.28);
+}
+
+Agent card structure
+
+<AgentCard>
+  <StatusDot />
+  <div className="agent-top">
+    <AgentIcon />
+    <div>
+      <div className="agent-title-row">
+        <h3>Funny Teacher</h3>
+        <VersionPill>v1.3</VersionPill>
+      </div>
+      <p>Voice learning agent for kids and parents</p>
+    </div>
+  </div>
+  <div className="agent-state-row">
+    <StateLabel>Alive</StateLabel>
+    <StateLabel muted>Inactive</StateLabel>
+  </div>
+  <PrimaryAction />
+  <UrlRow />
+  <AgentFooterStatus />
+</AgentCard>
+
+Agent icon
+
+Circle:
+
+.agent-icon {
+  width: 78px;
+  height: 78px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(21, 30, 50, 0.72);
+  border: 1px solid rgba(139, 153, 255, 0.28);
+}
+
+For each agent:
+
+* Funny Teacher: bot-like icon, purple/blue.
+* FESPA26: simple sail/triangle icon, gray.
+* Research Helper: cube/hex icon, cyan.
+* Market Scout: cube outline, dim, dashed circle.
+* Code Auditor: warning triangle, orange.
+
+Use inline SVG or lucide icons. Do not rely on image files.
+
+⸻
+
+12. Agent buttons
+
+Start button
+
+Green gradient:
+
+.agent-action.start {
+  height: 46px;
+  width: 100%;
+  border-radius: 8px;
+  color: #bfffd6;
+  background: linear-gradient(180deg, rgba(35, 139, 78, 0.72), rgba(19, 94, 55, 0.72));
+  border: 1px solid rgba(47, 230, 122, 0.42);
+  font-weight: 650;
+}
+
+Content:
+
+▶ Start
+
+Stop button
+
+Red gradient:
+
+.agent-action.stop {
+  color: #ffd5dd;
+  background: linear-gradient(180deg, rgba(159, 46, 70, 0.76), rgba(101, 27, 48, 0.76));
+  border: 1px solid rgba(255, 79, 104, 0.50);
+}
+
+Content:
+
+■ Stop
+
+Restore button
+
+Purple gradient:
+
+.agent-action.restore {
+  color: #f2e9ff;
+  background: linear-gradient(180deg, rgba(124, 92, 255, 0.86), rgba(93, 45, 171, 0.86));
+  border: 1px solid rgba(179, 139, 255, 0.52);
+}
+
+Content:
+
+↻ Restore
+
+Check button
+
+Neutral:
+
+.agent-action.check {
+  color: var(--text-primary);
+  background: rgba(25, 36, 55, 0.72);
+  border: 1px solid var(--border-medium);
+}
+
+⸻
+
+13. URL row
+
+Visual:
+
+http://localhost:3021    [external-link] [copy]
+
+CSS:
+
+.agent-url-row {
+  height: 44px;
+  display: grid;
+  grid-template-columns: 1fr 36px 36px;
+  gap: 8px;
+  align-items: center;
+  padding: 0 0 0 14px;
+  border-radius: 8px;
+  background: rgba(7, 14, 25, 0.58);
+  border: 1px solid var(--border-soft);
+  color: var(--text-secondary);
+}
+.icon-button {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: rgba(25, 36, 55, 0.72);
+  border: 1px solid var(--border-soft);
+}
+
+Hover:
+
+.icon-button:hover {
+  background: rgba(37, 52, 80, 0.92);
+  border-color: rgba(139, 153, 255, 0.32);
+}
+
+⸻
+
+14. Agent footer badges
+
+Examples:
+
+↑ Update available
+✓ Up to date
+Folder not found ?
+Manifest or healthcheck issue ?
+
+Colors:
+
+* update: orange;
+* up to date: green;
+* missing: muted text + red state above;
+* needs check: muted text + help icon.
+
+.agent-footer.update {
+  color: var(--accent-orange);
+}
+.agent-footer.ok {
+  color: var(--accent-green);
+}
+.agent-footer.muted {
+  color: var(--text-muted);
+}
+
+⸻
+
+15. Add New Agent card
+
+Reference contains:
+
++
+Add New Agent
+Create a new child agent with Pritha
+
+MVP behavior: this is a shortcut, not a full creation form.
+
+On click:
+
+* show small choice popover or modal:
+
+Create new agents in Codex or Voice.
+[Open in Codex] [Start Voice]
+
+Card style:
+
+.add-agent-card {
+  min-height: 344px;
+  border-radius: 12px;
+  border: 1px dashed rgba(122, 139, 180, 0.34);
+  background: rgba(8, 15, 26, 0.42);
+  display: grid;
+  place-items: center;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+Hover:
+
+.add-agent-card:hover {
+  border-color: rgba(124, 92, 255, 0.50);
+  background: rgba(17, 27, 46, 0.60);
+}
+
+⸻
+
+16. Right rail
+
+Width:
+
+.right-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+Cards:
+
+.side-card {
+  border-radius: 12px;
+  padding: 20px 18px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(62, 83, 140, 0.12), transparent 60%),
+    rgba(10, 18, 31, 0.84);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--shadow-inner);
+}
+
+Pritha Status card
+
+Content:
+
+Pritha Status
+[orb graphic]
+● Ready
+All core systems operational
+[View Details]
+
+Orb graphic:
+
+* use CSS/SVG;
+* circular neural/star field feel;
+* do not use bitmap;
+* size around 132 × 132;
+* center glow purple/blue;
+* subtle pulse animation.
+
+.status-orb {
+  width: 132px;
+  height: 132px;
+  margin: 14px auto 20px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(124, 92, 255, 0.95), rgba(49, 116, 255, 0.26) 28%, transparent 62%);
+  filter: drop-shadow(0 0 24px rgba(124, 92, 255, 0.45));
+}
+
+Animation:
+
+@keyframes softPulse {
+  0%, 100% { opacity: 0.86; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.025); }
+}
+
+Respect reduced motion.
+
+Recent Activity card
+
+Content:
+
+Recent Activity
+Health check       2m ago
+All agents healthy
+Update found       12m ago
+Funny Teacher
+Agent restored     1h ago
+Data Analyst
+[View All Reports]
+
+Each row:
+
+* icon square 34 × 34;
+* title;
+* subtitle;
+* time right-aligned.
+
+Quick Actions card
+
+Content:
+
+Quick Actions
+[Run Manual Audit]
+[Open Voice]
+[Check for Updates]
+
+Buttons stacked, height 44px.
+
+Use subtle icon left.
+
+⸻
+
+17. Lineage-lite panel
+
+Panel below agent grid, spanning main content width.
+
+Content:
+
+Lineage (lite)                           [View Full Lineage]
+              Pritha
+      node — node — node — node ...
+Legend:
+● Alive 3
+● Needs Check 1
+● Missing 1
+● Unknown 0
+
+Use SVG, not canvas.
+
+CSS:
+
+.lineage-panel {
+  min-height: 184px;
+  border-radius: 12px;
+  padding: 20px;
+  background: rgba(10, 18, 31, 0.78);
+  border: 1px solid var(--border-soft);
+}
+
+Graph style:
+
+* central node purple glow;
+* child nodes green/orange/red/dim;
+* thin lines;
+* dotted line to unknown/missing if needed.
+
+Do not over-detail this graph. It is “lite”.
+
+⸻
+
+18. Interactions
+
+Hover
+
+Panels/cards:
+
+.agent-card:hover,
+.side-card:hover {
+  border-color: rgba(139, 153, 255, 0.26);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(70, 94, 160, 0.18), transparent 54%),
+    linear-gradient(180deg, rgba(15, 26, 45, 0.94), rgba(8, 15, 26, 0.96));
+}
+
+Buttons:
+
+* raise brightness slightly;
+* no dramatic transform;
+* max translateY(-1px).
+
+button:hover {
+  transform: translateY(-1px);
+}
+button:active {
+  transform: translateY(0);
+}
+
+Focus
+
+Keyboard focus must be visible:
+
+:focus-visible {
+  outline: 2px solid rgba(124, 92, 255, 0.9);
+  outline-offset: 2px;
+}
+
+Toasts
+
+For actions:
+
+* Copy URL → Copied
+* Open URL failure → URL unavailable
+* Restore → confirmation required
+* Start/Stop → confirmation required
+
+Toast style:
+
+small glass panel
+bottom-right
+purple border
+auto-hide after 2.5s
+
+Confirmations
+
+Start/Stop/Restore must ask confirmation.
+
+Minimal modal:
+
+Start Funny Teacher?
+This will run the service defined in operations/manifest.json.
+[Cancel] [Start]
+
+Restore modal:
+
+Restore Market Scout?
+Pritha will rebuild a sibling folder from contract and reports.
+Target folder: ../market-scout
+[Cancel] [Restore]
+
+⸻
+
+19. Data model for this page
+
+Use fixture data until backend is wired.
+
+export type AgentState = "alive" | "missing" | "needs-check" | "unknown";
+export type AgentActivity = "active" | "inactive" | "unknown";
+export type AgentCardModel = {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  state: AgentState;
+  activity: AgentActivity;
+  url?: string;
+  updateStatus?: "available" | "up-to-date" | "review-needed" | "none";
+  issueText?: string;
+  iconType: "bot" | "sail" | "cube" | "warning" | "box";
+};
+
+Fixture matching screenshot:
+
+export const mockAgents: AgentCardModel[] = [
+  {
+    id: "funny-teacher",
+    name: "Funny Teacher",
+    version: "v1.3",
+    description: "Voice learning agent for kids and parents",
+    state: "alive",
+    activity: "inactive",
+    url: "http://localhost:3021",
+    updateStatus: "available",
+    iconType: "bot"
+  },
+  {
+    id: "fespa26",
+    name: "FESPA26",
+    version: "v1.1",
+    description: "Event & media processing workbench",
+    state: "alive",
+    activity: "active",
+    url: "http://localhost:3022",
+    updateStatus: "available",
+    iconType: "sail"
+  },
+  {
+    id: "research-helper",
+    name: "Research Helper",
+    version: "v0.9.4",
+    description: "Academic research assistant",
+    state: "alive",
+    activity: "inactive",
+    url: "http://localhost:3023",
+    updateStatus: "up-to-date",
+    iconType: "cube"
+  },
+  {
+    id: "market-scout",
+    name: "Market Scout",
+    version: "v0.8.0",
+    description: "Market analysis and monitoring",
+    state: "missing",
+    activity: "unknown",
+    updateStatus: "none",
+    issueText: "Folder not found",
+    iconType: "box"
+  },
+  {
+    id: "code-auditor",
+    name: "Code Auditor",
+    version: "v1.0.0",
+    description: "Security and code quality audit",
+    state: "needs-check",
+    activity: "unknown",
+    updateStatus: "none",
+    issueText: "Manifest or healthcheck issue",
+    iconType: "warning"
+  }
+];
+
+⸻
+
+20. State-to-UI rules
+
+function getPrimaryAction(agent: AgentCardModel) {
+  if (agent.state === "missing") return "restore";
+  if (agent.state === "needs-check") return "check";
+  if (agent.state === "alive" && agent.activity === "active") return "stop";
+  if (agent.state === "alive") return "start";
+  return "check";
+}
+
+URL buttons:
+
+Show Open/Copy only if agent.state === "alive" and url exists.
+
+Missing:
+
+Only Restore action.
+No Start.
+No Stop.
+No Open.
+No Copy.
+
+Needs check:
+
+Only Check action.
+No Start/Stop until manifest is valid.
+
+⸻
+
+21. Responsive behavior
+
+Desktop ≥ 1280px
+
+Use full layout:
+
+Sidebar | Main with cards | Right rail
+
+Tablet 900–1279px
+
+* keep sidebar narrower or collapsible;
+* right rail moves below agent grid;
+* agent grid becomes 2 columns.
+
+@media (max-width: 1279px) {
+  .agents-layout {
+    grid-template-columns: 1fr;
+  }
+  .agent-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .right-rail {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+Mobile
+
+Mobile first page is /voice, but /agents must still work.
+
+For mobile /agents:
+
+* no desktop sidebar;
+* bottom nav;
+* cards in 1 column;
+* right rail hidden or collapsed into summary chips;
+* lineage-lite hidden by default.
+
+⸻
+
+22. Accessibility
+
+Required:
+
+* all buttons keyboard-focusable;
+* icon-only buttons have aria-label;
+* state is not color-only: include text Alive, Missing, Needs check;
+* reduced motion support;
+* text contrast acceptable on dark background;
+* copy/open buttons with labels for screen readers.
+
+Example:
+
+<button aria-label={`Copy URL for ${agent.name}`}>
+  <CopyIcon />
+</button>
+
+Reduced motion:
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+⸻
+
+23. Do not implement yet
+
+Do not implement these as fake working features:
+
+real cron
+automatic self-improvement updates
+automatic child-agent update application
+real Codex quota
+full chat
+real restore without backend plan
+real start/stop without operations/manifest.json
+agent deletion
+developer admin actions
+
+UI may show planned/placeholder states only if clearly marked.
+
+⸻
+
+24. Visual accuracy checklist
+
+Before finishing, compare against the reference and verify:
+
+* sidebar width close to screenshot;
+* active Agents nav item has purple-blue gradient;
+* top status strip is compact and right-aligned;
+* agent cards are 3 columns on desktop;
+* green alive border is visible but not too bright;
+* red Stop button appears only for active agent;
+* missing agent has red border and purple Restore button;
+* needs-check agent has orange warning and neutral Check button;
+* URL row has dark input-like background;
+* right rail cards align vertically;
+* Pritha Status card has glowing orb;
+* Recent Activity has 3 rows;
+* Quick Actions has 3 stacked buttons;
+* Lineage-lite spans bottom of main content;
+* overall background is dark navy, not pure black;
+* no element uses bright white panels;
+* typography is compact and clean;
+* no UI element is over-animated;
+* page does not feel crowded despite many cards.
+
+⸻
+
+25. Expected first implementation milestone
+
+The first commit should deliver:
+
+Static /agents page
+Responsive desktop layout
+Mock data
+Reusable components
+Design tokens
+No backend side effects
+No final logo
+No cron/restore/start/stop real actions
+
+Action buttons may show toasts/confirmation modals, but must not perform durable actions until backend endpoints are implemented.

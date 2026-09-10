@@ -1,0 +1,701 @@
+Implementation Guide: Mobile UI
+
+Использовать те же design tokens, цвета, glass panels, typography и components, что на desktop. Ниже — только мобильная специфика для экранов Voice и Agents.
+
+1. Mobile app shell
+
+На mobile не показывать desktop sidebar. Использовать:
+
+Top header
+Scrollable page content
+Bottom navigation
+
+Default behavior:
+
+mobile / -> /voice
+desktop / -> /agents
+
+Bottom nav:
+
+Voice | Agents | Settings
+
+Dev не показывать в основной mobile navigation. Если нужен доступ — через Settings → Developer details.
+
+<MobileShell>
+  <MobileHeader />
+  <main className="mobile-page">
+    {children}
+  </main>
+  <MobileBottomNav />
+</MobileShell>
+
+CSS:
+
+.mobile-shell {
+  min-height: 100dvh;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(124, 92, 255, 0.12), transparent 30%),
+    linear-gradient(180deg, #08111f 0%, #060b14 100%);
+  color: var(--text-primary);
+}
+.mobile-page {
+  padding: 14px 16px calc(92px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.mobile-card {
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(62, 83, 140, 0.10), transparent 58%),
+    rgba(10, 18, 31, 0.84);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--shadow-inner);
+}
+
+Breakpoint:
+
+@media (min-width: 768px) {
+  .mobile-shell {
+    display: none;
+  }
+}
+
+Desktop shell скрывать на mobile:
+
+@media (max-width: 767px) {
+  .desktop-shell {
+    display: none;
+  }
+}
+
+⸻
+
+2. Mobile header
+
+Header:
+
+[logo] Pritha
+       Control Center                [icon button]
+
+На Voice screen top-right icon — compact control/settings icon.
+На Agents screen top-right icon — hamburger/menu.
+
+.mobile-header {
+  height: 88px;
+  padding: calc(14px + env(safe-area-inset-top)) 16px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.mobile-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mobile-logo-slot {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+}
+.mobile-brand-title {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.05;
+}
+.mobile-brand-subtitle {
+  margin-top: 2px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.mobile-header-button {
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  background: rgba(17, 29, 48, 0.74);
+  border: 1px solid var(--border-soft);
+}
+
+Лого пока placeholder/slot. Финальный Pritha logo подставить позже.
+
+⸻
+
+3. Status chips
+
+На mobile верхний status strip превращается в 3 compact chips.
+
+Voice screen:
+
+Pritha Ready | Codex Connected | Proactivity Off
+
+Agents screen — можно не повторять эти chips, если сразу показана agent summary. В референсе Agents screen начинает с agent summary.
+
+.mobile-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.mobile-status-chip {
+  min-height: 56px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: rgba(10, 18, 31, 0.78);
+  border: 1px solid var(--border-soft);
+}
+.mobile-status-title {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.mobile-status-value {
+  margin-top: 3px;
+  font-size: 13px;
+  color: var(--accent-green);
+}
+
+⸻
+
+Mobile /voice
+
+4. Voice page order
+
+На mobile /voice порядок блоков:
+
+Header
+Status chips
+Voice Control card
+Current Context card
+Active Task card
+Decision Required card
+Quick Actions card
+Bottom nav
+
+Connection card на mobile не показывать по умолчанию. Можно спрятать в Details/Settings.
+
+⸻
+
+5. Mobile Voice Control card
+
+Структура:
+
+Voice Control                         Model
+                                      gpt-4o-realtime-preview
+                                      Good connection
+[waveform + orb]
+00:00:18
+Listening for you...
+[Stop Listening]
+[Mute]              [Cancel]
+
+CSS:
+
+.mobile-voice-card {
+  padding: 18px 16px 16px;
+}
+.mobile-voice-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.mobile-voice-title {
+  font-size: 20px;
+  font-weight: 650;
+}
+.mobile-model-block {
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.mobile-model-name {
+  margin-top: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+Visualization:
+
+.mobile-voice-visual {
+  height: 236px;
+  display: grid;
+  place-items: center;
+  position: relative;
+  overflow: hidden;
+}
+.mobile-voice-wave {
+  position: absolute;
+  width: 120%;
+  height: 150px;
+  opacity: 0.78;
+}
+.mobile-voice-orb {
+  width: 118px;
+  height: 118px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 50% 50%, #ffffff 0%, #d86bff 8%, #8a48ff 38%, #33227c 70%, transparent 100%);
+  box-shadow:
+    0 0 24px rgba(155, 109, 255, 0.82),
+    0 0 64px rgba(75, 141, 255, 0.32),
+    inset 0 0 26px rgba(255, 255, 255, 0.18);
+}
+
+Timer:
+
+.mobile-voice-timer {
+  margin-top: -4px;
+  text-align: center;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--accent-purple-2);
+}
+.mobile-voice-subtitle {
+  margin-top: 4px;
+  text-align: center;
+  font-size: 17px;
+  color: var(--text-secondary);
+}
+
+Controls:
+
+.mobile-voice-primary {
+  width: 100%;
+  height: 58px;
+  margin-top: 22px;
+  border-radius: 8px;
+  font-size: 17px;
+  font-weight: 650;
+  color: white;
+  background: linear-gradient(135deg, #4f63ff 0%, #8b3dff 45%, #ed4fd5 100%);
+}
+.mobile-voice-secondary-row {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 92px;
+}
+.mobile-voice-secondary {
+  height: 62px;
+  border-radius: 8px;
+  background: rgba(17, 29, 48, 0.70);
+  border: 1px solid var(--border-soft);
+}
+
+On small screens below 360px, reduce secondary gap:
+
+@media (max-width: 360px) {
+  .mobile-voice-secondary-row {
+    gap: 16px;
+  }
+}
+
+⸻
+
+6. Mobile context/task/decision cards
+
+Current Context
+
+Current Context                              Clear
+Memory Focus
+General (Global)
+Pritha has full context access.
+Active Tools
+[book] [code] [folder] [database] [4 active]
+
+Card padding:
+
+.mobile-info-card {
+  padding: 16px;
+}
+
+Tool chips:
+
+.mobile-tool-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.mobile-tool-chip {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: rgba(17, 29, 48, 0.72);
+  border: 1px solid var(--border-soft);
+}
+
+Active Task
+
+Active Task                              ● Working
+Task for Codex
+Audit Funny Teacher for possible updates
+[progress bar] 65%
+Analyzing operations and recent changes...
+View Task Details                         v
+
+Progress bar:
+
+.mobile-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(72, 88, 120, 0.28);
+}
+.mobile-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #705cff, #4b8dff);
+}
+
+Decision Required
+
+● Decision Required                  Approval needed
+Apply suggested update to “Funny Teacher”?
+[Approve] [Decline]
+View Details                         v
+
+Buttons:
+
+.mobile-decision-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.mobile-approve {
+  background: linear-gradient(180deg, rgba(124, 92, 255, 0.95), rgba(82, 56, 194, 0.92));
+}
+.mobile-decline {
+  background: rgba(17, 29, 48, 0.72);
+  border: 1px solid var(--border-soft);
+}
+
+⸻
+
+7. Mobile Quick Actions
+
+Quick Actions
+[Check Agents] [Run Audit] [Show Updates] [Memory] [More]
+
+Grid:
+
+.mobile-quick-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+}
+.mobile-quick-action {
+  min-height: 64px;
+  border-radius: 9px;
+  background: rgba(17, 29, 48, 0.72);
+  border: 1px solid var(--border-soft);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+⸻
+
+Mobile /agents
+
+8. Agents page order
+
+На mobile /agents порядок:
+
+Header
+Child Agents title
+Agent summary chips
+Agent cards
+Add New Agent card
+Bottom nav
+
+No right rail. No lineage graph by default.
+
+⸻
+
+9. Agents title and summary
+
+Title:
+
+Child Agents [4]
+
+Summary chips:
+
+Total 4
+Alive 3 / Missing 1
+Updates 2
+
+CSS:
+
+.mobile-page-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.mobile-page-title {
+  font-size: 22px;
+  font-weight: 700;
+}
+.mobile-summary-grid {
+  display: grid;
+  grid-template-columns: 0.8fr 1.4fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+.mobile-summary-chip {
+  min-height: 58px;
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: rgba(10, 18, 31, 0.78);
+  border: 1px solid var(--border-soft);
+}
+
+⸻
+
+10. Mobile agent card
+
+Cards are single-column.
+
+.mobile-agent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 18px;
+}
+.mobile-agent-card {
+  position: relative;
+  min-height: 282px;
+  padding: 18px;
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(54, 78, 129, 0.14), transparent 52%),
+    rgba(10, 18, 31, 0.84);
+  border: 1px solid var(--border-soft);
+}
+
+State borders:
+
+.mobile-agent-card[data-state="alive"] {
+  border-color: rgba(47, 230, 122, 0.42);
+}
+.mobile-agent-card[data-state="missing"] {
+  border-color: rgba(255, 79, 104, 0.48);
+}
+.mobile-agent-card[data-state="needs-check"] {
+  border-color: rgba(255, 173, 32, 0.46);
+}
+
+Structure:
+
+● Alive                                      ...
+[icon]  Funny Teacher                       v1.3
+        Voice learning agent
+        for kids and parents
+        ● Inactive
+[Start]
+localhost:3021                         [open] [copy]
+↑ Update available
+
+Important mobile details:
+
+* status dot and state at top-left;
+* overflow menu ... top-right;
+* version pill near top-right;
+* icon and text in two-column row;
+* main action full width;
+* URL row full width;
+* footer badge.
+
+.mobile-agent-topline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.mobile-agent-body {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 18px;
+  margin-top: 16px;
+}
+.mobile-agent-icon {
+  width: 68px;
+  height: 68px;
+  border-radius: 999px;
+}
+.mobile-agent-name {
+  font-size: 18px;
+  font-weight: 700;
+}
+.mobile-agent-description {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.mobile-agent-action {
+  width: 100%;
+  height: 46px;
+  margin-top: 18px;
+  border-radius: 7px;
+}
+.mobile-agent-url-row {
+  margin-top: 12px;
+  height: 44px;
+  display: grid;
+  grid-template-columns: 1fr 40px 40px;
+  gap: 8px;
+}
+
+Start/Stop/Restore buttons
+
+Reuse desktop colors, but full-width and slightly shorter:
+
+.mobile-agent-action.start {
+  background: linear-gradient(180deg, rgba(35, 139, 78, 0.76), rgba(19, 94, 55, 0.78));
+  border: 1px solid rgba(47, 230, 122, 0.42);
+}
+.mobile-agent-action.stop {
+  background: linear-gradient(180deg, rgba(171, 36, 63, 0.84), rgba(111, 24, 46, 0.84));
+  border: 1px solid rgba(255, 79, 104, 0.50);
+}
+.mobile-agent-action.restore {
+  background: linear-gradient(180deg, rgba(124, 92, 255, 0.92), rgba(82, 56, 194, 0.92));
+  border: 1px solid rgba(179, 139, 255, 0.52);
+}
+
+Missing agent rule remains:
+
+Only Restore.
+No URL.
+No Start/Stop.
+
+⸻
+
+11. Add New Agent mobile card
+
+At bottom of /agents:
+
++ Add New Agent
+.mobile-add-agent-card {
+  height: 54px;
+  border-radius: 10px;
+  border: 1px dashed rgba(122, 139, 180, 0.40);
+  background: rgba(8, 15, 26, 0.42);
+  display: grid;
+  place-items: center;
+  color: var(--text-secondary);
+}
+
+Behavior:
+
+Tap -> Create new agents in Codex or Voice.
+[Open in Codex] [Start Voice]
+
+No mobile agent-creation form in MVP.
+
+⸻
+
+12. Bottom nav
+
+Fixed bottom navigation.
+
+.mobile-bottom-nav {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  height: 72px;
+  border-radius: 20px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  background: rgba(6, 12, 22, 0.88);
+  border: 1px solid var(--border-soft);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.42);
+  z-index: 50;
+}
+.mobile-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.mobile-nav-item.active .mobile-nav-icon {
+  background: linear-gradient(180deg, rgba(124, 92, 255, 0.95), rgba(82, 56, 194, 0.95));
+  color: white;
+}
+.mobile-nav-icon {
+  width: 48px;
+  height: 38px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+}
+
+Active labels:
+
+* Voice active: purple icon pill.
+* Agents active: purple icon pill.
+* Settings inactive: muted.
+
+⸻
+
+13. Mobile interactions
+
+Tap targets:
+
+minimum 44 × 44px
+
+Confirmation-required:
+
+Stop Listening
+Start/Stop agent
+Restore
+Approve update
+Decline update
+Run Audit if it writes reports
+
+One-click safe:
+
+switch bottom nav
+copy URL
+open URL
+clear context
+show details
+
+Toasts should appear above bottom nav.
+
+.mobile-toast {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: calc(94px + env(safe-area-inset-bottom));
+}
+
+⸻
+
+14. Mobile visual checklist
+
+Verify against reference:
+
+* /voice opens first on phone;
+* no desktop sidebar;
+* header logo/title compact;
+* three status chips under header on Voice;
+* Voice orb/wave dominates first screen;
+* Stop Listening button is wide and gradient;
+* Mute/Cancel are two separate dark buttons;
+* Context, Active Task, Decision, Quick Actions stack vertically;
+* bottom nav stays fixed and glassy;
+* /agents shows summary chips before cards;
+* agent cards are single-column and spacious;
+* missing card shows only Restore;
+* Add New Agent is a dashed compact card;
+* no right rail, no lineage graph, no developer tab on primary mobile nav;
+* content never hides behind bottom nav.

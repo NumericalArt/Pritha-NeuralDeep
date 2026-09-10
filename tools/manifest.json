@@ -1,0 +1,39 @@
+{
+  "agent": "Pritha",
+  "generated_by": "Pritha rename hygiene migration",
+  "profiles": [
+    {
+      "name": "memory-indexing",
+      "tools": [
+        "scripts/validate-memory.mjs",
+        "scripts/rebuild-memory.mjs",
+        "scripts/embed-memory.py",
+        "scripts/query-memory.mjs"
+      ],
+      "boundary": "Derived indexes only; Markdown remains source of truth."
+    },
+    {
+      "name": "media-intake",
+      "tools": [
+        "scripts/transcribe-media.mjs",
+        "scripts/process-intake.mjs",
+        "scripts/extract-signal.mjs"
+      ],
+      "boundary": "Raw media must be converted into curated artifacts before standards or decisions."
+    },
+    {
+      "name": "agents-mother",
+      "tools": [
+        "scripts/agents-mother.mjs"
+      ],
+      "boundary": "May scaffold or inspect agents; deployment/install actions require explicit user approval."
+    },
+    {
+      "name": "telegram-intake",
+      "tools": [
+        "scripts/telegram-bot.mjs"
+      ],
+      "boundary": "Single-user allowlist; concise user replies; Codex-assisted refinement for meaningful media."
+    }
+  ]
+}

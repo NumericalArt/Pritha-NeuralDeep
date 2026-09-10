@@ -1,0 +1,10 @@
+{
+  "interfaces": {
+    "codex": true,
+    "web": false,
+    "telegram": false,
+    "realtime": false,
+    "obsidian": false
+  },
+  "qualityGate": true
+}

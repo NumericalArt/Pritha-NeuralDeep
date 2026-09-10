@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.techscope.self-test</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/env</string>
+    <string>node</string>
+    <string>{{TECHSCOPE_ROOT}}/scripts/self-test.mjs</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>{{TECHSCOPE_ROOT}}</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TECHSCOPE_ROOT</key>
+    <string>{{TECHSCOPE_ROOT}}</string>
+  </dict>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>1</integer>
+    <key>Hour</key>
+    <integer>9</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>{{TECHSCOPE_ROOT}}/.logs/self-test.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>{{TECHSCOPE_ROOT}}/.logs/self-test.err.log</string>
+</dict>
+</plist>

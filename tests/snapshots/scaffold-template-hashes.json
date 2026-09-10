@@ -1,0 +1,2308 @@
+{
+  "source": "814ddb07901c8de5a62ab8716015a73ff89936e3",
+  "scaffoldSourceSha256": "fbcdf6a0df4c186b7ccba01fa5b94455123fd97cb3f698ff9c5f295f972eed2d",
+  "cases": {
+    "legacy": [
+      {
+        "path": ".env.example",
+        "bytes": 41,
+        "sha256": "bbe91dd99b15f513adaf786211ff4fcbe2e3e844268a271aee0007652091312f"
+      },
+      {
+        "path": ".gitignore",
+        "bytes": 192,
+        "sha256": "8876cfb25a1e3353f4daae938de32f6eba01c7e3617da4e2dce5df5b811dd061"
+      },
+      {
+        "path": "07_workflows/agent-operating-workflow.md",
+        "bytes": 692,
+        "sha256": "e0cd03d8d073bf8bb79189aac6a0a6c6250481d81a12ebe4c9a50820e8e3d228"
+      },
+      {
+        "path": "AGENTS.md",
+        "bytes": 4586,
+        "sha256": "d8f5c89da2c79d9b70c4ad291852dc0c0b3803435ad02afdc448b99fd4cb8520"
+      },
+      {
+        "path": "delivery/outcome-lineage.json",
+        "bytes": 484,
+        "sha256": "7692bea4ad77b68d43cfd3c9e6ffbc070ac9f011c8ab4c99d5788aca714cbcea"
+      },
+      {
+        "path": "delivery/README.md",
+        "bytes": 473,
+        "sha256": "eebb830f81fcc72e3492e9f2727c30444898b9460e3b5a705e4087c9a1650bac"
+      },
+      {
+        "path": "docs/user-training-guide.md",
+        "bytes": 502,
+        "sha256": "759fe437ac45db2e0c9ea8ddaf209cccd52c1d3827dfed184e5eabaf2db94e18"
+      },
+      {
+        "path": "interfaces/cli/README.md",
+        "bytes": 198,
+        "sha256": "d08e06e05d891e2a15ea7a8befc4e77dfc0f9d188337f362cf6a7699d14fbab8"
+      },
+      {
+        "path": "interfaces/codex-project/README.md",
+        "bytes": 282,
+        "sha256": "6b1abdb3d45cd739fc477bd4c88a9f2a94d39b446ed31c8a4b87f1964e5769e3"
+      },
+      {
+        "path": "interfaces/manifest.json",
+        "bytes": 467,
+        "sha256": "773d15b957e0cf910f303ab0cd608c5fafe27ba8c2fe4b27d57f999ee4c1da8e"
+      },
+      {
+        "path": "interfaces/README.md",
+        "bytes": 611,
+        "sha256": "55f846940771e59094158adec1c9c40bdfe8750a2cffb62fdb7af9964cd07dfd"
+      },
+      {
+        "path": "logs/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/decisions/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/manifest.json",
+        "bytes": 542,
+        "sha256": "37d20ce58ce784b196f3ede2cce53b9d4cc0216f723938c6251f1c24a0665b4a"
+      },
+      {
+        "path": "memory/notes/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/README.md",
+        "bytes": 521,
+        "sha256": "5d55b8be3b773557550b8f7c557c4d127883247f0a939ff55e02bd1f01f225d9"
+      },
+      {
+        "path": "operations/manifest.json",
+        "bytes": 3409,
+        "sha256": "6dde3f0c5bd88fe18dd1c6f0da921e359feec8589f1c22e016561f29df8749bf"
+      },
+      {
+        "path": "operations/README.md",
+        "bytes": 1721,
+        "sha256": "de77469b39b3878e956d66011cfdca7934c19d42d516bbb70963412c3d343815"
+      },
+      {
+        "path": "package.json",
+        "bytes": 1114,
+        "sha256": "9a4dee82641ad2300f5798c8b86560803016e0cad2ff59bd874a77ff826956e5"
+      },
+      {
+        "path": "README.md",
+        "bytes": 2231,
+        "sha256": "9372e103a0bc3e4af2645da6735b20bfef4845f7ad6b91e2076ed5d7c3ad747f"
+      },
+      {
+        "path": "scripts/agent-cli.mjs",
+        "bytes": 796,
+        "sha256": "1fab82bdd5e4b4d5c23345b469b52e17117d200b7f9f0f0af92180380b47e7e5"
+      },
+      {
+        "path": "scripts/control-center-agent-service.mjs",
+        "bytes": 3941,
+        "sha256": "d39d3a583c65f43a16eb10eb50673a5c34c225336c99f1062e67416fe38da72a"
+      },
+      {
+        "path": "scripts/control-center-runtime.mjs",
+        "bytes": 15672,
+        "sha256": "d20fdb21d230d8916c1c8b6300f74ee73dd01308ccc0b31cdf8817c7aa999450"
+      },
+      {
+        "path": "scripts/deploy-service.mjs",
+        "bytes": 7842,
+        "sha256": "1822e9151a9368447f5b0ad37de11a2c5731da702d0abcc9fa17620b961c6a14"
+      },
+      {
+        "path": "scripts/healthcheck.mjs",
+        "bytes": 3440,
+        "sha256": "b8220636132b8cf3fac5a0ba4a6051b1319190f206114d37d45ebc0cd5a31ce7"
+      },
+      {
+        "path": "scripts/interface-status.mjs",
+        "bytes": 832,
+        "sha256": "d3e2f367cde4934a626eca4c43c9f848c11903a05b8ee6ae412198ade2a45c56"
+      },
+      {
+        "path": "scripts/memory-status.mjs",
+        "bytes": 601,
+        "sha256": "a97157ad5f2aad1d5203a30619e02072321cd89e2cf814ee415e28767092e1ee"
+      },
+      {
+        "path": "scripts/operations-status.mjs",
+        "bytes": 2279,
+        "sha256": "82bf683b3bafea5d47c91a99b6a64b6574cab5cb52008703c1df53a7ac49922d"
+      },
+      {
+        "path": "scripts/redaction.mjs",
+        "bytes": 21544,
+        "sha256": "024aeebb57860e91dd361053c2aec7b4a4a1fa776331b1954a37a588392109b9"
+      },
+      {
+        "path": "scripts/skills-status.mjs",
+        "bytes": 11219,
+        "sha256": "f1c7d47745d640d6f6b7cbe7175429e9cd68c5f97d564ee161c6f47028d6e6ff"
+      },
+      {
+        "path": "scripts/smoke-test.mjs",
+        "bytes": 2187,
+        "sha256": "aa20421ddb8cac47b949426f37f8caea9f6edbfcb8ffe681d7a8fb7c05a7c5ec"
+      },
+      {
+        "path": "scripts/tools-status.mjs",
+        "bytes": 525,
+        "sha256": "1b71e4d8d837371fe2764ef347105295e43628ecdf9b868b10eae09257af66a2"
+      },
+      {
+        "path": "skills/candidates.json",
+        "bytes": 3956,
+        "sha256": "2f1cfe3dc272f6b8f8b5d563c63323fa105a2dd5f2d558cbea949c836223910b"
+      },
+      {
+        "path": "skills/lock.json",
+        "bytes": 95,
+        "sha256": "4cdba8041d36ed583e44b8d88b96c5721541f6e338b7b41f67ca996620184b96"
+      },
+      {
+        "path": "skills/manifest.json",
+        "bytes": 4004,
+        "sha256": "27daf4ff4d91d786ebfccd809ba423720a7764129c014d980a8764be897cded5"
+      },
+      {
+        "path": "skills/README.md",
+        "bytes": 765,
+        "sha256": "8e27b59005a622834153a4c66c5ac27935d04ee08e0b4a45a6d88c9a6a228ad1"
+      },
+      {
+        "path": "tests/structure.test.mjs",
+        "bytes": 1856,
+        "sha256": "e9a8cf3f6e8eea9d434cd31dfe94991528fea6e7982cc34e7bd2c941fd895363"
+      },
+      {
+        "path": "tools/cli-script/README.md",
+        "bytes": 326,
+        "sha256": "9fc8673622f4ed61ff03c36959e18986940e26a13f5440c9e2c53b86ed48e380"
+      },
+      {
+        "path": "tools/manifest.json",
+        "bytes": 985,
+        "sha256": "70b283d0440a3ce69f7d5a001b3a06bb282d00ea58cdb1a044d569a803f729af"
+      },
+      {
+        "path": "tools/README.md",
+        "bytes": 1074,
+        "sha256": "e84857075163aa987801c289a999193de4bc6ea808975feef791da4393a50a40"
+      },
+      {
+        "path": "tools/skill-pack/README.md",
+        "bytes": 348,
+        "sha256": "243b480c10d6f3ed3c890b770225d9d3b3d983afd50edc6184b0053b639f903e"
+      },
+      {
+        "path": "tools/workflow/README.md",
+        "bytes": 284,
+        "sha256": "78aeaf89c63e25a3b0ecee9bdca5a4e24b41a7b6965c250d18ec2b5684cf02de"
+      }
+    ],
+    "minimal": [
+      {
+        "path": ".env.example",
+        "bytes": 41,
+        "sha256": "bbe91dd99b15f513adaf786211ff4fcbe2e3e844268a271aee0007652091312f"
+      },
+      {
+        "path": ".gitignore",
+        "bytes": 192,
+        "sha256": "8876cfb25a1e3353f4daae938de32f6eba01c7e3617da4e2dce5df5b811dd061"
+      },
+      {
+        "path": "07_workflows/agent-operating-workflow.md",
+        "bytes": 692,
+        "sha256": "e0cd03d8d073bf8bb79189aac6a0a6c6250481d81a12ebe4c9a50820e8e3d228"
+      },
+      {
+        "path": "AGENTS.md",
+        "bytes": 3601,
+        "sha256": "ee30f65ca589e928b36d92c92dbafd764907fa27421bfc23a4d7c970aaff038c"
+      },
+      {
+        "path": "delivery/outcome-lineage.json",
+        "bytes": 484,
+        "sha256": "7692bea4ad77b68d43cfd3c9e6ffbc070ac9f011c8ab4c99d5788aca714cbcea"
+      },
+      {
+        "path": "delivery/README.md",
+        "bytes": 473,
+        "sha256": "eebb830f81fcc72e3492e9f2727c30444898b9460e3b5a705e4087c9a1650bac"
+      },
+      {
+        "path": "docs/user-training-guide.md",
+        "bytes": 398,
+        "sha256": "cb02a5887a3b15544ce57d84a7ab1d652055a419c841355f5ffe3732a4e04632"
+      },
+      {
+        "path": "interfaces/cli/README.md",
+        "bytes": 198,
+        "sha256": "d08e06e05d891e2a15ea7a8befc4e77dfc0f9d188337f362cf6a7699d14fbab8"
+      },
+      {
+        "path": "interfaces/codex-project/README.md",
+        "bytes": 282,
+        "sha256": "6b1abdb3d45cd739fc477bd4c88a9f2a94d39b446ed31c8a4b87f1964e5769e3"
+      },
+      {
+        "path": "interfaces/manifest.json",
+        "bytes": 467,
+        "sha256": "773d15b957e0cf910f303ab0cd608c5fafe27ba8c2fe4b27d57f999ee4c1da8e"
+      },
+      {
+        "path": "interfaces/README.md",
+        "bytes": 611,
+        "sha256": "55f846940771e59094158adec1c9c40bdfe8750a2cffb62fdb7af9964cd07dfd"
+      },
+      {
+        "path": "logs/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "operations/manifest.json",
+        "bytes": 3409,
+        "sha256": "6dde3f0c5bd88fe18dd1c6f0da921e359feec8589f1c22e016561f29df8749bf"
+      },
+      {
+        "path": "operations/README.md",
+        "bytes": 1721,
+        "sha256": "de77469b39b3878e956d66011cfdca7934c19d42d516bbb70963412c3d343815"
+      },
+      {
+        "path": "package.json",
+        "bytes": 972,
+        "sha256": "5c7571a15ee82695c08eee1775e2dd872451c69e00cf2e367d5aa134e490a428"
+      },
+      {
+        "path": "README.md",
+        "bytes": 1881,
+        "sha256": "8d402de1b60875c7f04f07aa8a11351d6096c1aa6ac912f7692f54fcdbc92bd4"
+      },
+      {
+        "path": "scripts/agent-cli.mjs",
+        "bytes": 796,
+        "sha256": "1fab82bdd5e4b4d5c23345b469b52e17117d200b7f9f0f0af92180380b47e7e5"
+      },
+      {
+        "path": "scripts/control-center-agent-service.mjs",
+        "bytes": 3941,
+        "sha256": "d39d3a583c65f43a16eb10eb50673a5c34c225336c99f1062e67416fe38da72a"
+      },
+      {
+        "path": "scripts/control-center-runtime.mjs",
+        "bytes": 15672,
+        "sha256": "d20fdb21d230d8916c1c8b6300f74ee73dd01308ccc0b31cdf8817c7aa999450"
+      },
+      {
+        "path": "scripts/deploy-service.mjs",
+        "bytes": 7842,
+        "sha256": "1822e9151a9368447f5b0ad37de11a2c5731da702d0abcc9fa17620b961c6a14"
+      },
+      {
+        "path": "scripts/healthcheck.mjs",
+        "bytes": 3310,
+        "sha256": "9026be466bb286563fdc2d2e1c5e9f029e3fd63b0018e7ab94297b464471e68a"
+      },
+      {
+        "path": "scripts/interface-status.mjs",
+        "bytes": 832,
+        "sha256": "d3e2f367cde4934a626eca4c43c9f848c11903a05b8ee6ae412198ade2a45c56"
+      },
+      {
+        "path": "scripts/operations-status.mjs",
+        "bytes": 2279,
+        "sha256": "82bf683b3bafea5d47c91a99b6a64b6574cab5cb52008703c1df53a7ac49922d"
+      },
+      {
+        "path": "scripts/smoke-test.mjs",
+        "bytes": 1888,
+        "sha256": "25f2b002067d0b7a94c26ea2bcca6709a53e51c45780bffc684aedd37f618bb1"
+      },
+      {
+        "path": "tests/structure.test.mjs",
+        "bytes": 1444,
+        "sha256": "328813535ad658b857489f6bb76a4c3591b22851bea3f3744ad62fc21aa8c017"
+      }
+    ],
+    "cli": [
+      {
+        "path": ".env.example",
+        "bytes": 41,
+        "sha256": "bbe91dd99b15f513adaf786211ff4fcbe2e3e844268a271aee0007652091312f"
+      },
+      {
+        "path": ".gitignore",
+        "bytes": 192,
+        "sha256": "8876cfb25a1e3353f4daae938de32f6eba01c7e3617da4e2dce5df5b811dd061"
+      },
+      {
+        "path": "07_workflows/agent-operating-workflow.md",
+        "bytes": 836,
+        "sha256": "55f11efe279f4477bf6d549befab5770eb5c7fcb40f48544ccfb8e2fd8bb9e81"
+      },
+      {
+        "path": "AGENTS.md",
+        "bytes": 2592,
+        "sha256": "270d9b375bcc8d061a05cae4348a634c743d919820a460e21826abee948a7f39"
+      },
+      {
+        "path": "delivery/outcome-lineage.json",
+        "bytes": 484,
+        "sha256": "7692bea4ad77b68d43cfd3c9e6ffbc070ac9f011c8ab4c99d5788aca714cbcea"
+      },
+      {
+        "path": "delivery/README.md",
+        "bytes": 473,
+        "sha256": "eebb830f81fcc72e3492e9f2727c30444898b9460e3b5a705e4087c9a1650bac"
+      },
+      {
+        "path": "docs/user-training-guide.md",
+        "bytes": 1714,
+        "sha256": "4b07d4fe11af41cead90ea06825f413d6e2ac6d686bb5e2665595de1104e6eca"
+      },
+      {
+        "path": "interfaces/cli/README.md",
+        "bytes": 583,
+        "sha256": "940414213cfba06aa0c024e09b3cfff7affc133e978d6013161dc98cd390cefb"
+      },
+      {
+        "path": "interfaces/manifest.json",
+        "bytes": 607,
+        "sha256": "525aa5848a00100fcf5076087fd086518f57ea829590663714bd723e78720fa8"
+      },
+      {
+        "path": "interfaces/README.md",
+        "bytes": 555,
+        "sha256": "39ece87890ea0ecad1ea6e4a0a745407c61ef38a2bcaba83c268c5598f5b2a39"
+      },
+      {
+        "path": "memory/decisions/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/manifest.json",
+        "bytes": 542,
+        "sha256": "37d20ce58ce784b196f3ede2cce53b9d4cc0216f723938c6251f1c24a0665b4a"
+      },
+      {
+        "path": "memory/notes/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/README.md",
+        "bytes": 521,
+        "sha256": "5d55b8be3b773557550b8f7c557c4d127883247f0a939ff55e02bd1f01f225d9"
+      },
+      {
+        "path": "package.json",
+        "bytes": 316,
+        "sha256": "c0db0ac11ebc708f23dbdbd1e8330ce8345632d8fb27b7dea388b2d8deed6af9"
+      },
+      {
+        "path": "README.md",
+        "bytes": 1325,
+        "sha256": "d9cf4a1871bc853564e89c1a8d02ebd36f3b39a62108bddd2deba5968b0d46be"
+      },
+      {
+        "path": "scripts/agent-cli.mjs",
+        "bytes": 1013,
+        "sha256": "929723bff77b7d5ee862072a40e013cc4caf57e4087e30dba1e5a4360caa7852"
+      },
+      {
+        "path": "scripts/healthcheck.mjs",
+        "bytes": 116,
+        "sha256": "71025c043e190be8cf4ee8b651d31a36a6696a205fb9658ea8029ce538a18461"
+      },
+      {
+        "path": "scripts/memory-status.mjs",
+        "bytes": 601,
+        "sha256": "a97157ad5f2aad1d5203a30619e02072321cd89e2cf814ee415e28767092e1ee"
+      },
+      {
+        "path": "scripts/redaction.mjs",
+        "bytes": 21544,
+        "sha256": "024aeebb57860e91dd361053c2aec7b4a4a1fa776331b1954a37a588392109b9"
+      },
+      {
+        "path": "scripts/skills-status.mjs",
+        "bytes": 11219,
+        "sha256": "f1c7d47745d640d6f6b7cbe7175429e9cd68c5f97d564ee161c6f47028d6e6ff"
+      },
+      {
+        "path": "scripts/smoke-test.mjs",
+        "bytes": 1416,
+        "sha256": "572cc3a31a0b78cc19f9c02f3c1e44f7df527efdb06a45cd1e6fd7ac4ae9e421"
+      },
+      {
+        "path": "scripts/tools-status.mjs",
+        "bytes": 525,
+        "sha256": "1b71e4d8d837371fe2764ef347105295e43628ecdf9b868b10eae09257af66a2"
+      },
+      {
+        "path": "skills/candidates.json",
+        "bytes": 3956,
+        "sha256": "2f1cfe3dc272f6b8f8b5d563c63323fa105a2dd5f2d558cbea949c836223910b"
+      },
+      {
+        "path": "skills/lock.json",
+        "bytes": 95,
+        "sha256": "4cdba8041d36ed583e44b8d88b96c5721541f6e338b7b41f67ca996620184b96"
+      },
+      {
+        "path": "skills/manifest.json",
+        "bytes": 4004,
+        "sha256": "27daf4ff4d91d786ebfccd809ba423720a7764129c014d980a8764be897cded5"
+      },
+      {
+        "path": "skills/README.md",
+        "bytes": 765,
+        "sha256": "8e27b59005a622834153a4c66c5ac27935d04ee08e0b4a45a6d88c9a6a228ad1"
+      },
+      {
+        "path": "tests/structure.test.mjs",
+        "bytes": 1581,
+        "sha256": "ea56cf1a2f489955a1e656a6312825941dcf667c7a82435d6527ac41621acb7c"
+      },
+      {
+        "path": "tools/cli-script/README.md",
+        "bytes": 326,
+        "sha256": "9fc8673622f4ed61ff03c36959e18986940e26a13f5440c9e2c53b86ed48e380"
+      },
+      {
+        "path": "tools/manifest.json",
+        "bytes": 985,
+        "sha256": "70b283d0440a3ce69f7d5a001b3a06bb282d00ea58cdb1a044d569a803f729af"
+      },
+      {
+        "path": "tools/README.md",
+        "bytes": 1074,
+        "sha256": "e84857075163aa987801c289a999193de4bc6ea808975feef791da4393a50a40"
+      },
+      {
+        "path": "tools/skill-pack/README.md",
+        "bytes": 348,
+        "sha256": "243b480c10d6f3ed3c890b770225d9d3b3d983afd50edc6184b0053b639f903e"
+      },
+      {
+        "path": "tools/workflow/README.md",
+        "bytes": 284,
+        "sha256": "78aeaf89c63e25a3b0ecee9bdca5a4e24b41a7b6965c250d18ec2b5684cf02de"
+      }
+    ],
+    "api": [
+      {
+        "path": ".env.example",
+        "bytes": 41,
+        "sha256": "bbe91dd99b15f513adaf786211ff4fcbe2e3e844268a271aee0007652091312f"
+      },
+      {
+        "path": ".gitignore",
+        "bytes": 192,
+        "sha256": "8876cfb25a1e3353f4daae938de32f6eba01c7e3617da4e2dce5df5b811dd061"
+      },
+      {
+        "path": "07_workflows/agent-operating-workflow.md",
+        "bytes": 692,
+        "sha256": "e0cd03d8d073bf8bb79189aac6a0a6c6250481d81a12ebe4c9a50820e8e3d228"
+      },
+      {
+        "path": "AGENTS.md",
+        "bytes": 4574,
+        "sha256": "7778e5158023d677d9360b42e274eda1824ad44afd96fee8fbe66f76fce289f0"
+      },
+      {
+        "path": "delivery/outcome-lineage.json",
+        "bytes": 484,
+        "sha256": "7692bea4ad77b68d43cfd3c9e6ffbc070ac9f011c8ab4c99d5788aca714cbcea"
+      },
+      {
+        "path": "delivery/README.md",
+        "bytes": 473,
+        "sha256": "eebb830f81fcc72e3492e9f2727c30444898b9460e3b5a705e4087c9a1650bac"
+      },
+      {
+        "path": "docs/user-training-guide.md",
+        "bytes": 502,
+        "sha256": "759fe437ac45db2e0c9ea8ddaf209cccd52c1d3827dfed184e5eabaf2db94e18"
+      },
+      {
+        "path": "interfaces/cli/README.md",
+        "bytes": 179,
+        "sha256": "763f36cb970dfc802da7eb610d1f48e1a512ee4cfe5747b623f2337e6292ac0a"
+      },
+      {
+        "path": "interfaces/manifest.json",
+        "bytes": 447,
+        "sha256": "086ecbe635f53842ad4fddaf8b460fc0e395acf0c66ad307e47b48a5f72997ce"
+      },
+      {
+        "path": "interfaces/README.md",
+        "bytes": 601,
+        "sha256": "37158d1fcde58dc728b44162f6141dbf8128212a58fcbd0289966e3e45b324be"
+      },
+      {
+        "path": "interfaces/web/README.md",
+        "bytes": 253,
+        "sha256": "7c9aeee462a6cf29b0579a514fbe5a9d5f7f6c865cb3dcc5daa642fec7215e79"
+      },
+      {
+        "path": "logs/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/decisions/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/manifest.json",
+        "bytes": 542,
+        "sha256": "37d20ce58ce784b196f3ede2cce53b9d4cc0216f723938c6251f1c24a0665b4a"
+      },
+      {
+        "path": "memory/notes/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/README.md",
+        "bytes": 521,
+        "sha256": "5d55b8be3b773557550b8f7c557c4d127883247f0a939ff55e02bd1f01f225d9"
+      },
+      {
+        "path": "operations/manifest.json",
+        "bytes": 3410,
+        "sha256": "d72b543b64a1621416f19500c63e621fdcf6bc8c495b8caa659496fd795090a6"
+      },
+      {
+        "path": "operations/README.md",
+        "bytes": 1724,
+        "sha256": "6d259bf43fe82f9e0d011c861fa2c61b5051cb9e39fbdfbd3a110595f9c00f37"
+      },
+      {
+        "path": "package.json",
+        "bytes": 1114,
+        "sha256": "9a4dee82641ad2300f5798c8b86560803016e0cad2ff59bd874a77ff826956e5"
+      },
+      {
+        "path": "README.md",
+        "bytes": 2219,
+        "sha256": "6e3bc98c8b63e7e3698f5e8b9eadb639d20280cee26a215120c02769b94caf43"
+      },
+      {
+        "path": "scripts/agent-cli.mjs",
+        "bytes": 777,
+        "sha256": "d9c46cd82b1ddcafea5c96e2429fdabaa82f3afb8f083373ef473d5e768f9c0c"
+      },
+      {
+        "path": "scripts/control-center-agent-service.mjs",
+        "bytes": 3941,
+        "sha256": "d39d3a583c65f43a16eb10eb50673a5c34c225336c99f1062e67416fe38da72a"
+      },
+      {
+        "path": "scripts/control-center-runtime.mjs",
+        "bytes": 15672,
+        "sha256": "d20fdb21d230d8916c1c8b6300f74ee73dd01308ccc0b31cdf8817c7aa999450"
+      },
+      {
+        "path": "scripts/deploy-service.mjs",
+        "bytes": 7842,
+        "sha256": "1822e9151a9368447f5b0ad37de11a2c5731da702d0abcc9fa17620b961c6a14"
+      },
+      {
+        "path": "scripts/healthcheck.mjs",
+        "bytes": 3440,
+        "sha256": "b8220636132b8cf3fac5a0ba4a6051b1319190f206114d37d45ebc0cd5a31ce7"
+      },
+      {
+        "path": "scripts/interface-status.mjs",
+        "bytes": 832,
+        "sha256": "d3e2f367cde4934a626eca4c43c9f848c11903a05b8ee6ae412198ade2a45c56"
+      },
+      {
+        "path": "scripts/memory-status.mjs",
+        "bytes": 601,
+        "sha256": "a97157ad5f2aad1d5203a30619e02072321cd89e2cf814ee415e28767092e1ee"
+      },
+      {
+        "path": "scripts/operations-status.mjs",
+        "bytes": 2279,
+        "sha256": "82bf683b3bafea5d47c91a99b6a64b6574cab5cb52008703c1df53a7ac49922d"
+      },
+      {
+        "path": "scripts/redaction.mjs",
+        "bytes": 21544,
+        "sha256": "024aeebb57860e91dd361053c2aec7b4a4a1fa776331b1954a37a588392109b9"
+      },
+      {
+        "path": "scripts/skills-status.mjs",
+        "bytes": 11219,
+        "sha256": "f1c7d47745d640d6f6b7cbe7175429e9cd68c5f97d564ee161c6f47028d6e6ff"
+      },
+      {
+        "path": "scripts/smoke-test.mjs",
+        "bytes": 2187,
+        "sha256": "aa20421ddb8cac47b949426f37f8caea9f6edbfcb8ffe681d7a8fb7c05a7c5ec"
+      },
+      {
+        "path": "scripts/tools-status.mjs",
+        "bytes": 525,
+        "sha256": "1b71e4d8d837371fe2764ef347105295e43628ecdf9b868b10eae09257af66a2"
+      },
+      {
+        "path": "skills/candidates.json",
+        "bytes": 3956,
+        "sha256": "2f1cfe3dc272f6b8f8b5d563c63323fa105a2dd5f2d558cbea949c836223910b"
+      },
+      {
+        "path": "skills/lock.json",
+        "bytes": 95,
+        "sha256": "4cdba8041d36ed583e44b8d88b96c5721541f6e338b7b41f67ca996620184b96"
+      },
+      {
+        "path": "skills/manifest.json",
+        "bytes": 4004,
+        "sha256": "27daf4ff4d91d786ebfccd809ba423720a7764129c014d980a8764be897cded5"
+      },
+      {
+        "path": "skills/README.md",
+        "bytes": 765,
+        "sha256": "8e27b59005a622834153a4c66c5ac27935d04ee08e0b4a45a6d88c9a6a228ad1"
+      },
+      {
+        "path": "tests/structure.test.mjs",
+        "bytes": 1879,
+        "sha256": "8738d5eaee7be6c34d386cd2ae0ac9cdd17b10d3eeed848261f7670184c2558f"
+      },
+      {
+        "path": "tools/browser-manual/README.md",
+        "bytes": 289,
+        "sha256": "eb9a662a1f1b60b71e31ea6a21ad6eecf4499530dcb078a52a6faf3d210eaa64"
+      },
+      {
+        "path": "tools/cli-script/README.md",
+        "bytes": 326,
+        "sha256": "9fc8673622f4ed61ff03c36959e18986940e26a13f5440c9e2c53b86ed48e380"
+      },
+      {
+        "path": "tools/manifest.json",
+        "bytes": 1220,
+        "sha256": "00e62ec3508a45f260da3332448173abd9f340d78072bbdce58c591f3f85320c"
+      },
+      {
+        "path": "tools/README.md",
+        "bytes": 1259,
+        "sha256": "dc895b852ae3defce3fff29ec3bdd31ac449206c7fc27115bead73a4e9e463bb"
+      },
+      {
+        "path": "tools/skill-pack/README.md",
+        "bytes": 348,
+        "sha256": "243b480c10d6f3ed3c890b770225d9d3b3d983afd50edc6184b0053b639f903e"
+      },
+      {
+        "path": "tools/workflow/README.md",
+        "bytes": 284,
+        "sha256": "78aeaf89c63e25a3b0ecee9bdca5a4e24b41a7b6965c250d18ec2b5684cf02de"
+      }
+    ],
+    "markdown": [
+      {
+        "path": ".env.example",
+        "bytes": 41,
+        "sha256": "bbe91dd99b15f513adaf786211ff4fcbe2e3e844268a271aee0007652091312f"
+      },
+      {
+        "path": ".gitignore",
+        "bytes": 192,
+        "sha256": "8876cfb25a1e3353f4daae938de32f6eba01c7e3617da4e2dce5df5b811dd061"
+      },
+      {
+        "path": "07_workflows/agent-operating-workflow.md",
+        "bytes": 692,
+        "sha256": "e0cd03d8d073bf8bb79189aac6a0a6c6250481d81a12ebe4c9a50820e8e3d228"
+      },
+      {
+        "path": "AGENTS.md",
+        "bytes": 4579,
+        "sha256": "b5464ef6ec6b1a66640539e327f142675cbc2d22766ae94717f126e7a59e6e2e"
+      },
+      {
+        "path": "delivery/outcome-lineage.json",
+        "bytes": 484,
+        "sha256": "7692bea4ad77b68d43cfd3c9e6ffbc070ac9f011c8ab4c99d5788aca714cbcea"
+      },
+      {
+        "path": "delivery/README.md",
+        "bytes": 473,
+        "sha256": "eebb830f81fcc72e3492e9f2727c30444898b9460e3b5a705e4087c9a1650bac"
+      },
+      {
+        "path": "docs/user-training-guide.md",
+        "bytes": 502,
+        "sha256": "759fe437ac45db2e0c9ea8ddaf209cccd52c1d3827dfed184e5eabaf2db94e18"
+      },
+      {
+        "path": "interfaces/cli/README.md",
+        "bytes": 198,
+        "sha256": "d08e06e05d891e2a15ea7a8befc4e77dfc0f9d188337f362cf6a7699d14fbab8"
+      },
+      {
+        "path": "interfaces/codex-project/README.md",
+        "bytes": 282,
+        "sha256": "6b1abdb3d45cd739fc477bd4c88a9f2a94d39b446ed31c8a4b87f1964e5769e3"
+      },
+      {
+        "path": "interfaces/manifest.json",
+        "bytes": 467,
+        "sha256": "773d15b957e0cf910f303ab0cd608c5fafe27ba8c2fe4b27d57f999ee4c1da8e"
+      },
+      {
+        "path": "interfaces/README.md",
+        "bytes": 611,
+        "sha256": "55f846940771e59094158adec1c9c40bdfe8750a2cffb62fdb7af9964cd07dfd"
+      },
+      {
+        "path": "logs/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/decisions/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/manifest.json",
+        "bytes": 534,
+        "sha256": "d4a7015bb1096868f0656779ae8b562b3c3e0f03c4c517bb3db2d490485527f4"
+      },
+      {
+        "path": "memory/notes/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/README.md",
+        "bytes": 521,
+        "sha256": "5d55b8be3b773557550b8f7c557c4d127883247f0a939ff55e02bd1f01f225d9"
+      },
+      {
+        "path": "operations/manifest.json",
+        "bytes": 3409,
+        "sha256": "6dde3f0c5bd88fe18dd1c6f0da921e359feec8589f1c22e016561f29df8749bf"
+      },
+      {
+        "path": "operations/README.md",
+        "bytes": 1721,
+        "sha256": "de77469b39b3878e956d66011cfdca7934c19d42d516bbb70963412c3d343815"
+      },
+      {
+        "path": "package.json",
+        "bytes": 1114,
+        "sha256": "9a4dee82641ad2300f5798c8b86560803016e0cad2ff59bd874a77ff826956e5"
+      },
+      {
+        "path": "README.md",
+        "bytes": 2224,
+        "sha256": "464015cb3618ec8db71c1654cc472f0248c537ccd2dd0cd4ff5009d46a720c70"
+      },
+      {
+        "path": "scripts/agent-cli.mjs",
+        "bytes": 796,
+        "sha256": "1fab82bdd5e4b4d5c23345b469b52e17117d200b7f9f0f0af92180380b47e7e5"
+      },
+      {
+        "path": "scripts/control-center-agent-service.mjs",
+        "bytes": 3941,
+        "sha256": "d39d3a583c65f43a16eb10eb50673a5c34c225336c99f1062e67416fe38da72a"
+      },
+      {
+        "path": "scripts/control-center-runtime.mjs",
+        "bytes": 15672,
+        "sha256": "d20fdb21d230d8916c1c8b6300f74ee73dd01308ccc0b31cdf8817c7aa999450"
+      },
+      {
+        "path": "scripts/deploy-service.mjs",
+        "bytes": 7842,
+        "sha256": "1822e9151a9368447f5b0ad37de11a2c5731da702d0abcc9fa17620b961c6a14"
+      },
+      {
+        "path": "scripts/healthcheck.mjs",
+        "bytes": 3440,
+        "sha256": "b8220636132b8cf3fac5a0ba4a6051b1319190f206114d37d45ebc0cd5a31ce7"
+      },
+      {
+        "path": "scripts/interface-status.mjs",
+        "bytes": 832,
+        "sha256": "d3e2f367cde4934a626eca4c43c9f848c11903a05b8ee6ae412198ade2a45c56"
+      },
+      {
+        "path": "scripts/memory-status.mjs",
+        "bytes": 601,
+        "sha256": "a97157ad5f2aad1d5203a30619e02072321cd89e2cf814ee415e28767092e1ee"
+      },
+      {
+        "path": "scripts/operations-status.mjs",
+        "bytes": 2279,
+        "sha256": "82bf683b3bafea5d47c91a99b6a64b6574cab5cb52008703c1df53a7ac49922d"
+      },
+      {
+        "path": "scripts/redaction.mjs",
+        "bytes": 21544,
+        "sha256": "024aeebb57860e91dd361053c2aec7b4a4a1fa776331b1954a37a588392109b9"
+      },
+      {
+        "path": "scripts/skills-status.mjs",
+        "bytes": 11219,
+        "sha256": "f1c7d47745d640d6f6b7cbe7175429e9cd68c5f97d564ee161c6f47028d6e6ff"
+      },
+      {
+        "path": "scripts/smoke-test.mjs",
+        "bytes": 2187,
+        "sha256": "aa20421ddb8cac47b949426f37f8caea9f6edbfcb8ffe681d7a8fb7c05a7c5ec"
+      },
+      {
+        "path": "scripts/tools-status.mjs",
+        "bytes": 525,
+        "sha256": "1b71e4d8d837371fe2764ef347105295e43628ecdf9b868b10eae09257af66a2"
+      },
+      {
+        "path": "skills/candidates.json",
+        "bytes": 3956,
+        "sha256": "2f1cfe3dc272f6b8f8b5d563c63323fa105a2dd5f2d558cbea949c836223910b"
+      },
+      {
+        "path": "skills/lock.json",
+        "bytes": 95,
+        "sha256": "4cdba8041d36ed583e44b8d88b96c5721541f6e338b7b41f67ca996620184b96"
+      },
+      {
+        "path": "skills/manifest.json",
+        "bytes": 4004,
+        "sha256": "27daf4ff4d91d786ebfccd809ba423720a7764129c014d980a8764be897cded5"
+      },
+      {
+        "path": "skills/README.md",
+        "bytes": 765,
+        "sha256": "8e27b59005a622834153a4c66c5ac27935d04ee08e0b4a45a6d88c9a6a228ad1"
+      },
+      {
+        "path": "tests/structure.test.mjs",
+        "bytes": 1856,
+        "sha256": "e9a8cf3f6e8eea9d434cd31dfe94991528fea6e7982cc34e7bd2c941fd895363"
+      },
+      {
+        "path": "tools/cli-script/README.md",
+        "bytes": 326,
+        "sha256": "9fc8673622f4ed61ff03c36959e18986940e26a13f5440c9e2c53b86ed48e380"
+      },
+      {
+        "path": "tools/manifest.json",
+        "bytes": 985,
+        "sha256": "70b283d0440a3ce69f7d5a001b3a06bb282d00ea58cdb1a044d569a803f729af"
+      },
+      {
+        "path": "tools/README.md",
+        "bytes": 1074,
+        "sha256": "e84857075163aa987801c289a999193de4bc6ea808975feef791da4393a50a40"
+      },
+      {
+        "path": "tools/skill-pack/README.md",
+        "bytes": 348,
+        "sha256": "243b480c10d6f3ed3c890b770225d9d3b3d983afd50edc6184b0053b639f903e"
+      },
+      {
+        "path": "tools/workflow/README.md",
+        "bytes": 284,
+        "sha256": "78aeaf89c63e25a3b0ecee9bdca5a4e24b41a7b6965c250d18ec2b5684cf02de"
+      }
+    ],
+    "sqlite": [
+      {
+        "path": ".env.example",
+        "bytes": 41,
+        "sha256": "bbe91dd99b15f513adaf786211ff4fcbe2e3e844268a271aee0007652091312f"
+      },
+      {
+        "path": ".gitignore",
+        "bytes": 192,
+        "sha256": "8876cfb25a1e3353f4daae938de32f6eba01c7e3617da4e2dce5df5b811dd061"
+      },
+      {
+        "path": "07_workflows/agent-operating-workflow.md",
+        "bytes": 692,
+        "sha256": "e0cd03d8d073bf8bb79189aac6a0a6c6250481d81a12ebe4c9a50820e8e3d228"
+      },
+      {
+        "path": "AGENTS.md",
+        "bytes": 4602,
+        "sha256": "3537f850d15c48843e73cc6ae01df05e1dc800f83f217f7fb05bb176ac4d0b6e"
+      },
+      {
+        "path": "delivery/outcome-lineage.json",
+        "bytes": 484,
+        "sha256": "7692bea4ad77b68d43cfd3c9e6ffbc070ac9f011c8ab4c99d5788aca714cbcea"
+      },
+      {
+        "path": "delivery/README.md",
+        "bytes": 473,
+        "sha256": "eebb830f81fcc72e3492e9f2727c30444898b9460e3b5a705e4087c9a1650bac"
+      },
+      {
+        "path": "docs/user-training-guide.md",
+        "bytes": 502,
+        "sha256": "759fe437ac45db2e0c9ea8ddaf209cccd52c1d3827dfed184e5eabaf2db94e18"
+      },
+      {
+        "path": "interfaces/cli/README.md",
+        "bytes": 198,
+        "sha256": "d08e06e05d891e2a15ea7a8befc4e77dfc0f9d188337f362cf6a7699d14fbab8"
+      },
+      {
+        "path": "interfaces/codex-project/README.md",
+        "bytes": 282,
+        "sha256": "6b1abdb3d45cd739fc477bd4c88a9f2a94d39b446ed31c8a4b87f1964e5769e3"
+      },
+      {
+        "path": "interfaces/manifest.json",
+        "bytes": 467,
+        "sha256": "773d15b957e0cf910f303ab0cd608c5fafe27ba8c2fe4b27d57f999ee4c1da8e"
+      },
+      {
+        "path": "interfaces/README.md",
+        "bytes": 611,
+        "sha256": "55f846940771e59094158adec1c9c40bdfe8750a2cffb62fdb7af9964cd07dfd"
+      },
+      {
+        "path": "logs/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/decisions/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/embeddings/README.md",
+        "bytes": 112,
+        "sha256": "605d76e59493ee7179048737e4fbab3e8004d9f119fb7c7e88d559a5827f23ba"
+      },
+      {
+        "path": "memory/index/README.md",
+        "bytes": 127,
+        "sha256": "d8491f03d0e22800ec29426f0c195208c97c9237c3be4f4d0c273cb5491240f2"
+      },
+      {
+        "path": "memory/manifest.json",
+        "bytes": 616,
+        "sha256": "c707337d108674c603201ee9d7b5c88367911e2998df9d7114072a22d020eb51"
+      },
+      {
+        "path": "memory/notes/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/README.md",
+        "bytes": 571,
+        "sha256": "c9660a4d16b9942979a9418976009e43cb4a994a3b65a14003ef90db3773ccc6"
+      },
+      {
+        "path": "operations/manifest.json",
+        "bytes": 3409,
+        "sha256": "6dde3f0c5bd88fe18dd1c6f0da921e359feec8589f1c22e016561f29df8749bf"
+      },
+      {
+        "path": "operations/README.md",
+        "bytes": 1721,
+        "sha256": "de77469b39b3878e956d66011cfdca7934c19d42d516bbb70963412c3d343815"
+      },
+      {
+        "path": "package.json",
+        "bytes": 1114,
+        "sha256": "9a4dee82641ad2300f5798c8b86560803016e0cad2ff59bd874a77ff826956e5"
+      },
+      {
+        "path": "README.md",
+        "bytes": 2247,
+        "sha256": "e60be1d720fd18e3fcc64905b8d16733c030af47443d1eb21e85d280c6c1daa0"
+      },
+      {
+        "path": "scripts/agent-cli.mjs",
+        "bytes": 796,
+        "sha256": "1fab82bdd5e4b4d5c23345b469b52e17117d200b7f9f0f0af92180380b47e7e5"
+      },
+      {
+        "path": "scripts/control-center-agent-service.mjs",
+        "bytes": 3941,
+        "sha256": "d39d3a583c65f43a16eb10eb50673a5c34c225336c99f1062e67416fe38da72a"
+      },
+      {
+        "path": "scripts/control-center-runtime.mjs",
+        "bytes": 15672,
+        "sha256": "d20fdb21d230d8916c1c8b6300f74ee73dd01308ccc0b31cdf8817c7aa999450"
+      },
+      {
+        "path": "scripts/deploy-service.mjs",
+        "bytes": 7842,
+        "sha256": "1822e9151a9368447f5b0ad37de11a2c5731da702d0abcc9fa17620b961c6a14"
+      },
+      {
+        "path": "scripts/healthcheck.mjs",
+        "bytes": 3440,
+        "sha256": "b8220636132b8cf3fac5a0ba4a6051b1319190f206114d37d45ebc0cd5a31ce7"
+      },
+      {
+        "path": "scripts/interface-status.mjs",
+        "bytes": 832,
+        "sha256": "d3e2f367cde4934a626eca4c43c9f848c11903a05b8ee6ae412198ade2a45c56"
+      },
+      {
+        "path": "scripts/memory-status.mjs",
+        "bytes": 601,
+        "sha256": "a97157ad5f2aad1d5203a30619e02072321cd89e2cf814ee415e28767092e1ee"
+      },
+      {
+        "path": "scripts/operations-status.mjs",
+        "bytes": 2279,
+        "sha256": "82bf683b3bafea5d47c91a99b6a64b6574cab5cb52008703c1df53a7ac49922d"
+      },
+      {
+        "path": "scripts/redaction.mjs",
+        "bytes": 21544,
+        "sha256": "024aeebb57860e91dd361053c2aec7b4a4a1fa776331b1954a37a588392109b9"
+      },
+      {
+        "path": "scripts/skills-status.mjs",
+        "bytes": 11219,
+        "sha256": "f1c7d47745d640d6f6b7cbe7175429e9cd68c5f97d564ee161c6f47028d6e6ff"
+      },
+      {
+        "path": "scripts/smoke-test.mjs",
+        "bytes": 2187,
+        "sha256": "aa20421ddb8cac47b949426f37f8caea9f6edbfcb8ffe681d7a8fb7c05a7c5ec"
+      },
+      {
+        "path": "scripts/tools-status.mjs",
+        "bytes": 525,
+        "sha256": "1b71e4d8d837371fe2764ef347105295e43628ecdf9b868b10eae09257af66a2"
+      },
+      {
+        "path": "skills/candidates.json",
+        "bytes": 3956,
+        "sha256": "2f1cfe3dc272f6b8f8b5d563c63323fa105a2dd5f2d558cbea949c836223910b"
+      },
+      {
+        "path": "skills/lock.json",
+        "bytes": 95,
+        "sha256": "4cdba8041d36ed583e44b8d88b96c5721541f6e338b7b41f67ca996620184b96"
+      },
+      {
+        "path": "skills/manifest.json",
+        "bytes": 4004,
+        "sha256": "27daf4ff4d91d786ebfccd809ba423720a7764129c014d980a8764be897cded5"
+      },
+      {
+        "path": "skills/README.md",
+        "bytes": 765,
+        "sha256": "8e27b59005a622834153a4c66c5ac27935d04ee08e0b4a45a6d88c9a6a228ad1"
+      },
+      {
+        "path": "tests/structure.test.mjs",
+        "bytes": 1911,
+        "sha256": "da743b2b6804d515618cadc607459acf003d1c844d59d71632502224add23461"
+      },
+      {
+        "path": "tools/cli-script/README.md",
+        "bytes": 326,
+        "sha256": "9fc8673622f4ed61ff03c36959e18986940e26a13f5440c9e2c53b86ed48e380"
+      },
+      {
+        "path": "tools/manifest.json",
+        "bytes": 985,
+        "sha256": "70b283d0440a3ce69f7d5a001b3a06bb282d00ea58cdb1a044d569a803f729af"
+      },
+      {
+        "path": "tools/README.md",
+        "bytes": 1074,
+        "sha256": "e84857075163aa987801c289a999193de4bc6ea808975feef791da4393a50a40"
+      },
+      {
+        "path": "tools/skill-pack/README.md",
+        "bytes": 348,
+        "sha256": "243b480c10d6f3ed3c890b770225d9d3b3d983afd50edc6184b0053b639f903e"
+      },
+      {
+        "path": "tools/workflow/README.md",
+        "bytes": 284,
+        "sha256": "78aeaf89c63e25a3b0ecee9bdca5a4e24b41a7b6965c250d18ec2b5684cf02de"
+      }
+    ],
+    "external": [
+      {
+        "path": ".env.example",
+        "bytes": 41,
+        "sha256": "bbe91dd99b15f513adaf786211ff4fcbe2e3e844268a271aee0007652091312f"
+      },
+      {
+        "path": ".gitignore",
+        "bytes": 192,
+        "sha256": "8876cfb25a1e3353f4daae938de32f6eba01c7e3617da4e2dce5df5b811dd061"
+      },
+      {
+        "path": "07_workflows/agent-operating-workflow.md",
+        "bytes": 692,
+        "sha256": "e0cd03d8d073bf8bb79189aac6a0a6c6250481d81a12ebe4c9a50820e8e3d228"
+      },
+      {
+        "path": "AGENTS.md",
+        "bytes": 4604,
+        "sha256": "bd157a476d917e09aa85d34cd6df51985c8d2ae6e1f1765bdd4b7698be647bd4"
+      },
+      {
+        "path": "delivery/outcome-lineage.json",
+        "bytes": 484,
+        "sha256": "7692bea4ad77b68d43cfd3c9e6ffbc070ac9f011c8ab4c99d5788aca714cbcea"
+      },
+      {
+        "path": "delivery/README.md",
+        "bytes": 473,
+        "sha256": "eebb830f81fcc72e3492e9f2727c30444898b9460e3b5a705e4087c9a1650bac"
+      },
+      {
+        "path": "docs/user-training-guide.md",
+        "bytes": 502,
+        "sha256": "759fe437ac45db2e0c9ea8ddaf209cccd52c1d3827dfed184e5eabaf2db94e18"
+      },
+      {
+        "path": "interfaces/cli/README.md",
+        "bytes": 198,
+        "sha256": "d08e06e05d891e2a15ea7a8befc4e77dfc0f9d188337f362cf6a7699d14fbab8"
+      },
+      {
+        "path": "interfaces/codex-project/README.md",
+        "bytes": 282,
+        "sha256": "6b1abdb3d45cd739fc477bd4c88a9f2a94d39b446ed31c8a4b87f1964e5769e3"
+      },
+      {
+        "path": "interfaces/manifest.json",
+        "bytes": 467,
+        "sha256": "773d15b957e0cf910f303ab0cd608c5fafe27ba8c2fe4b27d57f999ee4c1da8e"
+      },
+      {
+        "path": "interfaces/README.md",
+        "bytes": 611,
+        "sha256": "55f846940771e59094158adec1c9c40bdfe8750a2cffb62fdb7af9964cd07dfd"
+      },
+      {
+        "path": "logs/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/external/README.md",
+        "bytes": 148,
+        "sha256": "8f70129b4bda4c7f3a5ecff00263d84b0347ca1afbf4f99dfeecdc4460f82281"
+      },
+      {
+        "path": "memory/manifest.json",
+        "bytes": 576,
+        "sha256": "de747f2cd9d0fb50d4a5adb3ff992fdcddfc690e491605aed6a5d95308e58b35"
+      },
+      {
+        "path": "memory/notes/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/README.md",
+        "bytes": 548,
+        "sha256": "50d5206b5abdf0b0cd894adc4632c6228fedeb752f7103c1f62c03039597884a"
+      },
+      {
+        "path": "operations/manifest.json",
+        "bytes": 3409,
+        "sha256": "6dde3f0c5bd88fe18dd1c6f0da921e359feec8589f1c22e016561f29df8749bf"
+      },
+      {
+        "path": "operations/README.md",
+        "bytes": 1721,
+        "sha256": "de77469b39b3878e956d66011cfdca7934c19d42d516bbb70963412c3d343815"
+      },
+      {
+        "path": "package.json",
+        "bytes": 1114,
+        "sha256": "9a4dee82641ad2300f5798c8b86560803016e0cad2ff59bd874a77ff826956e5"
+      },
+      {
+        "path": "README.md",
+        "bytes": 2249,
+        "sha256": "77e7082eb0eb5a505cb9f8b4930fa09df5cc1e7120ea3baa13070b09e62bb7a9"
+      },
+      {
+        "path": "scripts/agent-cli.mjs",
+        "bytes": 796,
+        "sha256": "1fab82bdd5e4b4d5c23345b469b52e17117d200b7f9f0f0af92180380b47e7e5"
+      },
+      {
+        "path": "scripts/control-center-agent-service.mjs",
+        "bytes": 3941,
+        "sha256": "d39d3a583c65f43a16eb10eb50673a5c34c225336c99f1062e67416fe38da72a"
+      },
+      {
+        "path": "scripts/control-center-runtime.mjs",
+        "bytes": 15672,
+        "sha256": "d20fdb21d230d8916c1c8b6300f74ee73dd01308ccc0b31cdf8817c7aa999450"
+      },
+      {
+        "path": "scripts/deploy-service.mjs",
+        "bytes": 7842,
+        "sha256": "1822e9151a9368447f5b0ad37de11a2c5731da702d0abcc9fa17620b961c6a14"
+      },
+      {
+        "path": "scripts/healthcheck.mjs",
+        "bytes": 3440,
+        "sha256": "b8220636132b8cf3fac5a0ba4a6051b1319190f206114d37d45ebc0cd5a31ce7"
+      },
+      {
+        "path": "scripts/interface-status.mjs",
+        "bytes": 832,
+        "sha256": "d3e2f367cde4934a626eca4c43c9f848c11903a05b8ee6ae412198ade2a45c56"
+      },
+      {
+        "path": "scripts/memory-status.mjs",
+        "bytes": 601,
+        "sha256": "a97157ad5f2aad1d5203a30619e02072321cd89e2cf814ee415e28767092e1ee"
+      },
+      {
+        "path": "scripts/operations-status.mjs",
+        "bytes": 2279,
+        "sha256": "82bf683b3bafea5d47c91a99b6a64b6574cab5cb52008703c1df53a7ac49922d"
+      },
+      {
+        "path": "scripts/redaction.mjs",
+        "bytes": 21544,
+        "sha256": "024aeebb57860e91dd361053c2aec7b4a4a1fa776331b1954a37a588392109b9"
+      },
+      {
+        "path": "scripts/skills-status.mjs",
+        "bytes": 11219,
+        "sha256": "f1c7d47745d640d6f6b7cbe7175429e9cd68c5f97d564ee161c6f47028d6e6ff"
+      },
+      {
+        "path": "scripts/smoke-test.mjs",
+        "bytes": 2187,
+        "sha256": "aa20421ddb8cac47b949426f37f8caea9f6edbfcb8ffe681d7a8fb7c05a7c5ec"
+      },
+      {
+        "path": "scripts/tools-status.mjs",
+        "bytes": 525,
+        "sha256": "1b71e4d8d837371fe2764ef347105295e43628ecdf9b868b10eae09257af66a2"
+      },
+      {
+        "path": "skills/candidates.json",
+        "bytes": 3956,
+        "sha256": "2f1cfe3dc272f6b8f8b5d563c63323fa105a2dd5f2d558cbea949c836223910b"
+      },
+      {
+        "path": "skills/lock.json",
+        "bytes": 95,
+        "sha256": "4cdba8041d36ed583e44b8d88b96c5721541f6e338b7b41f67ca996620184b96"
+      },
+      {
+        "path": "skills/manifest.json",
+        "bytes": 4004,
+        "sha256": "27daf4ff4d91d786ebfccd809ba423720a7764129c014d980a8764be897cded5"
+      },
+      {
+        "path": "skills/README.md",
+        "bytes": 765,
+        "sha256": "8e27b59005a622834153a4c66c5ac27935d04ee08e0b4a45a6d88c9a6a228ad1"
+      },
+      {
+        "path": "tests/structure.test.mjs",
+        "bytes": 1856,
+        "sha256": "168f5fda1749dba300c42f1696b2e98f701e0644642e7e9a312a792a136bdfbe"
+      },
+      {
+        "path": "tools/cli-script/README.md",
+        "bytes": 326,
+        "sha256": "9fc8673622f4ed61ff03c36959e18986940e26a13f5440c9e2c53b86ed48e380"
+      },
+      {
+        "path": "tools/manifest.json",
+        "bytes": 985,
+        "sha256": "70b283d0440a3ce69f7d5a001b3a06bb282d00ea58cdb1a044d569a803f729af"
+      },
+      {
+        "path": "tools/README.md",
+        "bytes": 1074,
+        "sha256": "e84857075163aa987801c289a999193de4bc6ea808975feef791da4393a50a40"
+      },
+      {
+        "path": "tools/skill-pack/README.md",
+        "bytes": 348,
+        "sha256": "243b480c10d6f3ed3c890b770225d9d3b3d983afd50edc6184b0053b639f903e"
+      },
+      {
+        "path": "tools/workflow/README.md",
+        "bytes": 284,
+        "sha256": "78aeaf89c63e25a3b0ecee9bdca5a4e24b41a7b6965c250d18ec2b5684cf02de"
+      }
+    ],
+    "voice-telegram": [
+      {
+        "path": ".env.example",
+        "bytes": 88,
+        "sha256": "778b8620b1c1ade4dc3983bcaee04aec495266cbd1df1afcba49f188586f7b88"
+      },
+      {
+        "path": ".gitignore",
+        "bytes": 192,
+        "sha256": "8876cfb25a1e3353f4daae938de32f6eba01c7e3617da4e2dce5df5b811dd061"
+      },
+      {
+        "path": "07_workflows/agent-operating-workflow.md",
+        "bytes": 692,
+        "sha256": "e0cd03d8d073bf8bb79189aac6a0a6c6250481d81a12ebe4c9a50820e8e3d228"
+      },
+      {
+        "path": "AGENTS.md",
+        "bytes": 4729,
+        "sha256": "f2fb244b8feca87628f4f5cf81c93fe5345c5f9ca35c9ae5f81291d5273d2399"
+      },
+      {
+        "path": "data/telegram-queue/inbox/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "delivery/outcome-lineage.json",
+        "bytes": 484,
+        "sha256": "7692bea4ad77b68d43cfd3c9e6ffbc070ac9f011c8ab4c99d5788aca714cbcea"
+      },
+      {
+        "path": "delivery/README.md",
+        "bytes": 473,
+        "sha256": "eebb830f81fcc72e3492e9f2727c30444898b9460e3b5a705e4087c9a1650bac"
+      },
+      {
+        "path": "docs/user-training-guide.md",
+        "bytes": 502,
+        "sha256": "759fe437ac45db2e0c9ea8ddaf209cccd52c1d3827dfed184e5eabaf2db94e18"
+      },
+      {
+        "path": "interfaces/cli/README.md",
+        "bytes": 191,
+        "sha256": "e01924aee3e33653a93e01200aac551ba28317babe9b211e8aa2b8035c1d1711"
+      },
+      {
+        "path": "interfaces/manifest.json",
+        "bytes": 910,
+        "sha256": "3be119e4d02ffea808cdd9db8fbd2ca1a1ea3d22146a06c617d5fbbc14c0d8c6"
+      },
+      {
+        "path": "interfaces/README.md",
+        "bytes": 725,
+        "sha256": "60d4eacd558b2b15228c0cecf3ea3bd0e9b83fa9781889661a848c498106f684"
+      },
+      {
+        "path": "interfaces/realtime-voice/FESPA26_REFERENCE.md",
+        "bytes": 1039,
+        "sha256": "aca4e61af0030d33912d3351b6f4b7b440c90278996209a5bb6174e80dd73623"
+      },
+      {
+        "path": "interfaces/realtime-voice/pattern-manifest.json",
+        "bytes": 650,
+        "sha256": "c1df99b0de398f5100a267a0a370ebf2bc06b3bd7ac5696b8ec53a87030ac597"
+      },
+      {
+        "path": "interfaces/realtime-voice/README.md",
+        "bytes": 276,
+        "sha256": "edb1f238fd20cb356ac9b8f008aadcbee35a8771adfc00e529a0061462cecf8a"
+      },
+      {
+        "path": "interfaces/telegram/README.md",
+        "bytes": 202,
+        "sha256": "17e9ac21590da5c7a45f5207f9cae5d021eb77a344cb59692779d3425151d03a"
+      },
+      {
+        "path": "interfaces/web/README.md",
+        "bytes": 265,
+        "sha256": "6268c3aa6bdf828dab6457e03b8ebb5bad6cc6bc7147e8f2b449c9e177e34136"
+      },
+      {
+        "path": "logs/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/decisions/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/embeddings/README.md",
+        "bytes": 112,
+        "sha256": "605d76e59493ee7179048737e4fbab3e8004d9f119fb7c7e88d559a5827f23ba"
+      },
+      {
+        "path": "memory/index/README.md",
+        "bytes": 127,
+        "sha256": "d8491f03d0e22800ec29426f0c195208c97c9237c3be4f4d0c273cb5491240f2"
+      },
+      {
+        "path": "memory/manifest.json",
+        "bytes": 598,
+        "sha256": "ebcd40e03886577b46bc6f2748f0b4a4d2609702177ced0722b9e77117031207"
+      },
+      {
+        "path": "memory/notes/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/README.md",
+        "bytes": 571,
+        "sha256": "c9660a4d16b9942979a9418976009e43cb4a994a3b65a14003ef90db3773ccc6"
+      },
+      {
+        "path": "operations/manifest.json",
+        "bytes": 3409,
+        "sha256": "6dde3f0c5bd88fe18dd1c6f0da921e359feec8589f1c22e016561f29df8749bf"
+      },
+      {
+        "path": "operations/README.md",
+        "bytes": 1721,
+        "sha256": "de77469b39b3878e956d66011cfdca7934c19d42d516bbb70963412c3d343815"
+      },
+      {
+        "path": "package.json",
+        "bytes": 1333,
+        "sha256": "cc13fa471dd11e141c4acd554e31d044a6e55393aae5507880aa75f2301d2e12"
+      },
+      {
+        "path": "README.md",
+        "bytes": 2475,
+        "sha256": "4e8e7d981b558b2105cca4c5f0d6ae260500cb9650cd83d6e49ef0c83cb3c6e4"
+      },
+      {
+        "path": "scripts/agent-cli.mjs",
+        "bytes": 789,
+        "sha256": "e2a5579f775e0e131b759371f6f17b7ff78901a5c911e17fad24a7c305b68b54"
+      },
+      {
+        "path": "scripts/control-center-agent-service.mjs",
+        "bytes": 3941,
+        "sha256": "d39d3a583c65f43a16eb10eb50673a5c34c225336c99f1062e67416fe38da72a"
+      },
+      {
+        "path": "scripts/control-center-runtime.mjs",
+        "bytes": 15672,
+        "sha256": "d20fdb21d230d8916c1c8b6300f74ee73dd01308ccc0b31cdf8817c7aa999450"
+      },
+      {
+        "path": "scripts/deploy-service.mjs",
+        "bytes": 7842,
+        "sha256": "1822e9151a9368447f5b0ad37de11a2c5731da702d0abcc9fa17620b961c6a14"
+      },
+      {
+        "path": "scripts/healthcheck.mjs",
+        "bytes": 3440,
+        "sha256": "b8220636132b8cf3fac5a0ba4a6051b1319190f206114d37d45ebc0cd5a31ce7"
+      },
+      {
+        "path": "scripts/interface-status.mjs",
+        "bytes": 832,
+        "sha256": "d3e2f367cde4934a626eca4c43c9f848c11903a05b8ee6ae412198ade2a45c56"
+      },
+      {
+        "path": "scripts/memory-status.mjs",
+        "bytes": 601,
+        "sha256": "a97157ad5f2aad1d5203a30619e02072321cd89e2cf814ee415e28767092e1ee"
+      },
+      {
+        "path": "scripts/operations-status.mjs",
+        "bytes": 2279,
+        "sha256": "82bf683b3bafea5d47c91a99b6a64b6574cab5cb52008703c1df53a7ac49922d"
+      },
+      {
+        "path": "scripts/process-telegram-queue.mjs",
+        "bytes": 1697,
+        "sha256": "50801c337d333ac9745b40470f6591032c969a321b460740558aa7be2964258d"
+      },
+      {
+        "path": "scripts/redaction.mjs",
+        "bytes": 21544,
+        "sha256": "024aeebb57860e91dd361053c2aec7b4a4a1fa776331b1954a37a588392109b9"
+      },
+      {
+        "path": "scripts/skills-status.mjs",
+        "bytes": 11219,
+        "sha256": "f1c7d47745d640d6f6b7cbe7175429e9cd68c5f97d564ee161c6f47028d6e6ff"
+      },
+      {
+        "path": "scripts/smoke-test.mjs",
+        "bytes": 2563,
+        "sha256": "f0428b23bafb335380e4e581d931261fbf6805c83a899cd7a0e33356d748caff"
+      },
+      {
+        "path": "scripts/telegram-bot.mjs",
+        "bytes": 5151,
+        "sha256": "e0bf04bffc10f2a6644a8ee3e9297df00cf5a27838114f8632c95f081330765e"
+      },
+      {
+        "path": "scripts/tools-status.mjs",
+        "bytes": 525,
+        "sha256": "1b71e4d8d837371fe2764ef347105295e43628ecdf9b868b10eae09257af66a2"
+      },
+      {
+        "path": "skills/candidates.json",
+        "bytes": 3956,
+        "sha256": "2f1cfe3dc272f6b8f8b5d563c63323fa105a2dd5f2d558cbea949c836223910b"
+      },
+      {
+        "path": "skills/lock.json",
+        "bytes": 95,
+        "sha256": "4cdba8041d36ed583e44b8d88b96c5721541f6e338b7b41f67ca996620184b96"
+      },
+      {
+        "path": "skills/manifest.json",
+        "bytes": 4004,
+        "sha256": "27daf4ff4d91d786ebfccd809ba423720a7764129c014d980a8764be897cded5"
+      },
+      {
+        "path": "skills/README.md",
+        "bytes": 765,
+        "sha256": "8e27b59005a622834153a4c66c5ac27935d04ee08e0b4a45a6d88c9a6a228ad1"
+      },
+      {
+        "path": "tests/structure.test.mjs",
+        "bytes": 2304,
+        "sha256": "73e173c11d1a087a57d864529da6b274710a51d2730a0bfb3f36a9ade41d55ee"
+      },
+      {
+        "path": "tools/browser-manual/README.md",
+        "bytes": 289,
+        "sha256": "eb9a662a1f1b60b71e31ea6a21ad6eecf4499530dcb078a52a6faf3d210eaa64"
+      },
+      {
+        "path": "tools/cli-script/README.md",
+        "bytes": 326,
+        "sha256": "9fc8673622f4ed61ff03c36959e18986940e26a13f5440c9e2c53b86ed48e380"
+      },
+      {
+        "path": "tools/manifest.json",
+        "bytes": 2072,
+        "sha256": "067382223759bef09da91b10db1ffcc87ecc92520cf50390e4e9a226e6585473"
+      },
+      {
+        "path": "tools/mcp-api/README.md",
+        "bytes": 313,
+        "sha256": "f1322bc3ad22cf2792b618bb5c6d18805dd04ad63dd9d943718d9cf523fb0414"
+      },
+      {
+        "path": "tools/README.md",
+        "bytes": 1961,
+        "sha256": "9c782262e9e8332005c6103fe5b11005b6c11db57f4f77001119bfdc17dc646e"
+      },
+      {
+        "path": "tools/realtime-voice-codex/README.md",
+        "bytes": 408,
+        "sha256": "fc288014e0eb91595f0d627efb604dd54621f9bd0e3adc5da0430a6a41d83363"
+      },
+      {
+        "path": "tools/skill-pack/README.md",
+        "bytes": 348,
+        "sha256": "243b480c10d6f3ed3c890b770225d9d3b3d983afd50edc6184b0053b639f903e"
+      },
+      {
+        "path": "tools/telegram-adapter/README.md",
+        "bytes": 293,
+        "sha256": "2f3d6bd086ee2dacf43310af7b1d866920ca5ac8b4a6f78a9b753dc692b815cf"
+      },
+      {
+        "path": "tools/workflow/README.md",
+        "bytes": 284,
+        "sha256": "78aeaf89c63e25a3b0ecee9bdca5a4e24b41a7b6965c250d18ec2b5684cf02de"
+      }
+    ],
+    "launchd": [
+      {
+        "path": ".env.example",
+        "bytes": 41,
+        "sha256": "bbe91dd99b15f513adaf786211ff4fcbe2e3e844268a271aee0007652091312f"
+      },
+      {
+        "path": ".gitignore",
+        "bytes": 192,
+        "sha256": "8876cfb25a1e3353f4daae938de32f6eba01c7e3617da4e2dce5df5b811dd061"
+      },
+      {
+        "path": "07_workflows/agent-operating-workflow.md",
+        "bytes": 692,
+        "sha256": "e0cd03d8d073bf8bb79189aac6a0a6c6250481d81a12ebe4c9a50820e8e3d228"
+      },
+      {
+        "path": "AGENTS.md",
+        "bytes": 4599,
+        "sha256": "15ef76ffdbb99ffb2db22fa75b83a77902b25ff1394b4045b31cee1aa73bab1e"
+      },
+      {
+        "path": "delivery/outcome-lineage.json",
+        "bytes": 484,
+        "sha256": "7692bea4ad77b68d43cfd3c9e6ffbc070ac9f011c8ab4c99d5788aca714cbcea"
+      },
+      {
+        "path": "delivery/README.md",
+        "bytes": 473,
+        "sha256": "eebb830f81fcc72e3492e9f2727c30444898b9460e3b5a705e4087c9a1650bac"
+      },
+      {
+        "path": "docs/user-training-guide.md",
+        "bytes": 502,
+        "sha256": "759fe437ac45db2e0c9ea8ddaf209cccd52c1d3827dfed184e5eabaf2db94e18"
+      },
+      {
+        "path": "interfaces/cli/README.md",
+        "bytes": 188,
+        "sha256": "0812b1246f6d39f203abcb5c7a963c9e5b8667fbb75d5e18b387f533c623dc91"
+      },
+      {
+        "path": "interfaces/manifest.json",
+        "bytes": 447,
+        "sha256": "086ecbe635f53842ad4fddaf8b460fc0e395acf0c66ad307e47b48a5f72997ce"
+      },
+      {
+        "path": "interfaces/README.md",
+        "bytes": 601,
+        "sha256": "37158d1fcde58dc728b44162f6141dbf8128212a58fcbd0289966e3e45b324be"
+      },
+      {
+        "path": "interfaces/web/README.md",
+        "bytes": 262,
+        "sha256": "b94538c2a3d8cd7175b5194d8f3fd203eee9a63225f3a7e43e41d972325979b4"
+      },
+      {
+        "path": "logs/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/decisions/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/manifest.json",
+        "bytes": 542,
+        "sha256": "37d20ce58ce784b196f3ede2cce53b9d4cc0216f723938c6251f1c24a0665b4a"
+      },
+      {
+        "path": "memory/notes/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/README.md",
+        "bytes": 521,
+        "sha256": "5d55b8be3b773557550b8f7c557c4d127883247f0a939ff55e02bd1f01f225d9"
+      },
+      {
+        "path": "operations/launchd/com.local.snapshot-agent.plist.template",
+        "bytes": 745,
+        "sha256": "5d1c0cc253848905155797db01c6380a003f7c7abb59114e0eb6559caf63a688"
+      },
+      {
+        "path": "operations/manifest.json",
+        "bytes": 3507,
+        "sha256": "6e2800fa46edb1f295ff9d94cb33c613c61220c4b3265cdd44e70ffee2818799"
+      },
+      {
+        "path": "operations/README.md",
+        "bytes": 1943,
+        "sha256": "98f5c5647f1e90ab74bc56563805d7013f50989ea28801df7df8fe6357b0bfd9"
+      },
+      {
+        "path": "package.json",
+        "bytes": 1114,
+        "sha256": "9a4dee82641ad2300f5798c8b86560803016e0cad2ff59bd874a77ff826956e5"
+      },
+      {
+        "path": "README.md",
+        "bytes": 2244,
+        "sha256": "ae362acb48f456c5a955e2bc11f50809191d2ab1515dcf8e268ad537df34f598"
+      },
+      {
+        "path": "scripts/agent-cli.mjs",
+        "bytes": 786,
+        "sha256": "7f23088d59bd36316e32aa450ed17ce27c0effbc5a333d113bb11be266cbe5f9"
+      },
+      {
+        "path": "scripts/control-center-agent-service.mjs",
+        "bytes": 3941,
+        "sha256": "d39d3a583c65f43a16eb10eb50673a5c34c225336c99f1062e67416fe38da72a"
+      },
+      {
+        "path": "scripts/control-center-runtime.mjs",
+        "bytes": 15672,
+        "sha256": "d20fdb21d230d8916c1c8b6300f74ee73dd01308ccc0b31cdf8817c7aa999450"
+      },
+      {
+        "path": "scripts/deploy-service.mjs",
+        "bytes": 7842,
+        "sha256": "1822e9151a9368447f5b0ad37de11a2c5731da702d0abcc9fa17620b961c6a14"
+      },
+      {
+        "path": "scripts/healthcheck.mjs",
+        "bytes": 3440,
+        "sha256": "b8220636132b8cf3fac5a0ba4a6051b1319190f206114d37d45ebc0cd5a31ce7"
+      },
+      {
+        "path": "scripts/interface-status.mjs",
+        "bytes": 832,
+        "sha256": "d3e2f367cde4934a626eca4c43c9f848c11903a05b8ee6ae412198ade2a45c56"
+      },
+      {
+        "path": "scripts/memory-status.mjs",
+        "bytes": 601,
+        "sha256": "a97157ad5f2aad1d5203a30619e02072321cd89e2cf814ee415e28767092e1ee"
+      },
+      {
+        "path": "scripts/operations-status.mjs",
+        "bytes": 2279,
+        "sha256": "82bf683b3bafea5d47c91a99b6a64b6574cab5cb52008703c1df53a7ac49922d"
+      },
+      {
+        "path": "scripts/redaction.mjs",
+        "bytes": 21544,
+        "sha256": "024aeebb57860e91dd361053c2aec7b4a4a1fa776331b1954a37a588392109b9"
+      },
+      {
+        "path": "scripts/skills-status.mjs",
+        "bytes": 11219,
+        "sha256": "f1c7d47745d640d6f6b7cbe7175429e9cd68c5f97d564ee161c6f47028d6e6ff"
+      },
+      {
+        "path": "scripts/smoke-test.mjs",
+        "bytes": 2187,
+        "sha256": "aa20421ddb8cac47b949426f37f8caea9f6edbfcb8ffe681d7a8fb7c05a7c5ec"
+      },
+      {
+        "path": "scripts/tools-status.mjs",
+        "bytes": 525,
+        "sha256": "1b71e4d8d837371fe2764ef347105295e43628ecdf9b868b10eae09257af66a2"
+      },
+      {
+        "path": "skills/candidates.json",
+        "bytes": 3956,
+        "sha256": "2f1cfe3dc272f6b8f8b5d563c63323fa105a2dd5f2d558cbea949c836223910b"
+      },
+      {
+        "path": "skills/lock.json",
+        "bytes": 95,
+        "sha256": "4cdba8041d36ed583e44b8d88b96c5721541f6e338b7b41f67ca996620184b96"
+      },
+      {
+        "path": "skills/manifest.json",
+        "bytes": 4004,
+        "sha256": "27daf4ff4d91d786ebfccd809ba423720a7764129c014d980a8764be897cded5"
+      },
+      {
+        "path": "skills/README.md",
+        "bytes": 765,
+        "sha256": "8e27b59005a622834153a4c66c5ac27935d04ee08e0b4a45a6d88c9a6a228ad1"
+      },
+      {
+        "path": "tests/structure.test.mjs",
+        "bytes": 1940,
+        "sha256": "b255344a303040cd663c50527ac82e9fe74d3111932249c7601037ac3f3210a2"
+      },
+      {
+        "path": "tools/browser-manual/README.md",
+        "bytes": 289,
+        "sha256": "eb9a662a1f1b60b71e31ea6a21ad6eecf4499530dcb078a52a6faf3d210eaa64"
+      },
+      {
+        "path": "tools/cli-script/README.md",
+        "bytes": 326,
+        "sha256": "9fc8673622f4ed61ff03c36959e18986940e26a13f5440c9e2c53b86ed48e380"
+      },
+      {
+        "path": "tools/manifest.json",
+        "bytes": 1220,
+        "sha256": "00e62ec3508a45f260da3332448173abd9f340d78072bbdce58c591f3f85320c"
+      },
+      {
+        "path": "tools/README.md",
+        "bytes": 1259,
+        "sha256": "dc895b852ae3defce3fff29ec3bdd31ac449206c7fc27115bead73a4e9e463bb"
+      },
+      {
+        "path": "tools/skill-pack/README.md",
+        "bytes": 348,
+        "sha256": "243b480c10d6f3ed3c890b770225d9d3b3d983afd50edc6184b0053b639f903e"
+      },
+      {
+        "path": "tools/workflow/README.md",
+        "bytes": 284,
+        "sha256": "78aeaf89c63e25a3b0ecee9bdca5a4e24b41a7b6965c250d18ec2b5684cf02de"
+      }
+    ],
+    "repository": [
+      {
+        "path": ".env.example",
+        "bytes": 41,
+        "sha256": "bbe91dd99b15f513adaf786211ff4fcbe2e3e844268a271aee0007652091312f"
+      },
+      {
+        "path": ".gitignore",
+        "bytes": 192,
+        "sha256": "8876cfb25a1e3353f4daae938de32f6eba01c7e3617da4e2dce5df5b811dd061"
+      },
+      {
+        "path": "07_workflows/agent-operating-workflow.md",
+        "bytes": 692,
+        "sha256": "e0cd03d8d073bf8bb79189aac6a0a6c6250481d81a12ebe4c9a50820e8e3d228"
+      },
+      {
+        "path": "AGENTS.md",
+        "bytes": 4586,
+        "sha256": "d8f5c89da2c79d9b70c4ad291852dc0c0b3803435ad02afdc448b99fd4cb8520"
+      },
+      {
+        "path": "delivery/outcome-lineage.json",
+        "bytes": 484,
+        "sha256": "7692bea4ad77b68d43cfd3c9e6ffbc070ac9f011c8ab4c99d5788aca714cbcea"
+      },
+      {
+        "path": "delivery/README.md",
+        "bytes": 473,
+        "sha256": "eebb830f81fcc72e3492e9f2727c30444898b9460e3b5a705e4087c9a1650bac"
+      },
+      {
+        "path": "docs/user-training-guide.md",
+        "bytes": 502,
+        "sha256": "759fe437ac45db2e0c9ea8ddaf209cccd52c1d3827dfed184e5eabaf2db94e18"
+      },
+      {
+        "path": "interfaces/cli/README.md",
+        "bytes": 198,
+        "sha256": "d08e06e05d891e2a15ea7a8befc4e77dfc0f9d188337f362cf6a7699d14fbab8"
+      },
+      {
+        "path": "interfaces/codex-project/README.md",
+        "bytes": 282,
+        "sha256": "6b1abdb3d45cd739fc477bd4c88a9f2a94d39b446ed31c8a4b87f1964e5769e3"
+      },
+      {
+        "path": "interfaces/manifest.json",
+        "bytes": 467,
+        "sha256": "773d15b957e0cf910f303ab0cd608c5fafe27ba8c2fe4b27d57f999ee4c1da8e"
+      },
+      {
+        "path": "interfaces/README.md",
+        "bytes": 611,
+        "sha256": "55f846940771e59094158adec1c9c40bdfe8750a2cffb62fdb7af9964cd07dfd"
+      },
+      {
+        "path": "logs/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/decisions/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/manifest.json",
+        "bytes": 542,
+        "sha256": "37d20ce58ce784b196f3ede2cce53b9d4cc0216f723938c6251f1c24a0665b4a"
+      },
+      {
+        "path": "memory/notes/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/README.md",
+        "bytes": 521,
+        "sha256": "5d55b8be3b773557550b8f7c557c4d127883247f0a939ff55e02bd1f01f225d9"
+      },
+      {
+        "path": "operations/manifest.json",
+        "bytes": 3409,
+        "sha256": "6dde3f0c5bd88fe18dd1c6f0da921e359feec8589f1c22e016561f29df8749bf"
+      },
+      {
+        "path": "operations/README.md",
+        "bytes": 1721,
+        "sha256": "de77469b39b3878e956d66011cfdca7934c19d42d516bbb70963412c3d343815"
+      },
+      {
+        "path": "package.json",
+        "bytes": 1114,
+        "sha256": "9a4dee82641ad2300f5798c8b86560803016e0cad2ff59bd874a77ff826956e5"
+      },
+      {
+        "path": "README.md",
+        "bytes": 2231,
+        "sha256": "9372e103a0bc3e4af2645da6735b20bfef4845f7ad6b91e2076ed5d7c3ad747f"
+      },
+      {
+        "path": "scripts/agent-cli.mjs",
+        "bytes": 796,
+        "sha256": "1fab82bdd5e4b4d5c23345b469b52e17117d200b7f9f0f0af92180380b47e7e5"
+      },
+      {
+        "path": "scripts/control-center-agent-service.mjs",
+        "bytes": 3941,
+        "sha256": "d39d3a583c65f43a16eb10eb50673a5c34c225336c99f1062e67416fe38da72a"
+      },
+      {
+        "path": "scripts/control-center-runtime.mjs",
+        "bytes": 15672,
+        "sha256": "d20fdb21d230d8916c1c8b6300f74ee73dd01308ccc0b31cdf8817c7aa999450"
+      },
+      {
+        "path": "scripts/deploy-service.mjs",
+        "bytes": 7842,
+        "sha256": "1822e9151a9368447f5b0ad37de11a2c5731da702d0abcc9fa17620b961c6a14"
+      },
+      {
+        "path": "scripts/healthcheck.mjs",
+        "bytes": 10482,
+        "sha256": "1a092fb5fcb2d7cdb27efe691ca54308278b63536b466855a715b6a7a30277cb"
+      },
+      {
+        "path": "scripts/interface-status.mjs",
+        "bytes": 832,
+        "sha256": "d3e2f367cde4934a626eca4c43c9f848c11903a05b8ee6ae412198ade2a45c56"
+      },
+      {
+        "path": "scripts/memory-status.mjs",
+        "bytes": 601,
+        "sha256": "a97157ad5f2aad1d5203a30619e02072321cd89e2cf814ee415e28767092e1ee"
+      },
+      {
+        "path": "scripts/operations-status.mjs",
+        "bytes": 2279,
+        "sha256": "82bf683b3bafea5d47c91a99b6a64b6574cab5cb52008703c1df53a7ac49922d"
+      },
+      {
+        "path": "scripts/redaction.mjs",
+        "bytes": 21544,
+        "sha256": "024aeebb57860e91dd361053c2aec7b4a4a1fa776331b1954a37a588392109b9"
+      },
+      {
+        "path": "scripts/skills-status.mjs",
+        "bytes": 11219,
+        "sha256": "f1c7d47745d640d6f6b7cbe7175429e9cd68c5f97d564ee161c6f47028d6e6ff"
+      },
+      {
+        "path": "scripts/smoke-test.mjs",
+        "bytes": 9219,
+        "sha256": "b11e54ff81432e95b507c1757f50b487b477293d5ade5a86552ec125abf5f284"
+      },
+      {
+        "path": "scripts/tools-status.mjs",
+        "bytes": 525,
+        "sha256": "1b71e4d8d837371fe2764ef347105295e43628ecdf9b868b10eae09257af66a2"
+      },
+      {
+        "path": "skills/candidates.json",
+        "bytes": 3956,
+        "sha256": "2f1cfe3dc272f6b8f8b5d563c63323fa105a2dd5f2d558cbea949c836223910b"
+      },
+      {
+        "path": "skills/lock.json",
+        "bytes": 95,
+        "sha256": "4cdba8041d36ed583e44b8d88b96c5721541f6e338b7b41f67ca996620184b96"
+      },
+      {
+        "path": "skills/manifest.json",
+        "bytes": 4004,
+        "sha256": "27daf4ff4d91d786ebfccd809ba423720a7764129c014d980a8764be897cded5"
+      },
+      {
+        "path": "skills/README.md",
+        "bytes": 765,
+        "sha256": "8e27b59005a622834153a4c66c5ac27935d04ee08e0b4a45a6d88c9a6a228ad1"
+      },
+      {
+        "path": "sources/README.md",
+        "bytes": 431,
+        "sha256": "7935017039c4327277990e2e1ac990fd6016b8ebf7df6efc15488eaa338e3230"
+      },
+      {
+        "path": "sources/repository-modules.json",
+        "bytes": 1112,
+        "sha256": "615b9f21018c21a0df091c76560737f0d3d1a8e8524c6cf9936f5b408eaa5985"
+      },
+      {
+        "path": "tests/structure.test.mjs",
+        "bytes": 1910,
+        "sha256": "526ecd29c0c6a591b4da295339851227a991d2366b7b239ce1db618370219b4e"
+      },
+      {
+        "path": "tools/cli-script/README.md",
+        "bytes": 326,
+        "sha256": "9fc8673622f4ed61ff03c36959e18986940e26a13f5440c9e2c53b86ed48e380"
+      },
+      {
+        "path": "tools/manifest.json",
+        "bytes": 985,
+        "sha256": "70b283d0440a3ce69f7d5a001b3a06bb282d00ea58cdb1a044d569a803f729af"
+      },
+      {
+        "path": "tools/README.md",
+        "bytes": 1074,
+        "sha256": "e84857075163aa987801c289a999193de4bc6ea808975feef791da4393a50a40"
+      },
+      {
+        "path": "tools/skill-pack/README.md",
+        "bytes": 348,
+        "sha256": "243b480c10d6f3ed3c890b770225d9d3b3d983afd50edc6184b0053b639f903e"
+      },
+      {
+        "path": "tools/workflow/README.md",
+        "bytes": 284,
+        "sha256": "78aeaf89c63e25a3b0ecee9bdca5a4e24b41a7b6965c250d18ec2b5684cf02de"
+      }
+    ],
+    "escaping": [
+      {
+        "path": ".env.example",
+        "bytes": 50,
+        "sha256": "b4ba8cbefcdaef1d58a605fdffb242da0acdedbed4a35f61631339c2850e0337"
+      },
+      {
+        "path": ".gitignore",
+        "bytes": 192,
+        "sha256": "8876cfb25a1e3353f4daae938de32f6eba01c7e3617da4e2dce5df5b811dd061"
+      },
+      {
+        "path": "07_workflows/agent-operating-workflow.md",
+        "bytes": 712,
+        "sha256": "ad3407f540cad8e218c6344ffc72a557b4689904bc31003e55d498b283af0e1d"
+      },
+      {
+        "path": "AGENTS.md",
+        "bytes": 4606,
+        "sha256": "0442a78420531059412323419b31b1a379494b112afaad9cb3bec53544b2ec5a"
+      },
+      {
+        "path": "delivery/outcome-lineage.json",
+        "bytes": 484,
+        "sha256": "7692bea4ad77b68d43cfd3c9e6ffbc070ac9f011c8ab4c99d5788aca714cbcea"
+      },
+      {
+        "path": "delivery/README.md",
+        "bytes": 473,
+        "sha256": "eebb830f81fcc72e3492e9f2727c30444898b9460e3b5a705e4087c9a1650bac"
+      },
+      {
+        "path": "docs/user-training-guide.md",
+        "bytes": 502,
+        "sha256": "759fe437ac45db2e0c9ea8ddaf209cccd52c1d3827dfed184e5eabaf2db94e18"
+      },
+      {
+        "path": "interfaces/cli/README.md",
+        "bytes": 198,
+        "sha256": "d08e06e05d891e2a15ea7a8befc4e77dfc0f9d188337f362cf6a7699d14fbab8"
+      },
+      {
+        "path": "interfaces/codex-project/README.md",
+        "bytes": 282,
+        "sha256": "6b1abdb3d45cd739fc477bd4c88a9f2a94d39b446ed31c8a4b87f1964e5769e3"
+      },
+      {
+        "path": "interfaces/manifest.json",
+        "bytes": 483,
+        "sha256": "4a28517c61716f9f4e89e310f5672b273fb8ec913a0f4698d913492b90ac7721"
+      },
+      {
+        "path": "interfaces/README.md",
+        "bytes": 611,
+        "sha256": "55f846940771e59094158adec1c9c40bdfe8750a2cffb62fdb7af9964cd07dfd"
+      },
+      {
+        "path": "logs/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/decisions/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/manifest.json",
+        "bytes": 558,
+        "sha256": "623c1dac365f05a39d6145651c32aa1fff922b37361037f5a0a11da0a2ceae1d"
+      },
+      {
+        "path": "memory/notes/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "memory/README.md",
+        "bytes": 521,
+        "sha256": "5d55b8be3b773557550b8f7c557c4d127883247f0a939ff55e02bd1f01f225d9"
+      },
+      {
+        "path": "operations/manifest.json",
+        "bytes": 3443,
+        "sha256": "19bdac66bdce308bba4eb2a4d887588a71c428dfbf15cc82cb64c34565ae1932"
+      },
+      {
+        "path": "operations/README.md",
+        "bytes": 1730,
+        "sha256": "3969e11b71492703632f95bc6d250c08635755d95a949530adc29174aab76eab"
+      },
+      {
+        "path": "package.json",
+        "bytes": 1123,
+        "sha256": "2001c8d18599511c0e1583995fc6086bf0b294f2da02eb773f895093c31197d6"
+      },
+      {
+        "path": "README.md",
+        "bytes": 2251,
+        "sha256": "742e2fc8ccd174ebc2fc7f348c7564cfb4e5d71a7c996983c1f1e5988f3b2436"
+      },
+      {
+        "path": "scripts/agent-cli.mjs",
+        "bytes": 812,
+        "sha256": "f311a7f8415cc32020d52ea20248c0bda74b5a93493e2ea735c838f296482d41"
+      },
+      {
+        "path": "scripts/control-center-agent-service.mjs",
+        "bytes": 3973,
+        "sha256": "564e1743e8e9a2b3035f4228446fca3e9c7ef6ccdf24af113fcad5f47f7c7acb"
+      },
+      {
+        "path": "scripts/control-center-runtime.mjs",
+        "bytes": 15672,
+        "sha256": "d20fdb21d230d8916c1c8b6300f74ee73dd01308ccc0b31cdf8817c7aa999450"
+      },
+      {
+        "path": "scripts/deploy-service.mjs",
+        "bytes": 7851,
+        "sha256": "bef1dd9f1393036e797e99a0df26dc9c0998733f0e743cba60b2850822986f02"
+      },
+      {
+        "path": "scripts/healthcheck.mjs",
+        "bytes": 3440,
+        "sha256": "b8220636132b8cf3fac5a0ba4a6051b1319190f206114d37d45ebc0cd5a31ce7"
+      },
+      {
+        "path": "scripts/interface-status.mjs",
+        "bytes": 832,
+        "sha256": "d3e2f367cde4934a626eca4c43c9f848c11903a05b8ee6ae412198ade2a45c56"
+      },
+      {
+        "path": "scripts/memory-status.mjs",
+        "bytes": 601,
+        "sha256": "a97157ad5f2aad1d5203a30619e02072321cd89e2cf814ee415e28767092e1ee"
+      },
+      {
+        "path": "scripts/operations-status.mjs",
+        "bytes": 2279,
+        "sha256": "82bf683b3bafea5d47c91a99b6a64b6574cab5cb52008703c1df53a7ac49922d"
+      },
+      {
+        "path": "scripts/redaction.mjs",
+        "bytes": 21544,
+        "sha256": "024aeebb57860e91dd361053c2aec7b4a4a1fa776331b1954a37a588392109b9"
+      },
+      {
+        "path": "scripts/skills-status.mjs",
+        "bytes": 11219,
+        "sha256": "f1c7d47745d640d6f6b7cbe7175429e9cd68c5f97d564ee161c6f47028d6e6ff"
+      },
+      {
+        "path": "scripts/smoke-test.mjs",
+        "bytes": 2187,
+        "sha256": "aa20421ddb8cac47b949426f37f8caea9f6edbfcb8ffe681d7a8fb7c05a7c5ec"
+      },
+      {
+        "path": "scripts/tools-status.mjs",
+        "bytes": 525,
+        "sha256": "1b71e4d8d837371fe2764ef347105295e43628ecdf9b868b10eae09257af66a2"
+      },
+      {
+        "path": "skills/candidates.json",
+        "bytes": 3956,
+        "sha256": "2f1cfe3dc272f6b8f8b5d563c63323fa105a2dd5f2d558cbea949c836223910b"
+      },
+      {
+        "path": "skills/lock.json",
+        "bytes": 111,
+        "sha256": "1675dceec4db82727850d0a591d9896ce5a2abe1106eb3a829a44ab2043509c4"
+      },
+      {
+        "path": "skills/manifest.json",
+        "bytes": 4020,
+        "sha256": "d7aabcb5fc60ab9ac43c8a26fa8d1a3785e8c70a081cfc7c409bb09473f836a1"
+      },
+      {
+        "path": "skills/README.md",
+        "bytes": 765,
+        "sha256": "8e27b59005a622834153a4c66c5ac27935d04ee08e0b4a45a6d88c9a6a228ad1"
+      },
+      {
+        "path": "tests/structure.test.mjs",
+        "bytes": 1856,
+        "sha256": "e9a8cf3f6e8eea9d434cd31dfe94991528fea6e7982cc34e7bd2c941fd895363"
+      },
+      {
+        "path": "tools/cli-script/README.md",
+        "bytes": 326,
+        "sha256": "9fc8673622f4ed61ff03c36959e18986940e26a13f5440c9e2c53b86ed48e380"
+      },
+      {
+        "path": "tools/manifest.json",
+        "bytes": 1001,
+        "sha256": "83d29031d7de197ae441afa03186b67cfe8d9f3d9aed9f5b224ca66352a78ce0"
+      },
+      {
+        "path": "tools/README.md",
+        "bytes": 1074,
+        "sha256": "e84857075163aa987801c289a999193de4bc6ea808975feef791da4393a50a40"
+      },
+      {
+        "path": "tools/skill-pack/README.md",
+        "bytes": 348,
+        "sha256": "243b480c10d6f3ed3c890b770225d9d3b3d983afd50edc6184b0053b639f903e"
+      },
+      {
+        "path": "tools/workflow/README.md",
+        "bytes": 284,
+        "sha256": "78aeaf89c63e25a3b0ecee9bdca5a4e24b41a7b6965c250d18ec2b5684cf02de"
+      }
+    ]
+  }
+}

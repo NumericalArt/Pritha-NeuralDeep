@@ -1,0 +1,416 @@
+#!/usr/bin/env node
+
+import { execFileSync, spawn } from "node:child_process";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
+const ROOT = process.cwd();
+const action = process.argv[2] || "status";
+const manifestPath = path.join(ROOT, "operations", "manifest.json");
+
+if (!["status", "start", "stop"].includes(action)) {
+  console.error("Usage: node scripts/control-center-runtime.mjs status|start|stop");
+  process.exit(2);
+}
+
+if (!existsSync(manifestPath)) {
+  console.error("Missing operations/manifest.json");
+  process.exit(1);
+}
+
+const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+const runtime = manifest.control_center_runtime || {};
+const manager = runtime.manager || "none";
+
+function run(bin, args, options = {}) {
+  try {
+    const output = execFileSync(bin, args, {
+      cwd: ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: options.timeout || 30000,
+      env: { ...process.env, ...(runtime.env || {}) },
+    }).trim();
+    return { ok: true, output };
+  } catch (error) {
+    const output = [error.stdout, error.stderr, error.message].filter(Boolean).join("\n").trim();
+    if (options.allowFail) return { ok: false, output };
+    console.error(output || error.message);
+    process.exit(1);
+  }
+}
+
+function pidFilePath() {
+  const pidFile = runtime.pid_file;
+  if (!pidFile) return "";
+  const stateRoot = path.join(ROOT, ".state");
+  const resolved = path.resolve(ROOT, String(pidFile));
+  if (!resolved.startsWith(stateRoot + path.sep)) {
+    console.error("control_center_runtime.pid_file must remain inside .state/");
+    process.exit(1);
+  }
+  return resolved;
+}
+
+function processAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function readPidFile() {
+  const filePath = pidFilePath();
+  if (!filePath || !existsSync(filePath)) return 0;
+  const stat = lstatSync(filePath);
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 64) return 0;
+  const pid = Number(readFileSync(filePath, "utf8").trim());
+  return Number.isInteger(pid) ? pid : 0;
+}
+
+function writePidFile(pid) {
+  const filePath = pidFilePath();
+  if (!filePath) return;
+  mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
+  chmodSync(path.dirname(filePath), 0o700);
+  if (existsSync(filePath) && lstatSync(filePath).isSymbolicLink()) {
+    console.error("Refusing symlink pid file.");
+    process.exit(1);
+  }
+  const temporaryPath = `${filePath}.${process.pid}.tmp`;
+  writeFileSync(temporaryPath, `${pid}\n`, { mode: 0o600 });
+  renameSync(temporaryPath, filePath);
+  chmodSync(filePath, 0o600);
+}
+
+function removePidFile() {
+  const filePath = pidFilePath();
+  if (filePath && existsSync(filePath)) rmSync(filePath);
+}
+
+function screenSessionExists(session) {
+  if (!session) return false;
+  const result = run(runtime.screen_bin || "screen", ["-ls"], { allowFail: true });
+  if (!result.output) return false;
+  return result.output.split(/\r?\n/).some((line) => line.includes(`.${session}`) || line.trim() === session);
+}
+
+function fallbackProcessSpec() {
+  const spec = runtime.fallback_stop_process;
+  if (!spec || typeof spec !== "object") return null;
+  const port = Number(spec.port);
+  const commandContains = Array.isArray(spec.command_contains) ? spec.command_contains.map(String).filter(Boolean) : [];
+  if (!Number.isInteger(port) || port <= 0 || commandContains.length === 0) return null;
+  return {
+    port,
+    commandContains,
+    cwd: path.resolve(ROOT, String(spec.cwd || ".")),
+    signal: String(spec.signal || "SIGTERM"),
+    timeoutMs: Number(spec.timeout_ms || runtime.stop_timeout_ms || 10000),
+  };
+}
+
+function listeningPids(port) {
+  const result = run("lsof", ["-nP", `-tiTCP:${port}`, "-sTCP:LISTEN"], { allowFail: true });
+  return result.output
+    .split(/\s+/)
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0);
+}
+
+function processCommand(pid) {
+  return run("ps", ["-p", String(pid), "-o", "command="], { allowFail: true }).output.trim();
+}
+
+function processCwd(pid) {
+  const result = run("lsof", ["-a", "-p", String(pid), "-d", "cwd", "-Fn"], { allowFail: true });
+  const line = result.output.split(/\r?\n/).find((entry) => entry.startsWith("n"));
+  return line ? line.slice(1).trim() : "";
+}
+
+function matchesManagedProcess(pid) {
+  const argv = Array.isArray(runtime.start_argv) ? runtime.start_argv.map(String).filter(Boolean) : [];
+  if (argv.length === 0) return false;
+  const cwd = processCwd(pid);
+  const command = processCommand(pid);
+  return cwd === ROOT && argv.every((token) => command.includes(token));
+}
+
+function matchingFallbackPids() {
+  const spec = fallbackProcessSpec();
+  if (!spec) return [];
+  return listeningPids(spec.port).filter((pid) => {
+    const cwd = processCwd(pid);
+    const command = processCommand(pid);
+    return cwd === spec.cwd && spec.commandContains.every((token) => command.includes(token));
+  });
+}
+
+async function stopFallbackProcesses(reason) {
+  const spec = fallbackProcessSpec();
+  if (!spec) return false;
+  const pids = matchingFallbackPids();
+  if (pids.length === 0) return false;
+  console.log(`${reason}; stopping matching fallback process pid(s): ${pids.join(", ")}`);
+  for (const pid of pids) {
+    try {
+      process.kill(pid, spec.signal);
+    } catch (error) {
+      console.error(`Failed to signal pid ${pid}: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    }
+  }
+  const health = await waitForHealth("down", spec.timeoutMs);
+  if (health.status === "ok") {
+    console.error(`Fallback process stop requested but health is still ok: ${health.url || "unknown url"}`);
+    process.exit(1);
+  }
+  console.log(`Stopped fallback process pid(s): ${pids.join(", ")}`);
+  return true;
+}
+
+function runPrestart() {
+  const argv = runtime.prestart_argv;
+  if (!Array.isArray(argv) || argv.length === 0) return;
+  console.log(`Running prestart: ${argv.join(" ")}`);
+  run(argv[0], argv.slice(1), { timeout: Number(runtime.prestart_timeout_ms || 120000) });
+}
+
+function launchdTarget() {
+  const uid = process.getuid ? process.getuid() : "";
+  const label = runtime.launchd_label || manifest.service_label;
+  return {
+    domain: uid === "" ? "" : `gui/${uid}`,
+    label,
+    target: uid === "" ? label : `gui/${uid}/${label}`,
+    plist: String(runtime.launch_agent_path || manifest.launch_agent_path || "").replace(/^~[/]/, `${process.env.HOME || ""}/`),
+  };
+}
+
+async function probeHealth() {
+  const url = runtime.health_url || manifest.health_url || (manifest.local_upstream_url ? `${String(manifest.local_upstream_url).replace(/[/]$/, "")}/api/health` : "");
+  if (!url || typeof fetch !== "function") return { status: "unknown", detail: "No health URL or fetch unavailable." };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 1500);
+  try {
+    const response = await fetch(url, { signal: controller.signal, cache: "no-store" });
+    return { status: response.ok ? "ok" : "failed", detail: `HTTP ${response.status}`, url };
+  } catch (error) {
+    return { status: "failed", detail: error instanceof Error ? error.message : "health probe failed", url };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function waitForHealth(expected, timeoutMs = 10000) {
+  const started = Date.now();
+  let last = await probeHealth();
+  while (Date.now() - started <= timeoutMs) {
+    last = await probeHealth();
+    if (expected === "up" && last.status === "ok") return last;
+    if (expected === "down" && last.status !== "ok") return last;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return last;
+}
+
+async function printStatus() {
+  console.log(`Agent: ${manifest.agent || manifest.id || "unknown"}`);
+  console.log(`Manager: ${manager}`);
+  if (manager === "detached-node-process") {
+    const pid = readPidFile();
+    console.log(`Pid file: ${runtime.pid_file || "missing"}; pid=${pid || "none"}; alive=${processAlive(pid)}`);
+  }
+  if (manager === "screen") console.log(`Screen session: ${runtime.screen_session || "missing"}; exists=${screenSessionExists(runtime.screen_session)}`);
+  if (manager === "launchd") {
+    const target = launchdTarget();
+    const status = run("launchctl", ["print", target.target], { allowFail: true });
+    console.log(`Launchd target: ${target.target}; loaded=${status.ok}`);
+  }
+  const health = await probeHealth();
+  console.log(`Health: ${health.status}; ${health.detail}`);
+}
+
+async function startDetachedNodeProcess() {
+  const argv = runtime.start_argv;
+  if (!Array.isArray(argv) || argv.length === 0) {
+    console.error("detached-node-process manager requires control_center_runtime.start_argv.");
+    process.exit(1);
+  }
+  const existingPid = readPidFile();
+  if (processAlive(existingPid)) {
+    if (!matchesManagedProcess(existingPid)) {
+      removePidFile();
+      console.error("Stale pid file points to a process outside this managed runtime; refusing to reuse it.");
+      process.exit(1);
+    }
+    const health = await waitForHealth("up", Number(runtime.readiness_timeout_ms || 10000));
+    if (health.status === "ok") {
+      console.log(`Detached process already running: ${existingPid}`);
+      return;
+    }
+    console.error(`Pid file process is alive but health did not pass: ${health.detail}`);
+    process.exit(1);
+  }
+  const currentHealth = await probeHealth();
+  if (currentHealth.status === "ok") {
+    console.log(`Health already ok without pid file: ${currentHealth.url || "unknown url"}`);
+    return;
+  }
+  runPrestart();
+  const child = spawn(argv[0], argv.slice(1), {
+    cwd: ROOT,
+    detached: true,
+    stdio: "ignore",
+    env: { ...process.env, ...(runtime.env || {}) },
+  });
+  child.unref();
+  writePidFile(child.pid);
+  const health = await waitForHealth("up", Number(runtime.readiness_timeout_ms || 10000));
+  if (health.status !== "ok") {
+    if (processAlive(child.pid)) process.kill(child.pid, "SIGTERM");
+    removePidFile();
+    console.error(`Started detached process but health did not pass: ${health.detail}`);
+    process.exit(1);
+  }
+  console.log(`Started detached process: ${child.pid}`);
+}
+
+async function stopDetachedNodeProcess() {
+  const pid = readPidFile();
+  if (processAlive(pid)) {
+    if (!matchesManagedProcess(pid)) {
+      removePidFile();
+      console.error("Stale pid file points to a process outside this managed runtime; refusing to signal it.");
+      process.exit(1);
+    }
+    process.kill(pid, runtime.stop_signal || "SIGTERM");
+    const health = await waitForHealth("down", Number(runtime.stop_timeout_ms || 10000));
+    if (health.status === "ok") {
+      console.error(`Stopped pid ${pid} but health is still ok: ${health.url || "unknown url"}`);
+      process.exit(1);
+    }
+    removePidFile();
+    console.log(`Stopped detached process: ${pid}`);
+    return;
+  }
+  removePidFile();
+  if (await stopFallbackProcesses("Pid file is missing while fallback process is listening")) return;
+  console.log("Detached process is not running.");
+}
+
+async function startScreen() {
+  const session = runtime.screen_session;
+  const argv = runtime.start_argv;
+  if (!session || !Array.isArray(argv) || argv.length === 0) {
+    console.error("screen manager requires control_center_runtime.screen_session and start_argv.");
+    process.exit(1);
+  }
+  if (screenSessionExists(session)) {
+    console.log(`Screen session already exists: ${session}`);
+    return;
+  }
+  const currentHealth = await probeHealth();
+  if (currentHealth.status === "ok") {
+    console.error(`Health is ok but managed screen session is missing: ${currentHealth.url || "unknown url"}`);
+    process.exit(1);
+  }
+  runPrestart();
+  run(runtime.screen_bin || "screen", ["-dmS", session, ...argv]);
+  const health = await waitForHealth("up", Number(runtime.readiness_timeout_ms || 10000));
+  if (health.status !== "ok") {
+    console.error(`Started screen session but health did not pass: ${health.detail}`);
+    process.exit(1);
+  }
+  console.log(`Started screen session: ${session}`);
+}
+
+async function stopScreen() {
+  const session = runtime.screen_session;
+  if (!session) {
+    console.error("screen manager requires control_center_runtime.screen_session.");
+    process.exit(1);
+  }
+  if (!screenSessionExists(session)) {
+    const health = await probeHealth();
+    if (health.status === "ok") {
+      if (await stopFallbackProcesses("Screen session is missing while health is ok")) return;
+      console.error(`Screen session is not running but health is still ok: ${health.url || "unknown url"}`);
+      process.exit(1);
+    }
+    console.log(`Screen session is not running: ${session}`);
+    return;
+  }
+  run(runtime.screen_bin || "screen", ["-S", session, "-X", "quit"], { allowFail: true });
+  const health = await waitForHealth("down", Number(runtime.stop_timeout_ms || 10000));
+  if (health.status === "ok") {
+    if (await stopFallbackProcesses("Screen stop left health ok")) return;
+    console.error(`Stopped screen session but health is still ok: ${health.url || "unknown url"}`);
+    process.exit(1);
+  }
+  console.log(`Stopped screen session: ${session}`);
+}
+
+async function startLaunchd() {
+  const target = launchdTarget();
+  if (!target.label || !target.plist) {
+    console.error("launchd manager requires service_label/launchd_label and launch_agent_path.");
+    process.exit(1);
+  }
+  runPrestart();
+  const loaded = run("launchctl", ["print", target.target], { allowFail: true }).ok;
+  if (!loaded) {
+    if (!existsSync(target.plist)) {
+      console.error(`LaunchAgent plist is missing: ${target.plist}`);
+      process.exit(1);
+    }
+    run("launchctl", ["bootstrap", target.domain, target.plist]);
+  }
+  run("launchctl", ["enable", target.target], { allowFail: true });
+  run("launchctl", ["kickstart", "-k", target.target], { allowFail: true });
+  const health = await waitForHealth("up", Number(runtime.readiness_timeout_ms || 15000));
+  if (health.status !== "ok") {
+    console.error(`Launchd start did not become healthy: ${health.detail}`);
+    process.exit(1);
+  }
+  console.log(`Started launchd target: ${target.target}`);
+}
+
+async function stopLaunchd() {
+  const target = launchdTarget();
+  if (!target.label) {
+    console.error("launchd manager requires service_label/launchd_label.");
+    process.exit(1);
+  }
+  run("launchctl", ["bootout", target.target], { allowFail: true });
+  if (target.domain && target.plist) run("launchctl", ["bootout", target.domain, target.plist], { allowFail: true });
+  const health = await waitForHealth("down", Number(runtime.stop_timeout_ms || 10000));
+  if (health.status === "ok") {
+    console.error(`Launchd stop requested but health is still ok: ${health.url || "unknown url"}`);
+    process.exit(1);
+  }
+  console.log(`Stopped launchd target: ${target.target}`);
+}
+
+if (action === "status") {
+  await printStatus();
+} else if (manager === "detached-node-process" && action === "start") {
+  await startDetachedNodeProcess();
+} else if (manager === "detached-node-process" && action === "stop") {
+  await stopDetachedNodeProcess();
+} else if (manager === "screen" && action === "start") {
+  await startScreen();
+} else if (manager === "screen" && action === "stop") {
+  await stopScreen();
+} else if (manager === "launchd" && action === "start") {
+  await startLaunchd();
+} else if (manager === "launchd" && action === "stop") {
+  await stopLaunchd();
+} else {
+  console.error(`Control Center runtime manager is not executable: ${manager}`);
+  process.exit(1);
+}
+

@@ -1,0 +1,7 @@
+/* Original Pritha colors that were promoted to shared text roles during the
+   graphite transfer. Everything else inherits the unchanged canonical tokens
+   and original declaration fallbacks in globals.css. */
+:root[data-theme="classic"] .activity-label .dot { background: #5571a6; }
+:root[data-theme="classic"] :is(.agent-action.restore, .mobile-agent-action.restore) { color: #f2e9ff; }
+:root[data-theme="classic"] .add-symbol { color: #aab3cb; }
+:root[data-theme="classic"] :is(.child-core.dim, .legend-dot.dim) { fill: #62708b; background: #62708b; }

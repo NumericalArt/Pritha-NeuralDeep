@@ -1,0 +1,239 @@
+---
+id: {{pritha:value0}}
+type: scaffold-report
+agent_id: {{pritha:value1}}
+project_path: {{pritha:value2}}
+scaffold_adapter: {{pritha:value3}}
+readiness_scope: scaffold-only
+status: {{pritha:value4}}
+created: {{pritha:value5}}
+updated: {{pritha:value6}}
+topics:
+  - agent-engineering
+  - scaffold
+  - {{pritha:value7}}
+tools:
+  - Codex
+  - AGENTS.md
+  - {{pritha:value8}}
+  - {{pritha:value9}}
+agent_platforms:
+  - Codex
+model_context:
+  - unknown
+runtime_environment:
+  - {{pritha:value10}}
+config_surfaces:
+  - AGENTS.md
+  - .env.example
+  - scripts
+portability: {{pritha:value11}}
+sources:
+  - {{pritha:value12}}
+{{pritha:value13}}  - 07_workflows/agents-mother.md
+  - 04_standards/agent-creation-harness.md
+related:
+  agent_contracts:
+    - {{pritha:value14}}
+  workflows:
+    - 07_workflows/agents-mother.md
+  standards:
+    - 04_standards/agent-creation-harness.md
+supersedes: []
+superseded_by: []
+freshness_status: current
+source_published: {{pritha:value15}}
+source_updated: {{pritha:value16}}
+source_version: scaffold v1
+retrieved: {{pritha:value17}}
+verified: {{pritha:value18}}
+valid_for: {{pritha:value19}}
+temporal_status: {{pritha:value20}}
+contract_fingerprint: {{pritha:value21}}
+research_gate_status: {{pritha:value22}}
+research_gate_source_status: {{pritha:value23}}
+memory_research_status: {{pritha:value24}}
+external_research_status: {{pritha:value25}}
+synthesis_status: {{pritha:value26}}
+pattern_pack: {{pritha:value27}}
+pattern_pack_lock: {{pritha:value28}}
+pattern_pack_contract_fingerprint: {{pritha:value29}}
+repository_research_required: {{pritha:value30}}
+repository_research_policy: {{pritha:value31}}
+repository_research_mode: {{pritha:value32}}
+repository_research_status: {{pritha:value33}}
+repository_research_completed_at: {{pritha:value34}}
+repository_research_online_status: {{pritha:value35}}
+repository_research_lock: {{pritha:value36}}
+repository_candidate_count: {{pritha:value37}}
+repository_adoption_status: {{pritha:value38}}
+repository_research_scopes:
+{{pritha:value39}}
+external_evidence_count: {{pritha:value40}}
+external_evidence_topics: {{pritha:value41}}
+external_research_lock: {{pritha:value42}}
+synthesis_lock: {{pritha:value43}}
+research_content_lock: {{pritha:value44}}
+experimental_scaffold: {{pritha:value45}}
+experimental_overrides:{{pritha:value46}}
+outcome_spec_status: {{pritha:value47}}
+outcome_spec_id: {{pritha:value48}}
+outcome_semantic_lock: {{pritha:value49}}
+outcome_document_lock: {{pritha:value50}}
+outcome_approval_evidence: {{pritha:value51}}
+delivery_git_status: {{pritha:value52}}
+delivery_git_revision: {{pritha:value53}}
+control_center_card_status: {{pritha:value54}}
+card_refs:
+{{pritha:value55}}
+card_blockers:{{pritha:value56}}
+next_card_actions:
+{{pritha:value57}}
+  - node scripts/pritha.mjs card-readiness {{pritha:value58}}
+---
+
+# Agent Scaffold Report: {{pritha:value59}}
+
+Date: {{pritha:value60}}
+Status: {{pritha:value61}}
+
+## Summary
+
+- Agent name: {{pritha:value62}}
+- Target folder: {{pritha:value63}}
+- Contract: {{pritha:value64}}
+- Outcome Spec: {{pritha:value65}}
+- Outcome approval evidence: {{pritha:value66}}
+- Delivery Git baseline: {{pritha:value67}}{{pritha:value68}}
+- Runtime family: {{pritha:value69}}
+- Scaffold adapter: {{pritha:value70}}; readiness scope: scaffold-only
+- Interfaces: {{pritha:value71}}
+- Telegram mode: {{pritha:value72}}
+- Deployment target: {{pritha:value73}}
+- Deployment profile: {{pritha:value74}}
+- Memory profile: {{pritha:value75}}
+- Tool profiles: {{pritha:value76}}
+- Skill policy: needs={{pritha:value77}}; sources={{pritha:value78}}; install={{pritha:value79}}; mutation={{pritha:value80}}
+- Research report: {{pritha:value81}}
+- Research gate: {{pritha:value82}}
+- External verification: {{pritha:value83}}
+- Repository research: {{pritha:value84}}
+- Repository adoption mode: {{pritha:value85}}
+- Repository module installation: {{pritha:value86}}
+- Service mode: {{pritha:value87}}
+- Autostart: {{pritha:value88}}
+- Local upstream URL: {{pritha:value89}}
+- Health URL: {{pritha:value90}}
+- Proactive mode: {{pritha:value91}}
+- Result: {{pritha:value92}}
+- Experimental scaffold: {{pritha:value93}}
+- Experimental overrides: {{pritha:value94}}
+
+{{pritha:value95}}
+
+## Generated structure
+
+{{pritha:value96}}
+
+## Environment setup
+
+- Required secrets: {{pritha:value97}}
+- `.env.example` created: yes
+- Dependencies installed: no external dependencies installed
+- Services configured: {{pritha:value98}}; project-local runtime contract generated, but no service was started or installed
+- Autostart configured: {{pritha:value99}}; installation requires explicit approval
+
+## Verification
+
+| Check | Result | Notes |
+| --- | --- | --- |
+| Structure validation | {{pritha:value100}} | `node scripts/smoke-test.mjs` |
+| Smoke test | {{pritha:value101}} | {{pritha:value102}} |
+| Healthcheck | {{pritha:value103}} | {{pritha:value104}} |
+| Telegram adapter test | {{pritha:value105}} | {{pritha:value106}} |
+| Operations status | pending | `{{pritha:value107}}` |
+| Skills status | pending | `node scripts/skills-status.mjs` |
+| Pritha memory research | {{pritha:value108}} | {{pritha:value109}} |
+| Research gate | {{pritha:value110}} | {{pritha:value111}} |
+| Memory research gate | {{pritha:value112}} | Machine-readable research report status |
+| External verification | {{pritha:value113}} | Machine-readable external research status |
+| Synthesis gate | {{pritha:value114}} | Memory vs external comparison status |
+| Repository research | {{pritha:value115}} | Discovery is advisory; selected-module readiness is recomputed from contract and evidence |
+| Repository discovery safety | pass | Scaffold did not clone, install, execute, vendor, link or activate repository code |
+| Reference-only exact evidence | {{pritha:value116}} | Every selected canonical repository requires current matching `github-repository-review` evidence |
+| Selected repository exact pin | {{pritha:value117}} | {{pritha:value118}} |
+| Selected repository module tree | {{pritha:value119}} | {{pritha:value120}} |
+| Selected repository license | {{pritha:value121}} | {{pritha:value122}} |
+| Selected repository pin-bound license source | {{pritha:value123}} | {{pritha:value124}} |
+| Selected repository license content identity | {{pritha:value125}} | blob {{pritha:value126}}; sha256 {{pritha:value127}}; SPDX {{pritha:value128}}; scope {{pritha:value129}} |
+| Selected repository security/permissions | {{pritha:value130}} | {{pritha:value131}} |
+| Selected repository eval/user approval | {{pritha:value132}} | {{pritha:value133}} |
+| Selected repository evidence/synthesis | {{pritha:value134}} | github-repository-review={{pritha:value135}}; synthesis={{pritha:value136}} |
+| Control Center runtime contract | {{pritha:value137}} | {{pritha:value138}} |
+| Control Center card readiness | {{pritha:value139}} | {{pritha:value140}}; `node scripts/pritha.mjs card-readiness {{pritha:value141}}` |
+| Documentation review | pass | README and training guide generated |
+| Outcome Spec lineage | {{pritha:value142}} | Scaffold readiness is separate from outcome verification and acceptance |
+
+## Research and repository gate
+
+- Research report: {{pritha:value143}}
+- Contract fingerprint: {{pritha:value144}}
+- Memory research status: {{pritha:value145}}
+- External research status: {{pritha:value146}}
+- External evidence count/topics: {{pritha:value147}} / {{pritha:value148}}
+- External research lock: {{pritha:value149}}
+- Synthesis status/lock: {{pritha:value150}} / {{pritha:value151}}
+- Repository research required: {{pritha:value152}}
+- Repository policy/mode/scopes: {{pritha:value153}}
+- Repository research/online status: {{pritha:value154}}
+- Repository research lock: {{pritha:value155}}
+- Candidate count: {{pritha:value156}}
+- Repository adoption mode/status: {{pritha:value157}}
+- Selected repository/module: {{pritha:value158}}
+- Exact immutable pin: {{pritha:value159}}
+- License decision: {{pritha:value160}}
+- Pin-bound license source: {{pritha:value161}}
+- License blob/content identity: {{pritha:value162}} / {{pritha:value163}}
+- Verified SPDX/scope: {{pritha:value164}} / {{pritha:value165}}
+- Security and permissions decision: {{pritha:value166}}
+- Eval result: {{pritha:value167}}
+- github-repository-review evidence: {{pritha:value168}}
+- Evidence-to-memory synthesis: {{pritha:value169}}
+- User approval: {{pritha:value170}}
+- Installation status: {{pritha:value171}}
+
+## Control Center Card Readiness
+
+- Status: {{pritha:value172}}.
+- Card refs: {{pritha:value173}}.
+- Expected first card state: {{pritha:value174}}.
+- Card blockers:
+  - {{pritha:value175}}
+- Next card actions:
+  - {{pritha:value176}}
+  - From Pritha root, run `node scripts/pritha.mjs card-readiness {{pritha:value177}}`.
+
+## Handoff
+
+- How to run: `{{pritha:value178}}`
+- How to test: `node scripts/smoke-test.mjs`
+- How to healthcheck: `node scripts/healthcheck.mjs`
+- How to start local runtime: {{pritha:value179}}
+- How to stop local runtime: {{pritha:value180}}
+- How to inspect operations: {{pritha:value181}}
+- How to inspect skills: `node scripts/skills-status.mjs`
+- How to stop: {{pritha:value182}}
+- How to inspect logs: {{pritha:value183}}
+- First user exercise: follow `{{pritha:value184}}`
+
+## Open issues
+
+- Complete external verification checklist before adding dependencies or deployment.
+- Review generated instructions before using this agent for production work.
+
+## Next steps
+
+- Review and explicitly approve the separate Outcome Spec if it is still a proposal.
+- From Pritha, run `node scripts/pritha.mjs deliver <outcome-spec> --project {{pritha:value185}}` to enter the build/fix/verify loop.
+- Treat `verified`, `awaiting_acceptance`, `accepted`, merge and deployment as distinct states.
+- If Telegram is selected, run `chmod 600 .env`, configure it, and run Telegram healthcheck.
