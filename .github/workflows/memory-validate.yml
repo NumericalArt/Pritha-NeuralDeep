@@ -1,0 +1,48 @@
+name: Memory Validate
+
+on:
+  pull_request:
+    paths:
+      - "00_inbox/**"
+      - "01_sources/**"
+      - "02_briefs/**"
+      - "03_reviews/**"
+      - "04_standards/**"
+      - "05_decisions/**"
+      - "07_workflows/**"
+      - "08_templates/**"
+      - "10_wiki/**"
+      - "11_agents/**"
+      - "scripts/validate-memory.mjs"
+      - "scripts/rebuild-memory.mjs"
+      - "scripts/query-memory.mjs"
+
+permissions:
+  contents: read
+
+jobs:
+  memory-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Validate Markdown memory
+        run: node scripts/validate-memory.mjs
+
+      - name: Rebuild memory index
+        run: node scripts/rebuild-memory.mjs
+
+      - name: Check memory counts
+        run: |
+          stats="$(node scripts/query-memory.mjs stats)"
+          echo "$stats"
+          documents="$(printf '%s\n' "$stats" | awk '$1 == "documents" { print $2 }')"
+          chunks="$(printf '%s\n' "$stats" | awk '$1 == "chunks" { print $2 }')"
+          test "${documents:-0}" -gt 0
+          test "${chunks:-0}" -gt 0
