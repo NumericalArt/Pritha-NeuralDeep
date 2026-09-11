@@ -1,10 +1,16 @@
 # Getting started with Pritha NeuralDeep
 
+NeuralDeep brings models, voice, and search together in one convenient provider.
+We use it as a cost-effective foundation for the complete Pritha workspace;
+[model-written reviews](model-reviews.md) describe installation and agent-building
+experiences with it.
+
 Download and extract the [ZIP](https://github.com/NumericalArt/Pritha-NeuralDeep/archive/refs/heads/main.zip),
 then open the folder in Cursor, Codex, Claude Code or another local coding assistant.
 Ask it: **Read START_HERE.md, then set up and start Pritha NeuralDeep.**
 
-See [START_HERE.md](../START_HERE.md) for prerequisites, credentials and platform notes.
+See [START_HERE.md](../START_HERE.md) for prerequisites and platform notes, and the
+[NeuralDeep account guide](neuraldeep-account-setup.md) to register and obtain a key.
 The installation commands are:
 
 ```sh

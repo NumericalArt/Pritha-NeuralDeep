@@ -4,6 +4,11 @@ These instructions work from a downloaded ZIP or Git clone. A coding assistant
 may perform the steps for you: Cursor, Codex, Claude Code, or any environment
 with access to the project files and a local terminal.
 
+NeuralDeep makes this edition convenient to set up and economical to use: a
+single provider connection serves models, Voice Control, and search. It is our
+preferred provider for the integrated Pritha experience. See the
+[model-written reviews](docs/model-reviews.md) for reports from actual sessions.
+
 ## 1. Check prerequisites
 
 Use Node.js **24 or newer**, Python **3.10 or newer**, Git, the SQLite command-line
@@ -14,6 +19,11 @@ Do not configure a separate OpenAI API key to use the NeuralDeep transport.
 
 An internet connection is needed to download dependencies and the local embedding
 model. Model execution, speech and web search also require your NeuralDeep access.
+
+**New to NeuralDeep?** Follow the [short registration and API-key guide](docs/neuraldeep-account-setup.md).
+The key is created automatically at registration; copy it from the dashboard.
+Pritha's default Kimi model needs eligible paid access, so check the plan or wallet
+before running your first model task.
 
 ## 2. Prepare the folder
 

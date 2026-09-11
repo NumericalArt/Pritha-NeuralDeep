@@ -1,11 +1,16 @@
 # NeuralDeep execution
 
+NeuralDeep is our preferred model provider for this edition: a convenient,
+cost-effective service that also covers voice and search. Using the same provider
+across these surfaces keeps setup simple and works well for day-to-day agent
+building. Read the [model reviews](model-reviews.md) for session-level experiences.
+
 Pritha uses Codex CLI as the agent executor and a loopback Responses compatibility
 adapter to connect it to NeuralDeep. Task Chat, Agents Mother, shared search and
 Voice are included in this distribution. Voice uses its own chained speech and
 dialogue route; it is not an OpenAI Realtime session by default.
 
-Start with [START_HERE](../START_HERE.md). The default task model is `kimi-k2.6`.
+Start with [START_HERE](../START_HERE.md) and the [account and API-key guide](neuraldeep-account-setup.md). The default task model is `kimi-k2.6`.
 The CLI launcher can also be used directly after bootstrap:
 
 ```sh
