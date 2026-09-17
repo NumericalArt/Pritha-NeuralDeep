@@ -55,3 +55,10 @@ test("withTemporaryWritableRoot returns args unchanged when writable_roots are a
   const args = ["exec", "-m", "gpt-5"];
   assert.deepEqual(withTemporaryWritableRoot(args, "/t/run1"), args);
 });
+
+test("resolveTemporaryParent keeps different state roots apart under the same instance id", () => {
+  const first = resolveTemporaryParent({ instanceId: "nd-test", stateRoot: "/s/one" }, {});
+  const second = resolveTemporaryParent({ instanceId: "nd-test", stateRoot: "/s/two" }, {});
+  assert.notEqual(first, second);
+  assert.match(first, /^[\x20-\x7e]+$/);
+});

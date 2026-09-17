@@ -202,7 +202,8 @@ export function resolveTemporaryParent(runtime, environment = process.env) {
   const asciiOnly = /^[\x20-\x7e]+$/;
   const configured = environment.PRITHA_NEURALDEEP_TMP_ROOT ? path.resolve(environment.PRITHA_NEURALDEEP_TMP_ROOT) : null;
   if (configured && asciiOnly.test(configured)) return path.join(configured, "neuraldeep-runs");
-  const fallback = path.join(os.tmpdir(), "pritha-nd", String(runtime.instanceId || "default"));
+  const stateKey = createHash("sha256").update(String(runtime.stateRoot || "")).digest("hex").slice(0, 12);
+  const fallback = path.join(os.tmpdir(), "pritha-nd", `${String(runtime.instanceId || "default")}-${stateKey}`);
   if (!asciiOnly.test(fallback)) throw new Error("runtime_temporary_root_non_ascii");
   return path.join(fallback, "neuraldeep-runs");
 }
