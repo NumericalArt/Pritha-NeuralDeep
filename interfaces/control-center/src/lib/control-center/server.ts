@@ -1076,7 +1076,7 @@ function providerForSecretName(name: string): ControlCenterSecretProvider {
 function isCredentialLikeName(name: string) {
   if (!isSecretName(name)) return false;
   if (name.startsWith("CODEX_")) return false;
-  return /(?:API_KEY|BOT_TOKEN|ACCESS_TOKEN|AUTH_TOKEN|CLIENT_SECRET|WEBHOOK_SECRET|SECRET|PASSWORD|TOKEN)$/.test(name);
+  return /(?:API_KEY|API_URL|MODEL|BOT_TOKEN|ACCESS_TOKEN|AUTH_TOKEN|CLIENT_SECRET|WEBHOOK_SECRET|SECRET|PASSWORD|TOKEN)$/.test(name);
 }
 
 function defaultSecretLabel(name: string) {
@@ -1108,7 +1108,7 @@ function defaultBrowserExposure(provider: ControlCenterSecretProvider): ControlC
 
 function defaultRequiredForSecret(name: string) {
   if (name === "OPENAI_API_KEY") return true;
-  return /(?:API_KEY|BOT_TOKEN|ACCESS_TOKEN|AUTH_TOKEN|CLIENT_SECRET|WEBHOOK_SECRET)$/.test(name);
+  return /(?:API_KEY|API_URL|MODEL|BOT_TOKEN|ACCESS_TOKEN|AUTH_TOKEN|CLIENT_SECRET|WEBHOOK_SECRET)$/.test(name);
 }
 
 type SecretDefinitionBase = Omit<ControlCenterSecretDefinition, "status" | "configured" | "maskedValue" | "lastUpdated" | "canWrite" | "canRemove">;
@@ -2207,7 +2207,9 @@ function buildAgentControl(
 }
 
 function legacyPlanAction(control: ControlCenterAgentControl): ControlCenterAgent["ui"]["primaryAction"] {
-  return control.planAction || "check";
+  const action = control.planAction;
+  if (action === "start" || action === "stop" || action === "restore" || action === "check") return action;
+  return "check";
 }
 
 function issueText(folderPresent: boolean, manifest: OperationsManifest | null, healthStatus: "ok" | "failed" | "unknown" | "not_checked") {

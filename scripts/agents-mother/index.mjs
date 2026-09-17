@@ -78,6 +78,7 @@ import {
   cleanupStaleDeliveryRuns,
   deliverOutcome,
   deliveryStatus,
+  recoverDeliveryRun,
   resumeDelivery,
 } from "./delivery-loop.mjs";
 import { runTrialPlan } from "./trial-runner.mjs";
@@ -115,6 +116,7 @@ function usage() {
   ${CLI_COMMAND} deliver <outcome-spec-path> --project <path> [--executor codex-cli] [--trial-backend local|codex-cli] [--run-id <id>]
   ${CLI_COMMAND} delivery status <run-id>
   ${CLI_COMMAND} delivery usage <run-id>
+  ${CLI_COMMAND} delivery recover <run-id>
   ${CLI_COMMAND} delivery resume <run-id> [--answer <option-id>] [--answered-by user] [--guidance <text>] [--project <path>]
   ${CLI_COMMAND} delivery budget <run-id> --add-tokens <N> --request-id <id> --answered-by user
   ${CLI_COMMAND} delivery budget <run-id> --set-tokens <N> --request-id <id> --answered-by user
@@ -1961,6 +1963,11 @@ async function main() {
         usage = readTaskDelivery(runId, control.binding?.task, { root: ROOT }).usage;
       }
       console.log(JSON.stringify(usage, null, 2));
+      return;
+    }
+    if (subcommand === "recover") {
+      const result = recoverDeliveryRun(runId, { root: ROOT });
+      printDeliveryState(result.state, result.worktree);
       return;
     }
     if (subcommand === "resume") {

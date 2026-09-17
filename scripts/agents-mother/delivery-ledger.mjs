@@ -323,6 +323,54 @@ function latestEventState(eventsPath) {
   return latest?.state || null;
 }
 
+export function recoverLostDeliveryAttempts(runRoot) {
+  return updateDeliveryLedger(runRoot, (current) => {
+    const remaining = [];
+    const lost = [];
+    for (const attempt of current.budget.unaccounted_attempts || []) {
+      const pid = Number(attempt.worker_pid);
+      const hasPid = Number.isSafeInteger(pid) && pid > 0;
+      let alive = false;
+      if (hasPid) {
+        try {
+          process.kill(pid, 0);
+          alive = true;
+        } catch {
+          alive = false;
+        }
+      }
+      const deadWorker = hasPid && !alive && attempt.process_exited === false;
+      if (deadWorker) {
+        lost.push({
+          ...attempt,
+          process_exited: true,
+          reason: "worker_lost",
+          lost_at: new Date().toISOString(),
+        });
+        continue;
+      }
+      remaining.push(attempt);
+    }
+    if (!lost.length) return current;
+    return {
+      ...current,
+      budget: {
+        ...current.budget,
+        unaccounted_attempts: remaining,
+        lost_attempts: [...(current.budget.lost_attempts || []), ...lost].slice(-20),
+      },
+      phase: remaining.length ? current.phase : "attempts_recovered",
+      next_action: remaining.length ? current.next_action : (current.status === "blocked" ? "resume_delivery" : current.next_action),
+      blockers: remaining.length || current.budget.legacy_usage_unverified ? current.blockers : [],
+      status: remaining.length || current.budget.legacy_usage_unverified
+        ? current.status
+        : current.status === "blocked" && current.blockers[0]?.code === "goal_usage_unavailable"
+          ? "correcting"
+          : current.status,
+    };
+  }, { eventType: "delivery_attempts_recovered", skipUnchanged: true }).state;
+}
+
 export function recoverDeliveryLedger(runRoot) {
   const paths = deliveryLedgerPaths(runRoot);
   return withFileLock(paths.statePath, () => {

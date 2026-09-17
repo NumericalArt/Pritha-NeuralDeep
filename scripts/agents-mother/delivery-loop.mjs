@@ -19,6 +19,8 @@ import {
   deliveryTargetClaimPath,
   readDeliveryLedger,
   recordDeliveryFailure,
+  recoverDeliveryLedger,
+  recoverLostDeliveryAttempts,
   releaseDeliveryTarget,
   targetKey,
   transitionDelivery,
@@ -118,6 +120,7 @@ function reconcileExecutorAccounting(runRoot) {
 }
 
 async function recoverExecutorAttempts(runRoot, worktree, executor, input) {
+  recoverLostDeliveryAttempts(runRoot);
   if (typeof executor.recover !== "function") return;
   const state = readDeliveryLedger(runRoot);
   for (const attempt of state.budget.unaccounted_attempts) {
@@ -893,6 +896,13 @@ export function deliveryStatus(runId, options = {}) {
   const runRoot = findDeliveryRun(runId, options);
   if (!runRoot) throw new DeliveryLoopError("run_not_found", `Delivery run not found: ${runId}`);
   return { runRoot, state: readDeliveryLedger(runRoot), worktree: readDeliveryWorktree(runRoot) };
+}
+
+export function recoverDeliveryRun(runId, options = {}) {
+  const found = deliveryStatus(runId, options);
+  recoverDeliveryLedger(found.runRoot);
+  recoverLostDeliveryAttempts(found.runRoot);
+  return deliveryStatus(runId, options);
 }
 
 export function resolveDeliveryBlocker(runRoot, answer, options = {}) {

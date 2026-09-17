@@ -15,6 +15,7 @@ import {
   readDeliveryLedger,
   recordDeliveryFailure,
   recoverDeliveryLedger,
+  recoverLostDeliveryAttempts,
   releaseDeliveryTarget,
   targetKey,
   transitionDelivery,
@@ -319,4 +320,42 @@ test("repeated identical Trial failures become an actionable blocker", () => {
   assert.equal(third.state.next_action, "");
   assert.equal(third.state.blockers[0].code, "repeated_trial_failure");
   assert.equal(third.state.blockers[0].options.length, 3);
+});
+
+test("dead worker with process_exited false is recovered as lost, not goal_usage_unavailable", () => {
+  const { runRoot } = fixture();
+  updateDeliveryLedger(runRoot, (state) => ({
+    ...state,
+    status: "blocked",
+    phase: "goal_usage_unavailable",
+    next_action: "",
+    blockers: [typedBlocker({
+      code: "goal_usage_unavailable",
+      summary: "A saved worker is unresolved.",
+      question: "How should Pritha reconcile the saved build attempt before another model turn?",
+      options: [
+        { id: "retry-accounting", label: "Reconcile usage", effect: "Inspect receipts." },
+        { id: "abandon", label: "Abandon", effect: "Stop this run." },
+      ],
+    })],
+    budget: {
+      ...state.budget,
+      unaccounted_attempts: [{
+        executor_result: "executor/attempt-nd_dead.json",
+        worker_pid: 999999999,
+        process_exited: false,
+        reason: "usage_unavailable",
+        reserved_tokens: 8000,
+      }],
+    },
+  }));
+  assert.equal(budgetBlocker(readDeliveryLedger(runRoot)).code, "goal_usage_unavailable");
+  const recovered = recoverLostDeliveryAttempts(runRoot);
+  assert.equal(recovered.budget.unaccounted_attempts.length, 0);
+  assert.equal(recovered.budget.lost_attempts.length, 1);
+  assert.equal(recovered.budget.lost_attempts[0].reason, "worker_lost");
+  assert.equal(deliveryUsageStatus(recovered.budget), "complete");
+  assert.equal(recovered.status, "correcting");
+  assert.equal(recovered.next_action, "resume_delivery");
+  assert.notEqual(budgetBlocker(recovered)?.code, "goal_usage_unavailable");
 });
