@@ -20,6 +20,7 @@ import { today } from "../lib/date.mjs";
 import {
   AUTOSTART_MODES,
   PROACTIVE_MODES,
+  RUNTIME_FAMILIES,
   RUNTIME_PLACEMENT_PROFILES,
   SERVICE_MODES,
   contractData,
@@ -736,7 +737,8 @@ function applyInterviewTechnicalProposal(data, options = {}) {
   data.criticalWorkflows = Array.isArray(data.criticalWorkflows) && data.criticalWorkflows.length
     ? data.criticalWorkflows
     : listFromText(options.workflows, ["Request the outcome, review evidence, then correct or accept the result"]);
-  data.runtimeFamily = options.runtime || "codex-native";
+  data.runtimeFamily = options.runtime && RUNTIME_FAMILIES.has(options.runtime) ? options.runtime : "codex-native";
+  data.runtimeCoercedFrom = options.runtime && !RUNTIME_FAMILIES.has(options.runtime) ? options.runtime : undefined;
   data.agentKind = options["agent-kind"];
   data.primaryInterface = data.primaryInterface || options.interface || "Codex project";
   data.secondaryInterfaces = options.secondary || "none";
@@ -751,12 +753,15 @@ function applyInterviewTechnicalProposal(data, options = {}) {
   data.modelBudgetPolicy = options.budget || "bounded per delivery run; measure before changing defaults";
   data.deploymentTarget = options.deployTarget || options["deployment-target"] || data.expectedHosting;
   data.deploymentProfile = options.deployProfile || options["deployment-profile"] || "local-development";
-  data.serviceMode = options.service || "none";
-  data.autostart = options.autostart || "disabled";
+  data.serviceMode = options.service && SERVICE_MODES.has(options.service) ? options.service : "none";
+  data.serviceModeCoercedFrom = options.service && !SERVICE_MODES.has(options.service) ? options.service : undefined;
+  data.autostart = options.autostart && AUTOSTART_MODES.has(options.autostart) ? options.autostart : "disabled";
+  data.autostartCoercedFrom = options.autostart && !AUTOSTART_MODES.has(options.autostart) ? options.autostart : undefined;
   data.healthcheckCommand = options.healthcheck || "node scripts/smoke-test.mjs";
   data.startCommand = options.start || "node scripts/agent-cli.mjs status";
   data.stopCommand = options.stop || "not-applicable";
-  data.proactiveMode = options.proactive || "none";
+  data.proactiveMode = options.proactive && PROACTIVE_MODES.has(options.proactive) ? options.proactive : "none";
+  data.proactiveModeCoercedFrom = options.proactive && !PROACTIVE_MODES.has(options.proactive) ? options.proactive : undefined;
   data.triggerSources = options.triggers || "manual user request";
   data.schedule = options.schedule || "not-applicable";
   data.heartbeatInterval = options.heartbeat || "not-applicable";
@@ -857,10 +862,22 @@ async function interview(options) {
 
   const issues = validateContract(outPath, { print: false });
   if (issues.length > 0) {
-    console.log("\nContract still needs attention before scaffold:");
-    for (const issue of issues) console.log(`- ${issue}`);
+    if (issues.every((issue) => issue.startsWith("missing or placeholder value: "))) {
+      const labels = issues.map((issue) => issue.slice("missing or placeholder value: ".length)).join(", ");
+      console.log(`заполни: ${labels}`);
+      console.log("Contract saved as draft; enums are valid.");
+    } else {
+      console.log("\nContract still needs attention before scaffold:");
+      for (const issue of issues) console.log(`- ${issue}`);
+    }
   } else {
     console.log("Contract validation passed.");
+  }
+  if (data.runtimeCoercedFrom) {
+    console.log(`runtime coerced to codex-native; allowed: ${Array.from(RUNTIME_FAMILIES).join(", ")}`);
+  }
+  if (!["codex-native", "cli"].includes(data.runtimeFamily) && !(data.runtimeFamily === "api" && data.serviceMode === "process")) {
+    console.log("scaffold adapters now: codex-native, cli; api+process (web/api, no proactivity).");
   }
 }
 

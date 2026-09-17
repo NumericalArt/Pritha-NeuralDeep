@@ -5,7 +5,7 @@ import { parseFrontmatterData } from "../lib/frontmatter.mjs";
 import { resolveTechscopeRoot } from "../lib/paths.mjs";
 import { normalizeGitHubRepositoryUrl, normalizeRepositoryModulePath } from "../lib/github-repository-radar.mjs";
 import { authoredAgentId } from "./identity.mjs";
-import { readAgentKind } from "./agent-kind.mjs";
+import { AGENT_KINDS, readAgentKind } from "./agent-kind.mjs";
 
 export const RUNTIME_FAMILIES = new Set(["codex-native", "cli", "api", "local-model", "hybrid", "environment-specific"]);
 export const TELEGRAM_MODES = new Set(["none", "primary-chat", "intake-channel", "notifications-only", "operator-control"]);
@@ -93,7 +93,7 @@ export function isMissing(value) {
 }
 
 function invalidEnumIssue(label, allowedValues) {
-  return `invalid ${label}. Expected: ${Array.from(allowedValues).join(", ")}`;
+  return `invalid ${label} (allowed: ${Array.from(allowedValues).join(", ")})`;
 }
 
 export function contractFingerprint(value) {
@@ -209,9 +209,15 @@ export function validateContract(contractPath, options = {}) {
   const text = readFileSync(fullPath, "utf8");
   const fm = parseFrontmatterData(text) || {};
   if (fm.type !== "agent-contract") issues.push('frontmatter "type" must be agent-contract');
-  issues.push(...readAgentKind(text).issues.map(issue => `agent type: ${issue}`));
+  issues.push(
+    ...readAgentKind(text).issues.map((issue) => (
+      issue === "invalid-agent-kind"
+        ? `agent type: ${issue} (allowed: ${Array.from(AGENT_KINDS).join(", ")})`
+        : `agent type: ${issue}`
+    )),
+  );
   if (authoredAgentId(fm).issue) issues.push(`agent identity: ${authoredAgentId(fm).issue}`);
-  if (!STATUS_VALUES.has(fm.status)) issues.push(`status must be one of: ${Array.from(STATUS_VALUES).join(", ")}`);
+  if (!STATUS_VALUES.has(fm.status)) issues.push(`invalid status (allowed: ${Array.from(STATUS_VALUES).join(", ")})`);
 
   const runtime = bodyValue(text, "Runtime family");
   const runtimePlacement = bodyValue(text, "Runtime placement profile");

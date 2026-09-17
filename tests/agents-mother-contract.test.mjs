@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parseFrontmatterData } from "../scripts/lib/frontmatter.mjs";
@@ -36,6 +36,7 @@ test("invalid fixture contract fails with actionable messages", () => {
   assert.match(output, /Contract validation failed/);
   assert.match(output, /Runtime placement profile/);
   assert.match(output, /invalid Runtime family/);
+  assert.match(output, /invalid Runtime family \(allowed:/);
 });
 
 test("contract module validates fixture contracts directly", () => {
@@ -308,4 +309,47 @@ test("selected repository decisions reject negation and wildcard permission form
     assert.equal(isRepositoryPermissionsBounded(contradictory), false, contradictory);
   }
   assert.equal(isRepositoryPermissionsBounded("no permissions required"), true);
+});
+
+test("init goldens write draft contracts that pass validation across runtime families", () => {
+  const cases = [
+    {
+      label: "codex-native default runtime",
+      args: ["init", "--no-input", "--name", "PaperRadar", "--mission", "Watch paper feeds", "--success", "Operator sees a daily digest"],
+    },
+    {
+      label: "cli runtime",
+      args: ["init", "--interface", "CLI", "--runtime", "cli", "--name", "CliRadar", "--mission", "Emit a JSON report", "--success", "CLI prints JSON"],
+    },
+    {
+      label: "api runtime with process service",
+      args: ["init", "--interface", "web", "--runtime", "api", "--service", "process", "--name", "ApiRadar", "--mission", "Serve a local page", "--success", "GET /health returns 200"],
+    },
+  ];
+  for (const entry of cases) {
+    const root = mkdtempSync(path.join(os.tmpdir(), "pritha-init-golden-root-"));
+    const state = mkdtempSync(path.join(os.tmpdir(), "pritha-init-golden-state-"));
+    try {
+      const result = spawnSync("node", ["scripts/agents-mother.mjs", ...entry.args], {
+        cwd: path.resolve("."),
+        encoding: "utf8",
+        env: { ...process.env, TECHSCOPE_ROOT: root, PRITHA_STATE_ROOT: state },
+      });
+      assert.equal(result.status, 0, `${entry.label}: ${result.stderr || result.stdout}`);
+      const candidates = [
+        path.join(state, "agents", "contracts"),
+        path.join(root, "11_agents", "contracts"),
+      ].filter((dir) => existsSync(dir));
+      assert.ok(candidates.length > 0, `${entry.label}: contract directory not found under state root or repo root`);
+      const contractPath = path.join(
+        candidates[0],
+        readdirSync(candidates[0]).find((name) => name.endsWith("-agent-contract.md")),
+      );
+      assert.ok(contractPath, `${entry.label}: no generated contract found`);
+      assert.deepEqual(validateContract(contractPath, { print: false }), [], `${entry.label}: generated contract has issues`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(state, { recursive: true, force: true });
+    }
+  }
 });
