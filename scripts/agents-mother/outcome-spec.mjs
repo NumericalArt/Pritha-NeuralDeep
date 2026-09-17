@@ -586,6 +586,13 @@ ${deliverables.map((value) => `- ${value}.`).join("\n")}
 
 ## Trials
 
+### Trial field dictionary
+
+- Product target: generated product file the executor may overwrite.
+- Fixture: host-owned sample input; the executor must not overwrite it.
+- Verifier input: host-owned test script as \`relative/path :: sha256:<64 hex> :: host-reviewed:<id>\` or \`host-template:<id>\`; fill the hash after the file exists. Do not invent hashes.
+- Then artifact: output file asserted by exactly one trial.
+
 ### Trial: harness-smoke
 
 - Statement: The generated project passes its deterministic smoke test.
@@ -594,6 +601,32 @@ ${deliverables.map((value) => `- ${value}.`).join("\n")}
 - Isolation: none
 - When argv: ["node", "scripts/smoke-test.mjs"]
 - When cwd: .
+- Then exit code: 0
+- Timeout ms: 120000
+
+### Trial: data-shape
+
+- Statement: Stored output matches the documented JSON shape without calling a live upstream.
+- Kind: automated
+- Covers: ${coverageId("deliverable", deliverables[0], 0)}
+- Isolation: none
+- When argv: ["node", "scripts/smoke-test.mjs"]
+- When cwd: .
+- Product target: data/latest.json
+- Then stdout contains: Smoke test passed.
+- Then exit code: 0
+- Timeout ms: 120000
+
+### Trial: live-path
+
+- Statement: The product calls the configured upstream URL; a local mock records the request. Replace When argv with tests/trials/live-path.mjs after that verifier exists.
+- Kind: automated
+- Covers: ${coverageId("deliverable", deliverables[0], 0)}
+- Isolation: none
+- When argv: ["node", "scripts/smoke-test.mjs"]
+- When cwd: .
+- Product target: scripts/refresh.mjs
+- Then stdout contains: Smoke test passed.
 - Then exit code: 0
 - Timeout ms: 120000
 
@@ -796,7 +829,11 @@ export function approveOutcomeSpec(specPath, options = {}) {
   // Explicit verifier identities are reviewed before approval locks are written.
   // This reads files only and never executes a project command.
   if (validation.parsed.trials.some(trial => trial.verifierInputs || trial.productTargets)) {
-    inspectProtectedTrialInputs({ trials: validation.parsed.trials }, path.resolve(root, options.projectPath || validation.contract.targetFolder));
+    const projectHint = options.projectPath || validation.contract.targetFolder;
+    const projectPath = projectHint ? path.resolve(root, projectHint) : "";
+    if (projectPath && existsSync(projectPath)) {
+      inspectProtectedTrialInputs({ trials: validation.parsed.trials }, projectPath);
+    }
   }
   const approvedAt = options.approvedAt || new Date().toISOString();
   const semanticLock = outcomeSemanticLock(validation.parsed);

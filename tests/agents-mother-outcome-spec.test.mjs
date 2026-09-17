@@ -61,6 +61,14 @@ updated: 2026-08-16
 - Input data types: text notes
 - Stored data: Markdown reports
 `, "utf8");
+  const projectInputs = [
+    ["scripts/smoke-test.mjs", "console.log('smoke:ok');\n"],
+  ];
+  for (const [relativePath, content] of projectInputs) {
+    const filePath = path.join(root, relativePath);
+    mkdirSync(path.dirname(filePath), { recursive: true });
+    writeFileSync(filePath, content, "utf8");
+  }
   const created = createOutcomeSpec(path.relative(root, contractPath), { root, date: "2026-08-16" });
   return { root, stateRoot, contractPath, specPath: created.path };
 }
@@ -71,10 +79,15 @@ test("Outcome Spec proposal covers V1 functions and deliverables", () => {
   const result = validateOutcomeSpecText(text, { root });
 
   assert.equal(result.ok, true, result.issues.map((entry) => `${entry.code}: ${entry.message}`).join("\n"));
-  assert.equal(result.parsed.trials.length, 3);
-  assert.equal(result.automatedTrials, 1);
+  assert.equal(result.parsed.trials.length, 5);
+  assert.equal(result.automatedTrials, 3);
   assert.equal(result.coverage.length, 4);
   assert.equal(result.coverage.every((entry) => entry.covered), true);
+  assert.equal(text.includes("Trial field dictionary"), true);
+  assert.equal(text.includes("### Trial: data-shape"), true);
+  assert.equal(text.includes("### Trial: live-path"), true);
+  assert.equal(text.includes("Product target: data/latest.json"), true);
+  assert.equal(text.includes("Product target: scripts/refresh.mjs"), true);
 });
 
 test("semantic and document locks ignore approval metadata but not outcome meaning", () => {
@@ -143,7 +156,7 @@ test("compiled Trial plan is deterministic and contains no compilation timestamp
 
   assert.equal(first.text, second.text);
   assert.equal(first.text.includes("compiled_at"), false);
-  assert.equal(first.plan.counts.automated, 1);
+  assert.equal(first.plan.counts.automated, 3);
   assert.equal(first.plan.autonomous_verification_allowed, false);
   assert.deepEqual(first.plan.delivery_policy, {
     build_git_mode: "disposable-worktree",
