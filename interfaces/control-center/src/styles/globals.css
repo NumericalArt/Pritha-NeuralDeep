@@ -1429,6 +1429,13 @@ a {
   border-color: rgba(var(--nd-error-rgb, 255, 79, 104), 0.24);
 }
 
+.operator-action-icon.approve_outcome,
+.operator-action-icon.deliver {
+  color: var(--nd-success, #bfffd6);
+  background: rgba(var(--nd-success-rgb, 47, 230, 122), 0.12);
+  border-color: rgba(var(--nd-success-rgb, 47, 230, 122), 0.24);
+}
+
 .operator-action-status-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

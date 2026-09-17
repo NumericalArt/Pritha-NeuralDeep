@@ -32,7 +32,7 @@ export type ControlCenterCapabilities = {
   developer_diagnostics: CapabilityStatus;
 };
 
-export type ControlCenterOperatorAction = "start" | "stop" | "check" | "restore";
+export type ControlCenterOperatorAction = "start" | "stop" | "check" | "restore" | "approve_outcome" | "deliver";
 
 export type ControlCenterOperatorActionPlanStatus =
   | "ready"
@@ -63,7 +63,9 @@ export type ControlCenterCardAction =
   | "open_codex"
   | "run_now"
   | "pause_schedule"
-  | "resume_schedule";
+  | "resume_schedule"
+  | "approve_outcome"
+  | "deliver";
 
 export type ControlCenterCommandReadiness = "missing" | "legacy_declared" | "human_instruction" | "structured_executable";
 
@@ -333,7 +335,7 @@ export type ControlCenterOperatorActionPlan = {
     accepted: false;
   };
   target: {
-    kind: "process" | "healthcheck" | "restore" | "none";
+    kind: "process" | "healthcheck" | "restore" | "outcome" | "delivery" | "none";
     commandAvailable: boolean;
     localUrl?: string;
     healthUrl?: string;
@@ -374,7 +376,7 @@ export type ControlCenterOperatorActionResult = {
   errors: string[];
   execution?: {
     status: "blocked" | "pending_confirmation" | "executing" | "running" | "stopped" | "failed" | "degraded";
-    target: "process" | "healthcheck" | "restore" | "none";
+    target: "process" | "healthcheck" | "restore" | "outcome" | "delivery" | "none";
     command?: string[];
     exitCode?: number | null;
     signal?: string | null;

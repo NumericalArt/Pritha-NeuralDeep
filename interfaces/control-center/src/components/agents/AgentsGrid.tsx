@@ -9,6 +9,7 @@ export function AgentsGrid({
   accessMode,
   onAgentAction,
   onAgentCredentials,
+  onOutcomeAction,
   onCreatePlan,
 }: {
   agents: AgentCardModel[];
@@ -16,12 +17,13 @@ export function AgentsGrid({
   accessMode?: AccessMode;
   onAgentAction?: (agent: AgentCardModel) => void;
   onAgentCredentials?: (agent: AgentCardModel) => void;
+  onOutcomeAction?: (agent: AgentCardModel, action: "approve_outcome" | "deliver") => void;
   onCreatePlan?: () => void;
 }) {
   return (
     <div className="agent-grid">
       {agents.map((agent) => (
-        <AgentCard agent={agent} access={access} accessMode={accessMode} key={agent.id} onAction={onAgentAction} onCredentials={onAgentCredentials} />
+        <AgentCard agent={agent} access={access} accessMode={accessMode} key={agent.id} onAction={onAgentAction} onCredentials={onAgentCredentials} onOutcomeAction={onOutcomeAction} />
       ))}
       <button className="add-agent-card" type="button" data-testid="create-agent-plan-button" onClick={onCreatePlan} title="Open a safe Task Chat planning handoff">
         <span className="add-symbol">+</span>

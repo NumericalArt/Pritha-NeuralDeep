@@ -1,4 +1,4 @@
-import { CheckCircle2, ClipboardCheck, Copy, ExternalLink, HelpCircle, KeyRound, Play, RefreshCcw, RotateCcw, Square } from "lucide-react";
+import { BadgeCheck, CheckCircle2, ClipboardCheck, Copy, ExternalLink, HelpCircle, KeyRound, Play, RefreshCcw, RotateCcw, Send, Square } from "lucide-react";
 import { useState } from "react";
 import type { AgentCardModel } from "@/data/mockAgents";
 import { type AccessMode, accessBaseUrl, agentUrlForAccessMode } from "@/lib/access-mode";
@@ -87,6 +87,19 @@ function statusUrlForAccessMode(path: string | undefined, access: ControlCenterS
   }
 }
 
+function outcomeLabel(agent: AgentCardModel) {
+  if (!agent.outcome || agent.outcome.status === "missing") return "No spec";
+  if (agent.outcome.approved) return "Approved";
+  if (agent.outcome.status === "draft") return "Needs approval";
+  return agent.outcome.status;
+}
+
+function deliveryLabel(agent: AgentCardModel) {
+  const status = agent.delivery?.status;
+  if (!status || status === "not_started") return "Not started";
+  return status.replaceAll("_", " ");
+}
+
 export function AgentCard({
   agent,
   access,
@@ -94,6 +107,7 @@ export function AgentCard({
   mobile = false,
   onAction,
   onCredentials,
+  onOutcomeAction,
 }: {
   agent: AgentCardModel;
   access?: ControlCenterStatus["access"];
@@ -101,6 +115,7 @@ export function AgentCard({
   mobile?: boolean;
   onAction?: (agent: AgentCardModel) => void;
   onCredentials?: (agent: AgentCardModel) => void;
+  onOutcomeAction?: (agent: AgentCardModel, action: "approve_outcome" | "deliver") => void;
 }) {
   const [copied, setCopied] = useState(false);
   const cardAction = getCardAction(agent);
@@ -114,6 +129,9 @@ export function AgentCard({
   const canShowUrl = agent.state === "alive" && Boolean(displayUrl);
   const canOpenPlan = Boolean(onAction);
   const canOpenCredentials = Boolean(onCredentials && agent.credentials?.total);
+  const hasOutcome = Boolean(agent.outcome && agent.outcome.status !== "missing");
+  const canApproveOutcome = Boolean(onOutcomeAction && hasOutcome && !agent.outcome?.approved);
+  const canDeliver = Boolean(onOutcomeAction && agent.outcome?.approved && agent.state !== "missing");
 
   async function copyUrl() {
     if (!displayUrl) return;
@@ -191,6 +209,53 @@ export function AgentCard({
           <span>Credentials</span>
           <strong>{credentialLabel(agent)}</strong>
         </button>
+      ) : null}
+
+      {hasOutcome ? (
+        <>
+          <button
+            className={`agent-credentials-button ${agent.outcome?.approved ? "ready" : "missing"}`}
+            type="button"
+            data-testid="agent-approve-outcome-button"
+            data-agent-id={agent.id}
+            onClick={
+              canApproveOutcome
+                ? (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onOutcomeAction?.(agent, "approve_outcome");
+                  }
+                : undefined
+            }
+            disabled={!canApproveOutcome}
+            title={`Approve Outcome Spec for ${agent.name}`}
+          >
+            <BadgeCheck size={16} />
+            <span>Approve outcome</span>
+            <strong>{outcomeLabel(agent)}</strong>
+          </button>
+          <button
+            className={`agent-credentials-button ${agent.delivery?.status && agent.delivery.status !== "not_started" ? "ready" : "unavailable"}`}
+            type="button"
+            data-testid="agent-deliver-button"
+            data-agent-id={agent.id}
+            onClick={
+              canDeliver
+                ? (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onOutcomeAction?.(agent, "deliver");
+                  }
+                : undefined
+            }
+            disabled={!canDeliver}
+            title={`Start outcome delivery for ${agent.name}`}
+          >
+            <Send size={16} />
+            <span>Deliver</span>
+            <strong>{deliveryLabel(agent)}</strong>
+          </button>
+        </>
       ) : null}
 
       <button

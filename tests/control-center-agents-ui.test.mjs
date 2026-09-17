@@ -79,3 +79,19 @@ test("Mobile agent cards do not render unused menu dots", () => {
   assert.doesNotMatch(agentCardSource, /Open menu for/);
   assert.doesNotMatch(globalCssSource, /\.agent-menu-button/);
 });
+
+test("Agent cards expose confirmation-gated Approve outcome and Deliver actions", () => {
+  assert.match(agentCardSource, /Approve outcome/);
+  assert.match(agentCardSource, /data-testid="agent-approve-outcome-button"/);
+  assert.match(agentCardSource, /data-testid="agent-deliver-button"/);
+  assert.match(agentsOperatorSource, /openOutcomeAction/);
+  assert.match(agentsOperatorSource, /selectedAction !== "approve_outcome"/);
+  assert.match(serverSource, /function buildOutcomeOperatorActionPlan/);
+  assert.match(serverSource, /export async function runAgentOutcomeAction/);
+  assert.match(serverSource, /node scripts\/pritha\.mjs outcome approve/);
+  assert.match(serverSource, /node scripts\/pritha\.mjs deliver/);
+  assert.match(serverSource, /instance_env_missing/);
+  const planRoute = readFileSync("interfaces/control-center/src/app/api/agents/[id]/actions/[action]/plan/route.ts", "utf8");
+  assert.match(planRoute, /approve_outcome/);
+  assert.match(planRoute, /deliver/);
+});

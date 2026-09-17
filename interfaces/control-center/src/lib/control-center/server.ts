@@ -2734,6 +2734,8 @@ function baseOperatorChecks(agent: ControlCenterAgent): ControlCenterOperatorAct
 }
 
 function operatorActionPhrase(agent: ControlCenterAgent, action: ControlCenterOperatorAction) {
+  if (action === "approve_outcome") return `APPROVE OUTCOME ${agent.id}`;
+  if (action === "deliver") return `DELIVER ${agent.id}`;
   return `${action.toUpperCase()} ${agent.id}`;
 }
 
@@ -2769,6 +2771,26 @@ function controlForAction(agent: ControlCenterAgent, action: ControlCenterOperat
       reason: "Stop is available as a plan unless the current state and structured managed command allow execution.",
     };
   }
+  if (action === "approve_outcome") {
+    return {
+      ...agent.control,
+      primaryCardAction: "approve_outcome",
+      planAction: "approve_outcome",
+      executionMode: "plan_only",
+      label: "Approve outcome",
+      reason: "Approve outcome writes host-owned approval evidence after an explicit confirmation phrase.",
+    };
+  }
+  if (action === "deliver") {
+    return {
+      ...agent.control,
+      primaryCardAction: "deliver",
+      planAction: "deliver",
+      executionMode: "plan_only",
+      label: "Deliver",
+      reason: "Deliver starts a detached pritha.mjs deliver process with this instance env.",
+    };
+  }
   return {
     ...agent.control,
     primaryCardAction: "restore_plan",
@@ -2779,7 +2801,155 @@ function controlForAction(agent: ControlCenterAgent, action: ControlCenterOperat
   };
 }
 
+function instanceEnvForCli(root: string): { env: NodeJS.ProcessEnv; missing: string[] } {
+  const env: NodeJS.ProcessEnv = { ...process.env, TECHSCOPE_ROOT: root };
+  const pointerPath = path.join(root, ".pritha-instance.json");
+  if (existsSync(pointerPath)) {
+    try {
+      const pointer = JSON.parse(readFileSync(pointerPath, "utf8")) as {
+        id?: string;
+        stateRoot?: string;
+        agentParent?: string;
+        port?: number;
+        keychainService?: string;
+      };
+      if (!env.PRITHA_INSTANCE_ID && pointer.id) env.PRITHA_INSTANCE_ID = String(pointer.id);
+      if (!env.PRITHA_STATE_ROOT && pointer.stateRoot) env.PRITHA_STATE_ROOT = String(pointer.stateRoot);
+      if (!env.PRITHA_AGENT_PARENT && pointer.agentParent) env.PRITHA_AGENT_PARENT = String(pointer.agentParent);
+      if (!env.PRITHA_CONTROL_CENTER_PORT && pointer.port) env.PRITHA_CONTROL_CENTER_PORT = String(pointer.port);
+      if (!env.PRITHA_NEURALDEEP_KEYCHAIN_SERVICE && pointer.keychainService) {
+        env.PRITHA_NEURALDEEP_KEYCHAIN_SERVICE = String(pointer.keychainService);
+      }
+      if (!env.PRITHA_NEURALDEEP_CODEX_HOME && pointer.stateRoot) {
+        env.PRITHA_NEURALDEEP_CODEX_HOME = path.join(String(pointer.stateRoot), "codex-home");
+      }
+    } catch {
+      // Pointer is advisory; missing keys are reported below.
+    }
+  }
+  const missing = ["PRITHA_INSTANCE_ID", "PRITHA_STATE_ROOT"].filter((key) => !env[key]);
+  return { env, missing };
+}
+
+function outcomeActionChecks(agent: ControlCenterAgent, action: Extract<ControlCenterOperatorAction, "approve_outcome" | "deliver">, instanceMissing: string[]): ControlCenterOperatorActionCheck[] {
+  const outcome = agent.lifecycle.outcome;
+  const delivery = agent.lifecycle.delivery;
+  const running = ["created", "preparing", "building", "verifying", "correcting", "paused", "running"].includes(delivery.status);
+  return [
+    {
+      id: "instance-env",
+      label: "Instance env",
+      status: instanceMissing.length ? "fail" : "pass",
+      detail: instanceMissing.length ? `instance_env_missing: ${instanceMissing.join(", ")}` : "PRITHA_INSTANCE_ID and PRITHA_STATE_ROOT are set from the instance pointer",
+    },
+    {
+      id: "outcome-spec",
+      label: "Outcome Spec",
+      status: outcome.path ? "pass" : "fail",
+      detail: outcome.path || outcome.reason || "No separate Outcome Spec found",
+    },
+    {
+      id: "outcome-approval",
+      label: "Outcome approval",
+      status: action === "approve_outcome" ? (outcome.approved ? "warn" : outcome.path ? "pass" : "fail") : outcome.approved ? "pass" : "fail",
+      detail: action === "approve_outcome"
+        ? outcome.approved
+          ? "Already approved; a new approval is not needed"
+          : outcome.reason || `Status ${outcome.status}`
+        : outcome.approved
+          ? "Approved by user"
+          : outcome.reason || "Outcome Spec is not approved",
+    },
+    {
+      id: "child-folder",
+      label: "Child folder",
+      status: action === "deliver" && agent.folder.status !== "present" ? "fail" : agent.folder.status === "present" ? "pass" : "warn",
+      detail: agent.folder.name ? `../${agent.folder.name}` : "Folder missing",
+    },
+    {
+      id: "delivery-state",
+      label: "Delivery",
+      status: action === "deliver" && running ? "fail" : "pass",
+      detail: running ? `A delivery run is already ${delivery.status}${delivery.runId ? ` (${delivery.runId})` : ""}` : delivery.reason || delivery.status,
+    },
+  ];
+}
+
+function buildOutcomeOperatorActionPlan(
+  status: ControlCenterStatus,
+  agent: ControlCenterAgent,
+  action: Extract<ControlCenterOperatorAction, "approve_outcome" | "deliver">,
+): ControlCenterOperatorActionPlan {
+  const planControl = controlForAction(agent, action);
+  const { missing } = instanceEnvForCli(status.root);
+  const checks = outcomeActionChecks(agent, action, missing);
+  const failed = checks.filter((check) => check.status === "fail");
+  const blockers = failed.map((check) => `${check.label}: ${check.detail}`);
+  const enabled = blockers.length === 0;
+  const requiredPhrase = operatorActionPhrase(agent, action);
+  return {
+    ok: true,
+    generatedAt: status.generatedAt,
+    agent: {
+      id: agent.id,
+      name: agent.name,
+      folderStatus: agent.folder.status,
+    },
+    action,
+    status: enabled ? "needs_confirmation" : blockers.some((item) => item.startsWith("Instance env:")) ? "unavailable" : "blocked",
+    actionEnabled: enabled,
+    requiresConfirmation: true,
+    confirmation: {
+      requiredPhrase,
+      accepted: false,
+    },
+    target: {
+      kind: action === "approve_outcome" ? "outcome" : "delivery",
+      commandAvailable: enabled,
+      willStartProcess: action === "deliver" && enabled,
+      willStopProcess: false,
+      willCreateFolder: false,
+      willOverwriteExistingFolder: false,
+    },
+    control: {
+      ...planControl,
+      executionMode: enabled ? "executable" : "plan_only",
+      label: action === "approve_outcome" ? "Approve outcome" : "Deliver",
+      reason: enabled
+        ? action === "approve_outcome"
+          ? "Outcome Spec can be approved after the confirmation phrase."
+          : "Deliver can start as a detached supervised process after the confirmation phrase."
+        : planControl.reason,
+    },
+    checks,
+    steps:
+      action === "approve_outcome"
+        ? [
+            "Review Outcome Spec path and validation status",
+            `Type ${requiredPhrase} to approve as user`,
+            "Control Center runs `node scripts/pritha.mjs outcome approve` on the host with this instance env",
+          ]
+        : [
+            "Confirm Outcome Spec is approved and the sibling folder exists",
+            `Type ${requiredPhrase} to start delivery`,
+            "Control Center starts `node scripts/pritha.mjs deliver` as a detached process with this instance env",
+          ],
+    blockers,
+    risks:
+      action === "approve_outcome"
+        ? ["Approval writes host-owned evidence and is not reversible from this card."]
+        : ["Deliver mutates the child project through the bounded executor and spends the delivery token budget."],
+    warnings: [
+      "No Telegram, OpenAI, Tailscale, launchd or Danger full access is started from this gate.",
+      enabled ? "Confirmation-gated action. Instance env is loaded from .pritha-instance.json." : "Plan-only until blockers are resolved.",
+    ],
+  };
+}
+
 function buildOperatorActionPlan(status: ControlCenterStatus, agent: ControlCenterAgent, action: ControlCenterOperatorAction): ControlCenterOperatorActionPlan {
+  if (action === "approve_outcome" || action === "deliver") {
+    return buildOutcomeOperatorActionPlan(status, agent, action);
+  }
   const planControl = controlForAction(agent, action);
   const checks =
     action === "restore"
@@ -3014,7 +3184,7 @@ export async function runAgentManualCheck(agentId: string): Promise<ControlCente
 function blockedOperatorActionResult(params: {
   status: ControlCenterStatus;
   agent: ControlCenterAgent;
-  action: Extract<ControlCenterOperatorAction, "start" | "stop">;
+  action: Extract<ControlCenterOperatorAction, "start" | "stop" | "approve_outcome" | "deliver">;
   plan: ControlCenterOperatorActionPlan;
   generatedAt: string;
   errors: string[];
@@ -3298,6 +3468,185 @@ export async function runAgentRuntimeAction(
       stdout: execution.stdout,
       stderr: execution.stderr,
       readiness: execution.readiness,
+    },
+  };
+  appendManualCheckAudit(status, result);
+  return result;
+}
+
+export async function runAgentOutcomeAction(
+  agentId: string,
+  action: Extract<ControlCenterOperatorAction, "approve_outcome" | "deliver">,
+  confirmation: string,
+): Promise<ControlCenterOperatorActionResult | null> {
+  const { status, agent } = await getControlCenterAgent(agentId);
+  if (!agent) return null;
+  const generatedAt = new Date().toISOString();
+  const plan = buildOperatorActionPlan(status, agent, action);
+  const requiredPhrase = plan.confirmation?.requiredPhrase || operatorActionPhrase(agent, action);
+
+  if (!plan.actionEnabled) {
+    const result = blockedOperatorActionResult({
+      status,
+      agent,
+      action,
+      plan,
+      generatedAt,
+      errors: plan.blockers.length ? plan.blockers : ["Action is not executable for this agent."],
+    });
+    appendManualCheckAudit(status, result);
+    return result;
+  }
+
+  if (plan.confirmation && confirmation.trim() !== requiredPhrase) {
+    const result = blockedOperatorActionResult({
+      status,
+      agent,
+      action,
+      plan,
+      generatedAt,
+      resultStatus: "pending_confirmation",
+      errors: [`Confirmation phrase mismatch. Required phrase: ${requiredPhrase}`],
+      warnings: ["No outcome or delivery command was executed."],
+    });
+    appendManualCheckAudit(status, result);
+    return result;
+  }
+
+  const specRel = agent.lifecycle.outcome.path;
+  if (!specRel) {
+    const result = blockedOperatorActionResult({
+      status,
+      agent,
+      action,
+      plan,
+      generatedAt,
+      errors: ["Outcome Spec path is missing."],
+    });
+    appendManualCheckAudit(status, result);
+    return result;
+  }
+
+  const { env, missing } = instanceEnvForCli(status.root);
+  if (missing.length) {
+    const result = blockedOperatorActionResult({
+      status,
+      agent,
+      action,
+      plan,
+      generatedAt,
+      errors: [`instance_env_missing: ${missing.join(", ")}`],
+    });
+    appendManualCheckAudit(status, result);
+    return result;
+  }
+
+  const specPath = path.resolve(status.root, specRel);
+  const folder = findSiblingFolder(status.root, agent.id);
+  const prithaBin = path.join(status.root, "scripts", "pritha.mjs");
+  const argv =
+    action === "approve_outcome"
+      ? [prithaBin, "outcome", "approve", specPath, "--approved-by", "user", ...(folder ? ["--project", folder.absolutePath] : [])]
+      : [prithaBin, "deliver", specPath, "--project", folder?.absolutePath || ""];
+
+  if (action === "deliver") {
+    if (!folder) {
+      const result = blockedOperatorActionResult({
+        status,
+        agent,
+        action,
+        plan,
+        generatedAt,
+        errors: ["Child-agent folder is missing."],
+      });
+      appendManualCheckAudit(status, result);
+      return result;
+    }
+    const child = spawn(process.execPath, argv, {
+      cwd: status.root,
+      env,
+      detached: true,
+      stdio: "ignore",
+      shell: false,
+    });
+    const spawnError = await new Promise<Error | null>((resolve) => {
+      const timer = setTimeout(() => resolve(null), 100);
+      child.once("error", (error) => {
+        clearTimeout(timer);
+        resolve(error instanceof Error ? error : new Error(String(error)));
+      });
+    });
+    if (spawnError) {
+      const result = blockedOperatorActionResult({
+        status,
+        agent,
+        action,
+        plan,
+        generatedAt,
+        resultStatus: "failed",
+        errors: [safeExecutionText(spawnError.message)],
+      });
+      appendManualCheckAudit(status, result);
+      return result;
+    }
+    child.unref();
+    const result: ControlCenterOperatorActionResult = {
+      ok: true,
+      generatedAt,
+      agent: { id: agent.id, name: agent.name },
+      action,
+      status: "running",
+      actionEnabled: false,
+      audit: {
+        path: operatorActionAuditLogRelativePath(status.root),
+        entryId: auditEntryId(generatedAt, agent.id, "operator-deliver"),
+      },
+      checks: plan.checks,
+      summary: countChecks(plan.checks),
+      warnings: ["Deliver started as a detached supervised process with instance env from .pritha-instance.json."],
+      errors: [],
+      execution: {
+        status: "running",
+        target: "delivery",
+        command: [process.execPath, ...argv],
+        pid: child.pid,
+      },
+    };
+    appendManualCheckAudit(status, result);
+    return result;
+  }
+
+  const executed = spawnSync(process.execPath, argv, {
+    cwd: status.root,
+    env,
+    encoding: "utf8",
+    timeout: 30_000,
+    shell: false,
+  });
+  const failed = executed.status !== 0 || Boolean(executed.error);
+  const result: ControlCenterOperatorActionResult = {
+    ok: !failed,
+    generatedAt,
+    agent: { id: agent.id, name: agent.name },
+    action,
+    status: failed ? "failed" : "passed",
+    actionEnabled: false,
+    audit: {
+      path: operatorActionAuditLogRelativePath(status.root),
+      entryId: auditEntryId(generatedAt, agent.id, "operator-approve-outcome"),
+    },
+    checks: plan.checks,
+    summary: countChecks(plan.checks),
+    warnings: ["Outcome approve used the host CLI with instance env; no child runtime was started."],
+    errors: failed ? [safeExecutionText(executed.stderr || executed.error?.message || "outcome approve failed")] : [],
+    execution: {
+      status: failed ? "failed" : "stopped",
+      target: "outcome",
+      command: [process.execPath, ...argv],
+      exitCode: executed.status,
+      signal: executed.signal,
+      stdout: safeExecutionText(executed.stdout),
+      stderr: safeExecutionText(executed.stderr),
     },
   };
   appendManualCheckAudit(status, result);

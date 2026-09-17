@@ -3,6 +3,7 @@
 import {
   Activity,
   AlertTriangle,
+  BadgeCheck,
   CheckCircle2,
   Clipboard,
   CheckCircle,
@@ -11,6 +12,7 @@ import {
   KeyRound,
   Play,
   RefreshCcw,
+  Send,
   ShieldCheck,
   Square,
   Trash2,
@@ -85,6 +87,8 @@ function actionLabel(action: ControlCenterOperatorAction) {
   if (action === "start") return "Start";
   if (action === "stop") return "Stop";
   if (action === "restore") return "Restore";
+  if (action === "approve_outcome") return "Approve outcome";
+  if (action === "deliver") return "Deliver";
   return "Check";
 }
 
@@ -92,6 +96,8 @@ function actionProgressLabel(action: ControlCenterOperatorAction) {
   if (action === "start") return "Starting...";
   if (action === "stop") return "Stopping...";
   if (action === "restore") return "Restoring...";
+  if (action === "approve_outcome") return "Approving...";
+  if (action === "deliver") return "Starting deliver...";
   return "Checking...";
 }
 
@@ -99,6 +105,8 @@ function ActionIcon({ action }: { action: ControlCenterOperatorAction }) {
   if (action === "start") return <Play size={18} fill="currentColor" />;
   if (action === "stop") return <Square size={15} fill="currentColor" />;
   if (action === "restore") return <RefreshCcw size={18} />;
+  if (action === "approve_outcome") return <BadgeCheck size={18} />;
+  if (action === "deliver") return <Send size={18} />;
   return <ClipboardCheck size={18} />;
 }
 
@@ -189,11 +197,15 @@ export function AgentsOperatorExperience({ status, agents }: { status: ControlCe
   const draftAgents = useMemo(() => agents.filter((agent) => agent.control?.runtimeKind === "scaffold"), [agents]);
   const visibleAgents = agentView === "drafts" ? draftAgents : agentView === "all" ? agents : activeAgents;
 
-  function openAction(agent: AgentCardModel) {
+  function openAction(agent: AgentCardModel, action: ControlCenterOperatorAction = getPrimaryAction(agent)) {
     setSelectedAgentId(agent.id);
-    setSelectedAction(getPrimaryAction(agent));
+    setSelectedAction(action);
     setConfirmationInput("");
     setPanel({ loading: true, running: false });
+  }
+
+  function openOutcomeAction(agent: AgentCardModel, action: "approve_outcome" | "deliver") {
+    openAction(agent, action);
   }
 
   function closeAction() {
@@ -237,7 +249,7 @@ export function AgentsOperatorExperience({ status, agents }: { status: ControlCe
   }
 
   async function runRuntimeAction() {
-    if (!selectedAgent || (selectedAction !== "start" && selectedAction !== "stop")) return;
+    if (!selectedAgent || (selectedAction !== "start" && selectedAction !== "stop" && selectedAction !== "approve_outcome" && selectedAction !== "deliver")) return;
     const plan = panel.plan;
     if (!plan?.actionEnabled) return;
     const needsConfirmation = plan.requiresConfirmation === true;
@@ -410,7 +422,7 @@ export function AgentsOperatorExperience({ status, agents }: { status: ControlCe
   }, [status.access]);
 
   const selectedActionLabel = panel.plan?.control.label || (selectedAgent ? getCardActionLabel(selectedAgent) : actionLabel(selectedAction));
-  const runtimeAction = selectedAction === "start" || selectedAction === "stop";
+  const runtimeAction = selectedAction === "start" || selectedAction === "stop" || selectedAction === "approve_outcome" || selectedAction === "deliver";
   const requiredPhrase = runtimeAction ? panel.plan?.confirmation?.requiredPhrase || "" : "";
   const runtimeActionEnabled = Boolean(
     runtimeAction
@@ -484,6 +496,7 @@ export function AgentsOperatorExperience({ status, agents }: { status: ControlCe
                 accessMode={accessMode}
                 onAgentAction={openAction}
                 onAgentCredentials={openCredentials}
+                onOutcomeAction={openOutcomeAction}
                 onCreatePlan={() => setCreatePlanOpen(true)}
               />
             </section>
@@ -506,6 +519,7 @@ export function AgentsOperatorExperience({ status, agents }: { status: ControlCe
         onAgentViewChange={setAgentView}
         onAgentAction={openAction}
         onAgentCredentials={openCredentials}
+        onOutcomeAction={openOutcomeAction}
         onCreatePlan={() => setCreatePlanOpen(true)}
         onManualAudit={() => void runFleetManualAudit()}
         manualAuditRunning={manualAuditRunning}

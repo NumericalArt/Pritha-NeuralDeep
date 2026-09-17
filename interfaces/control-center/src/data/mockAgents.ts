@@ -32,6 +32,14 @@ export type AgentCardModel = {
     missingRequired: number;
     total: number;
   };
+  outcome?: {
+    status: "missing" | "draft" | "approved" | "superseded" | "unknown";
+    approved: boolean;
+    path?: string;
+  };
+  delivery?: {
+    status: ControlCenterAgent["lifecycle"]["delivery"]["status"];
+  };
   iconType: AgentIconType;
   actionEnabled?: boolean;
   actionDisabledReason?: string;
@@ -126,6 +134,8 @@ export function getCardActionLabel(agent: AgentCardModel) {
   if (action === "stop_plan") return "Stop Plan";
   if (action === "restore_plan") return "Restore Plan";
   if (action === "open_codex") return "Open in Task Chat";
+  if (action === "approve_outcome") return "Approve outcome";
+  if (action === "deliver") return "Deliver";
   if (agent.control?.label) return agent.control.label;
   if (action === "run_now") return "Run Now";
   if (action === "pause_schedule") return "Pause Schedule";
@@ -135,7 +145,7 @@ export function getCardActionLabel(agent: AgentCardModel) {
 
 export function getCardActionTone(agent: AgentCardModel): "start" | "stop" | "restore" | "check" {
   const action = getCardAction(agent);
-  if (action === "start_plan" || action === "run_now" || action === "resume_schedule") return "start";
+  if (action === "start_plan" || action === "run_now" || action === "resume_schedule" || action === "deliver") return "start";
   if (action === "stop_plan" || action === "pause_schedule") return "stop";
   if (action === "restore_plan") return "restore";
   return "check";

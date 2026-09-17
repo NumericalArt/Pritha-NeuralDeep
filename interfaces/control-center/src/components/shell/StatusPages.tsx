@@ -45,6 +45,8 @@ function toCardAgent(agent: ControlCenterAgent): AgentCardModel {
     restorePlanStatus: agent.lifecycle.restorePlan.status === "ready" ? "ready" : agent.lifecycle.restorePlan.status === "planned" ? "planned" : "unavailable",
     rollbackStatus: agent.lifecycle.rollback.status === "ready" ? "ready" : agent.lifecycle.rollback.status === "planned" ? "planned" : "unavailable",
     credentials: { status: agent.credentials.status === "ready" || agent.credentials.status === "pending_auth" ? agent.credentials.status : "unavailable", required: agent.credentials.required, missingRequired: agent.credentials.missingRequired, total: agent.credentials.definitions.length },
+    outcome: { status: agent.lifecycle.outcome.status, approved: agent.lifecycle.outcome.approved, path: agent.lifecycle.outcome.path },
+    delivery: { status: agent.lifecycle.delivery.status },
     iconType: iconForAgent(agent), actionEnabled: agent.ui.actionEnabled, actionDisabledReason: agent.ui.actionDisabledReason, control: agent.control,
   };
 }

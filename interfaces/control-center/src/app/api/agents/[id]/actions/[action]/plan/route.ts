@@ -3,7 +3,7 @@ import type { ControlCenterOperatorAction } from "@/lib/control-center/types";
 
 export const dynamic = "force-dynamic";
 
-const ACTIONS = new Set(["start", "stop", "check", "restore"]);
+const ACTIONS = new Set(["start", "stop", "check", "restore", "approve_outcome", "deliver"]);
 
 function parseAction(value: string): ControlCenterOperatorAction | null {
   return ACTIONS.has(value) ? (value as ControlCenterOperatorAction) : null;

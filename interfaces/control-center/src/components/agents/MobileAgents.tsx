@@ -18,6 +18,7 @@ export function MobileAgents({
   onAgentViewChange,
   onAgentAction,
   onAgentCredentials,
+  onOutcomeAction,
   onCreatePlan,
   onManualAudit,
   manualAuditRunning = false,
@@ -35,6 +36,7 @@ export function MobileAgents({
   onAgentViewChange?: (view: AgentView) => void;
   onAgentAction?: (agent: AgentCardModel) => void;
   onAgentCredentials?: (agent: AgentCardModel) => void;
+  onOutcomeAction?: (agent: AgentCardModel, action: "approve_outcome" | "deliver") => void;
   onCreatePlan?: () => void;
   onManualAudit?: () => void;
   manualAuditRunning?: boolean;
@@ -92,7 +94,7 @@ export function MobileAgents({
       </div>
       <div className="mobile-agent-list">
         {agents.map((agent) => (
-          <AgentCard agent={agent} access={access} accessMode={accessMode} mobile key={agent.id} onAction={onAgentAction} onCredentials={onAgentCredentials} />
+          <AgentCard agent={agent} access={access} accessMode={accessMode} mobile key={agent.id} onAction={onAgentAction} onCredentials={onAgentCredentials} onOutcomeAction={onOutcomeAction} />
         ))}
         <button className="mobile-add-agent-card" type="button" onClick={onCreatePlan} title="Open a safe Codex planning handoff">
           + Create Plan
