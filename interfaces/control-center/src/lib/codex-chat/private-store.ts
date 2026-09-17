@@ -17,6 +17,11 @@ import type {
   TurnView,
 } from "./types";
 
+export type ChatSubject = {
+  taskType: "self" | "agent_creation";
+  subjectId: string | null;
+};
+
 export type MessageReceipt = {
   clientMessageId: string;
   requestHash: string;
@@ -32,6 +37,7 @@ export type ChatBinding = {
   historyCompleteness?: "captured-from-creation" | "legacy-gaps-possible";
   workspacePath?: string;
   executionWorkspace?: ExecutionWorkspace;
+  subject?: ChatSubject | null;
   profileIdentity?: string;
   chatId: string;
   clientThreadId: string;
@@ -182,6 +188,9 @@ export function normalizeChatBinding(value: unknown, defaultIdentityHash: string
     historyCompleteness: row.historyCompleteness,
     workspacePath: typeof row.workspacePath === "string" ? row.workspacePath : undefined,
     executionWorkspace: row.executionWorkspace?.version===1 ? row.executionWorkspace : undefined,
+    subject: row.subject && (row.subject.taskType === "self" || row.subject.taskType === "agent_creation")
+      ? { taskType: row.subject.taskType, subjectId: /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(String(row.subject.subjectId || "")) ? String(row.subject.subjectId) : null }
+      : null,
     profileIdentity: typeof row.profileIdentity === "string" ? row.profileIdentity : undefined,
     providerState: safeProviderState(row.providerState),
     modelId,

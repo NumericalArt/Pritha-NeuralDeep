@@ -36,7 +36,7 @@ import {
   type NeuralDeepCliRunResult,
 } from "./neuraldeep-cli-runner";
 import { cliItemOriginalText, normalizeCliItem, summarizeThread } from "./normalize";
-import { CodexChatPrivateStore, type ChatBinding } from "./private-store";
+import { CodexChatPrivateStore, type ChatBinding, type ChatSubject } from "./private-store";
 import { ensureVoiceTaskLinkRecovery, getVoiceTaskLinkService } from "./voice-task-links";
 import { QueuedVoiceHandoff } from "./voice-queued-handoff";
 import type {
@@ -60,6 +60,7 @@ type CreateThreadInput = {
   title?: string;
   source: "chat";
   settings?: { modelId?: string; effortId?: string; serviceTierId?: string };
+  subject?: { taskType: ChatSubject["taskType"]; subjectId?: string | null } | null;
 };
 
 type StartTurnInput = {
@@ -126,6 +127,7 @@ function createThreadRequestHash(input: CreateThreadInput) {
     title: input.title,
     source: input.source,
     settings: input.settings,
+    subject: input.subject ?? null,
   });
 }
 
@@ -360,6 +362,10 @@ export class CodexChatGateway {
     if (!validClientId(input.clientThreadId) || input.source !== "chat") {
       throw new CodexChatGatewayError("invalid_request", "A valid clientThreadId and source=chat are required.", 400);
     }
+    const subject = input.subject ?? null;
+    if (subject !== null && (typeof subject !== "object" || !["self","agent_creation"].includes(String(subject.taskType)) || (subject.subjectId != null && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(String(subject.subjectId))))) {
+      throw new CodexChatGatewayError("invalid_request", "subject.taskType must be self|agent_creation and subject.subjectId a slug or null.", 400);
+    }
     for (const key of ["modelId", "effortId", "serviceTierId"] as const) {
       const threadValue = input.settings?.[key];
       const turnValue = initialTurn?.settings?.[key];
@@ -396,6 +402,7 @@ export class CodexChatGateway {
       stateIdentityHash: this.store.stateIdentityHash,
       profileIdentity: neuralDeepRuntimeIdentity(this.store.stateRoot).profileIdentity,
       workspacePath: this.root,
+      subject: subject ? { taskType: subject.taskType, subjectId: subject.subjectId ?? null } : null,
       identityStatus: "recorded",
       group: "my_chats",
       origin: "chat",
@@ -981,6 +988,9 @@ export class CodexChatGateway {
         agentMemoryRoot:resolvePrithaAgentMemoryRoot(this.root),
         sandbox:active.intent.sandbox,
         text:active.userText,
+        task:owner.subject ? { taskType:owner.subject.taskType, subjectId:owner.subject.subjectId } : null,
+        stateRoot:this.store.stateRoot,
+        root:this.root,
       });
       const database=await this.store.historyStore();
       database.transaction(()=>{
@@ -1041,6 +1051,7 @@ export class CodexChatGateway {
           agentTarget: intent.executionAgentTarget,
           agentMemoryRoot: resolvePrithaAgentMemoryRoot(this.root),
           requested: Boolean(intent.agentCreationRequested),
+          writableDirs: intent.additionalWritableDirs || [],
         }), attachmentDispatch.prompt, privateUserContextFor(active.userText)].filter(Boolean).join("\n\n"),
         resume: binding.nativeThreadId,
         network: intent.network,

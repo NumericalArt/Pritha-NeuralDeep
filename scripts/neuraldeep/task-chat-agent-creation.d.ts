@@ -4,6 +4,7 @@ export function taskChatAgentCreationNotice(input?: {
   agentTarget?: string | null;
   agentMemoryRoot?: string | null;
   requested?: boolean;
+  writableDirs?: string[];
 }): string;
 
 export function reserveTaskChatAgentTarget(input: {
@@ -16,6 +17,9 @@ export function reserveTaskChatAgentTarget(input: {
   agentMemoryRoot?: string | null;
   sandbox?: string;
   text?: string;
+  task?: { taskType: string; subjectId?: string | null } | null;
+  stateRoot?: string | null;
+  root?: string | null;
 }): {
   requested: boolean;
   additionalWritableDirs: string[];

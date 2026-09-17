@@ -37,6 +37,7 @@ export async function POST(request: Request) {
       title?: string;
       source: "chat";
       settings?: { modelId?: string; effortId?: string; serviceTierId?: string };
+      subject?: { taskType: "self" | "agent_creation"; subjectId?: string | null } | null;
       initialTurn?: {
         clientMessageId: string;
         input: [{ type: "text"; text: string }];
