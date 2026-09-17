@@ -415,7 +415,7 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
 
   const owned = await spawnSupervisedCli(runtime.codexBin, args, {
     cwd: path.resolve(options.cwd || runtime.projectRoot),
-    env: {...sanitizedCodexEnvironment(runtime,process.env,options.executionCodeRoot),TMPDIR:temporaryPath,TMP:temporaryPath,TEMP:temporaryPath,PRITHA_STATE_ROOT:runtime.stateRoot,PRITHA_SEARCH_CODE_ROOT:runtime.projectRoot,PRITHA_SEARCH_CONTEXT:JSON.stringify(searchRuntimeContext({...options,model:selectedModel},runId))},
+    env: {...sanitizedCodexEnvironment(runtime,process.env,options.executionCodeRoot),TMPDIR:temporaryPath,TMP:temporaryPath,TEMP:temporaryPath,TMPPREFIX:path.join(temporaryPath,"zsh"),PRITHA_STATE_ROOT:runtime.stateRoot,PRITHA_SEARCH_CODE_ROOT:runtime.projectRoot,PRITHA_SEARCH_CONTEXT:JSON.stringify(searchRuntimeContext({...options,model:selectedModel},runId))},
     inherit: options.passthrough === "inherit",
     beforeStart: evidence => {
       journal.updateRuntimeRun(runId, { status: "running", process_evidence: evidence, child_pid: evidence.session,
