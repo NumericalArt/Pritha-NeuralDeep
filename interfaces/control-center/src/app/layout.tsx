@@ -9,9 +9,10 @@ export const metadata: Metadata = {
   title: "Pritha Control Center",
   description: "Local control center for Pritha and child agents.",
   icons: {
-    icon: "/favicon.png",
-    shortcut: "/favicon.png",
-    apple: "/pritha-logo.png",
+    icon: "/favicon_ND.png",
+    shortcut: "/favicon_ND.png",
+    // Keep the in-app logo independent from the iOS home-screen icon.
+    apple: "/logo_6.png",
   },
 };
 
