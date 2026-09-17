@@ -95,3 +95,11 @@ test("Agent cards expose confirmation-gated Approve outcome and Deliver actions"
   assert.match(planRoute, /approve_outcome/);
   assert.match(planRoute, /deliver/);
 });
+
+test("Live child without delivery evidence is not labeled as missing confirmation", () => {
+  const readinessSource = readFileSync("interfaces/control-center/src/components/agents/AgentResultReadiness.tsx", "utf8");
+  assert.match(readinessSource, /export function resultReadinessSummary/);
+  assert.match(readinessSource, /Живой сервис/);
+  assert.match(readinessSource, /Trials не прогнаны/);
+  assert.doesNotMatch(readinessSource, /Нет подтверждения/);
+});
