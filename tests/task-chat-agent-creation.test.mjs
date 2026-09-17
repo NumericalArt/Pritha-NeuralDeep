@@ -98,3 +98,84 @@ test("Task Chat allocation writes one reserved folder and never the parent", () 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("Task Chat structured task wins over text and reserves without a header in text", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "nd-task-chat-struct-"));
+  const parent = path.join(root, "children");
+  const memory = path.join(root, "agents");
+  const stateRoot = path.join(root, "state");
+  mkdirSync(parent);
+  mkdirSync(stateRoot);
+  const store = new NeuralDeepCoordinationStore({ databasePath: path.join(stateRoot, "admission.sqlite") });
+  const allocator = new NeuralDeepExecutionWorkspaces(store, { stateRoot });
+  try {
+    const reserved = reserveTaskChatAgentTarget({
+      allocator, ownerId: "chat_structured", agentParent: parent, agentMemoryRoot: memory,
+      sandbox: "workspace-write", text: "Сделай contract для Paper Radar",
+      task: { taskType: "agent_creation", subjectId: "paper-radar" },
+    });
+    const target = path.join(realpathSync(parent), "paper-radar");
+    assert.equal(reserved.requested, true);
+    assert.equal(reserved.agentTarget, target);
+    assert.equal(existsSync(target), true);
+
+    const skipped = reserveTaskChatAgentTarget({
+      allocator, ownerId: "chat_struct_other", agentParent: parent, agentMemoryRoot: memory,
+      sandbox: "workspace-write", text: "task_type=agent_creation subject_id=x",
+      task: { taskType: "self_improvement" },
+    });
+    assert.equal(skipped.requested, false);
+    assert.deepEqual(skipped.additionalWritableDirs, []);
+  } finally {
+    store.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Task Chat adds instance contracts and audit roots when stateRoot is passed", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "nd-task-chat-state-"));
+  const parent = path.join(root, "children");
+  const memory = path.join(root, "agents");
+  const stateRoot = path.join(root, "state");
+  mkdirSync(parent);
+  mkdirSync(stateRoot);
+  const store = new NeuralDeepCoordinationStore({ databasePath: path.join(stateRoot, "admission.sqlite") });
+  const allocator = new NeuralDeepExecutionWorkspaces(store, { stateRoot });
+  try {
+    const reserved = reserveTaskChatAgentTarget({
+      allocator, ownerId: "chat_state", agentParent: parent, agentMemoryRoot: memory,
+      sandbox: "workspace-write",
+      text: "task_type=agent_creation subject_id=state-radar",
+      stateRoot,
+    });
+    const target = path.join(realpathSync(parent), "state-radar");
+    const contracts = realpathSync(path.join(stateRoot, "agents", "contracts"));
+    const audit = realpathSync(path.join(stateRoot, "audit"));
+    assert.deepEqual(reserved.additionalWritableDirs, [target, realpathSync(memory), contracts, audit]);
+    assert.equal(existsSync(contracts), true);
+    assert.equal(existsSync(audit), true);
+  } finally {
+    store.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Task Chat notice lists writable roots and audit guidance only when provided", () => {
+  const withRoots = taskChatAgentCreationNotice({
+    requested: true, agentTarget: "/a/target",
+    writableDirs: ["/a/target", "/s/audit"],
+  });
+  assert.ok(withRoots.includes("Writable roots for this turn: /a/target, /s/audit"));
+  assert.ok(withRoots.includes("Instance agents/contracts and audit are writable: run outcome approve and copy the contract from this chat, do not ask for host-side approval."));
+
+  const noSibling = taskChatAgentCreationNotice({
+    requested: true, agentTarget: null,
+    writableDirs: ["/s/audit"],
+  });
+  assert.ok(noSibling.includes("Writable roots for this turn: /s/audit"));
+  assert.ok(noSibling.includes("run outcome approve"));
+
+  const plain = taskChatAgentCreationNotice({ requested: true, agentTarget: "/a/target" });
+  assert.doesNotMatch(plain, /Writable roots for this turn/);
+  assert.doesNotMatch(plain, /outcome approve/);
+});
