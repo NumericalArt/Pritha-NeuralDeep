@@ -149,4 +149,17 @@ export class NeuralDeepExecutionWorkspaces {
       return target;
     }finally{this.store.releaseSessionControl(control,token);}
   }
+
+  /** Reuse a host-reserved ready sibling. Does not create folders or steal untracked children. */
+  adoptReadyAgentTarget(parentPath,name){
+    if(!name || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(name))throw new ExecutionWorkspaceError('agent_target_name_invalid');
+    const parent=directory(parentPath),target=path.join(parent,name);
+    const control=digest(['agent-target',target]).slice(0,24),token=`workspace_${randomUUID()}`;
+    if(!this.store.acquireSessionControl(control,token))throw new ExecutionWorkspaceError('workspace_preparing');
+    try{
+      const row=this.db.prepare('SELECT * FROM execution_agent_targets WHERE path=?').get(target);
+      if(!row || row.state!=='ready' || !existsSync(target) || directory(target)!==target)return null;
+      return target;
+    }finally{this.store.releaseSessionControl(control,token);}
+  }
 }

@@ -205,6 +205,13 @@ function processExists(pid) {
   try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
+function decodeLsofPath(value) {
+  return String(value || "").replace(/(?:\\x[0-9a-f]{2})+/giu, (escaped) => {
+    const bytes = [...escaped.matchAll(/\\x([0-9a-f]{2})/giu)].map((match) => Number.parseInt(match[1], 16));
+    return Buffer.from(bytes).toString("utf8");
+  });
+}
+
 function processInfo(pid) {
   if (!processExists(pid)) return null;
   const ps = run("ps", ["-o", "pid=,ppid=,pgid=,command=", "-p", String(pid)]);
@@ -218,7 +225,7 @@ function processInfo(pid) {
     ppid: Number(match[2]),
     pgid: Number(match[3]),
     command: match[4],
-    cwd: cwdLine ? cwdLine.slice(1) : null,
+    cwd: cwdLine ? decodeLsofPath(cwdLine.slice(1)) : null,
   };
 }
 

@@ -16,7 +16,9 @@ import { assertNeuralDeepDispatchAllowed } from "../../../../../scripts/neuralde
 import { NeuralDeepExecutionWorkspaces, ExecutionWorkspaceError } from "../../../../../scripts/neuraldeep/execution-workspaces.mjs";
 import { executionResourceClaims } from "../../../../../scripts/neuraldeep/execution-resources.mjs";
 import { listTaskDeliveries, normalizeTaskDeliveryBudgetRequest, performTaskDeliveryAction, readTaskDelivery, TaskDeliveryError, type TaskDeliveryRequest, type DeliveryTask } from "../../../../../scripts/agents-mother/task-delivery.mjs";
-import { resolveTechscopeRoot } from "@/lib/pritha-paths";
+import { resolvePrithaAgentMemoryRoot, resolvePrithaAgentParent, resolveTechscopeRoot } from "@/lib/pritha-paths";
+// @ts-expect-error plain ESM helper; types live next to the module for Node tests
+import { reserveTaskChatAgentTarget, taskChatAgentCreationNotice } from "../../../../../scripts/neuraldeep/task-chat-agent-creation.mjs";
 import { privateUserContextFor } from "@/lib/private-user-context";
 import { getPrithaRuntimeSettings } from "@/lib/realtime/pritha-runtime";
 import { getCodexModelCatalog } from "@/lib/settings/codex-model-catalog-server";
@@ -873,7 +875,7 @@ export class CodexChatGateway {
         workloadId: active.turnId,
         coordinationKey: binding.voiceTopicId || `${binding.stateIdentityHash}:${binding.chatId}`,
         sessionKeyHash: binding.nativeThreadId ? neuralDeepSessionKey(this.store.stateRoot,binding.nativeThreadId) : null,
-        resources: executionResourceClaims({cwd:active.intent!.cwd,sandbox:active.intent!.sandbox}),
+        resources: executionResourceClaims({cwd:active.intent!.cwd,sandbox:active.intent!.sandbox,additionalWritableDirs:active.intent!.additionalWritableDirs || []}),
         payload: active.intent ? { version: 1, chatId, turnId: active.turnId, requestHash: active.requestHash, execution: active.intent, prompt: active.userText } : undefined,
         signal: active.admissionController.signal,
       });
@@ -971,13 +973,25 @@ export class CodexChatGateway {
           throw error;
         }
       }
+      const owner=await this.requireBinding(chatId);
+      const reserved=reserveTaskChatAgentTarget({
+        allocator:workspaces,
+        ownerId:owner.voiceTopicId || chatId,
+        agentParent:resolvePrithaAgentParent(this.root),
+        agentMemoryRoot:resolvePrithaAgentMemoryRoot(this.root),
+        sandbox:active.intent.sandbox,
+        text:active.userText,
+      });
       const database=await this.store.historyStore();
       database.transaction(()=>{
         const saved=database.turn(chatId,active.turnId);
         if(active.interrupted || saved?.executionIntent?.attemptId!==active.intent!.attemptId || saved.executionIntent.dispatchState!=="accepted")throw new AdmissionCancelledError();
         if(saved.executionIntent.workspacePrepared && saved.executionIntent.cwd!==workspace.cwd)throw new RuntimeIdentityMismatchError();
         const next={...saved.executionIntent,cwd:workspace.cwd,workspacePrepared:true,
-          executionCodeRoot:workspace.source===realpathSync(this.root) && workspace.mode==="worktree" ? workspace.cwd : this.root};
+          executionCodeRoot:workspace.source===realpathSync(this.root) && workspace.mode==="worktree" ? workspace.cwd : this.root,
+          additionalWritableDirs:reserved.additionalWritableDirs,
+          executionAgentTarget:reserved.agentTarget,
+          agentCreationRequested:reserved.requested};
         database.mutate(chatId,current=>({...current,workspacePath:workspace.cwd,executionWorkspace:workspace}));
         database.mutateTurn(chatId,active.turnId,current=>({...current,executionIntent:next}));
         active.intent=next;
@@ -1017,12 +1031,17 @@ export class CodexChatGateway {
         sandbox: intent.sandbox,
         cwd: intent.cwd,
         executionCodeRoot: intent.executionCodeRoot,
+        additionalWritableDirs: intent.additionalWritableDirs,
         searchUserText:active.userText,
         searchOwner:chatId,
         searchTurn:active.turnId,
         images: attachmentDispatch.images,
         attachmentManifest: attachmentDispatch.attachmentManifest,
-        prompt: [active.userText, attachmentDispatch.prompt, privateUserContextFor(active.userText)].filter(Boolean).join("\n\n"),
+        prompt: [active.userText, taskChatAgentCreationNotice({
+          agentTarget: intent.executionAgentTarget,
+          agentMemoryRoot: resolvePrithaAgentMemoryRoot(this.root),
+          requested: Boolean(intent.agentCreationRequested),
+        }), attachmentDispatch.prompt, privateUserContextFor(active.userText)].filter(Boolean).join("\n\n"),
         resume: binding.nativeThreadId,
         network: intent.network,
         usageSource: "codex-chat",

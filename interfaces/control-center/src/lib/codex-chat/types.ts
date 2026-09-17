@@ -184,6 +184,9 @@ export type ExecutionIntent = {
   cwd: string;
   workspacePrepared?: boolean;
   executionCodeRoot?: string;
+  additionalWritableDirs?: string[];
+  executionAgentTarget?: string | null;
+  agentCreationRequested?: boolean;
   profileIdentity: string;
   sandbox: "read-only" | "workspace-write" | "danger-full-access";
   network: boolean;
