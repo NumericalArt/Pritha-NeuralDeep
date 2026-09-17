@@ -19,6 +19,8 @@ import { listTaskDeliveries, normalizeTaskDeliveryBudgetRequest, performTaskDeli
 import { resolvePrithaAgentMemoryRoot, resolvePrithaAgentParent, resolveTechscopeRoot } from "@/lib/pritha-paths";
 // @ts-expect-error plain ESM helper; types live next to the module for Node tests
 import { reserveTaskChatAgentTarget, taskChatAgentCreationNotice } from "../../../../../scripts/neuraldeep/task-chat-agent-creation.mjs";
+// @ts-expect-error plain ESM helper; types live next to the module for Node tests
+import { resolveTaskChatPhase, taskChatPhasePreamble, taskChatTimeoutCheckpoint, taskChatTurnTimeoutMs } from "../../../../../scripts/neuraldeep/task-chat-phases.mjs";
 import { privateUserContextFor } from "@/lib/private-user-context";
 import { getPrithaRuntimeSettings } from "@/lib/realtime/pritha-runtime";
 import { getCodexModelCatalog } from "@/lib/settings/codex-model-catalog-server";
@@ -443,7 +445,7 @@ export class CodexChatGateway {
       modelId: binding.modelId, effortId: binding.effortId, cwd: binding.workspacePath || this.root,
       profileIdentity: binding.profileIdentity || neuralDeepRuntimeIdentity(this.store.stateRoot).profileIdentity,
       sandbox, network: sandbox === "danger-full-access" || (sandbox === "workspace-write" && settings.codexNetworkAccess === true),
-      timeoutMs: settings.codexTimeoutMs || 600_000, settingsAt: settings.updatedAt,
+      timeoutMs: taskChatTurnTimeoutMs({ subject: binding.subject ?? null, settingsTimeoutMs: settings.codexTimeoutMs || 600_000 }), settingsAt: settings.updatedAt,
       predecessorTurnId: null, queueRevision: 1, dispatchState: "accepted" };
   }
 
@@ -742,6 +744,7 @@ export class CodexChatGateway {
         if (this.activeTurns.has(chatId)) throw new CodexChatGatewayError("turn_active", "This chat already has an active turn.", 409);
         if (request?.expectedAttemptId && request.expectedAttemptId !== turn.executionIntent?.attemptId) throw new CodexChatGatewayError("turn_changed", "A newer attempt already replaced this recovery request.", 409);
         if (!isRecoverableTurn(turn)) throw new CodexChatGatewayError("turn_recovery_unavailable", "This turn no longer needs recovery.", 409);
+        if ((action === "resume" || action === "retry") && turn.error?.code === "turn_step_timeout") throw new CodexChatGatewayError("recovery_not_allowed", "This child-agent step timed out. Open a New chat with the same Subject and paste the checkpoint; Resume and Retry are disabled for step timeouts.", 409);
         const identity = neuralDeepRuntimeIdentity(this.store.stateRoot);
         if (action !== "cancel" && (binding.archived || binding.providerId !== "neuraldeep_cli" || binding.identityStatus === "unverified"
           || binding.stateIdentityHash !== identity.stateIdentityHash || (binding.profileIdentity && binding.profileIdentity !== identity.profileIdentity))) throw new RuntimeIdentityMismatchError();
@@ -1052,6 +1055,9 @@ export class CodexChatGateway {
           agentMemoryRoot: resolvePrithaAgentMemoryRoot(this.root),
           requested: Boolean(intent.agentCreationRequested),
           writableDirs: intent.additionalWritableDirs || [],
+        }), taskChatPhasePreamble({
+          phase: resolveTaskChatPhase({ subject: binding.subject ?? null, text: active.userText }),
+          timeoutMs: intent.timeoutMs,
         }), attachmentDispatch.prompt, privateUserContextFor(active.userText)].filter(Boolean).join("\n\n"),
         resume: binding.nativeThreadId,
         network: intent.network,
@@ -1201,6 +1207,21 @@ export class CodexChatGateway {
       }));
       await this.waitForProvider(chatId, probe);
       return;
+    }
+    if (failure.kind === "timeout") {
+      const timeoutBinding = await this.requireBinding(chatId);
+      if (timeoutBinding.subject?.taskType === "agent_creation") {
+        const savedTurn = (await this.store.historyStore()).turn(chatId, active.turnId);
+        await this.finishAttempt(chatId, "failed", {
+          code: "turn_step_timeout",
+          message: taskChatTimeoutCheckpoint({
+            items: savedTurn?.items || [],
+            phase: resolveTaskChatPhase({ subject: timeoutBinding.subject, text: active.userText }),
+            timeoutMs: active.intent?.timeoutMs ?? null,
+          }),
+        });
+        return;
+      }
     }
     if (failure.kind === "timeout" && !active.toolStarted) {
       await this.finishAttempt(chatId, "failed", {

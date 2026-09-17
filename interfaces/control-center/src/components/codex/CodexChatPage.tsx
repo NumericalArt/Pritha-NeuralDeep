@@ -1599,14 +1599,17 @@ export function CodexChatPage() {
                     ) : null}
                     {turnNeedsRecovery(turn) && !turn.taskId ? (
                       <div className="codex-turn-recovery-actions" aria-label="Turn recovery actions">
-                        {turn.error.code === "admission_runtime_exit_unconfirmed" || (visibleError?.turnId === turn.turnId && visibleError.code === "admission_runtime_exit_unconfirmed") ? <>
+                        {turn.error?.code === "turn_step_timeout" ? <>
+                          <span role="status">{turn.error.message}</span>
+                          <button type="button" onClick={() => void recoverFailedTurn(turn, "cancel")} disabled={Boolean(turnRecovery)}>{turnRecovery?.turnId === turn.turnId && turnRecovery.action === "cancel" ? "Dismissing…" : "Dismiss"}</button>
+                        </> : (turn.error.code === "admission_runtime_exit_unconfirmed" || (visibleError?.turnId === turn.turnId && visibleError.code === "admission_runtime_exit_unconfirmed") ? <>
                           <span role="status">{visibleError?.turnId === turn.turnId ? visibleError.message : "Check that the previous run has stopped before continuing. This check does not send a new request to the model."}</span>
                           <button type="button" onClick={() => void recoverFailedTurn(turn, "reconcile")} disabled={Boolean(turnRecovery)}>{turnRecovery?.turnId === turn.turnId ? "Checking…" : "Check recovery"}</button>
                         </> : <>
                         <button type="button" onClick={() => void recoverFailedTurn(turn, "resume")} disabled={Boolean(turnRecovery)}>{turnRecovery?.turnId === turn.turnId && turnRecovery.action === "resume" ? "Resuming…" : "Resume"}</button>
                         <button type="button" onClick={() => void recoverFailedTurn(turn, "retry")} disabled={Boolean(turnRecovery)}>{turnRecovery?.turnId === turn.turnId && turnRecovery.action === "retry" ? "Retrying…" : "Retry"}</button>
                         <button type="button" onClick={() => void recoverFailedTurn(turn, "cancel")} disabled={Boolean(turnRecovery)}>{turnRecovery?.turnId === turn.turnId && turnRecovery.action === "cancel" ? "Cancelling…" : "Cancel"}</button>
-                        </>}
+                        </>)}
                       </div>
                     ) : null}
                   </div>
