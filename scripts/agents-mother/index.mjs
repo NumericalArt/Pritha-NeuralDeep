@@ -111,6 +111,7 @@ function usage() {
   ${CLI_COMMAND} outcome approve <outcome-spec-path> --approved-by user [--project <path>]
   ${CLI_COMMAND} outcome compile <outcome-spec-path> [--run-id <id>] [--allow-draft]
   ${CLI_COMMAND} trial run <outcome-spec-path> --project <path> [--backend local|codex-cli] [--run-id <id>]
+  ${CLI_COMMAND} deliver --dry-run
   ${CLI_COMMAND} deliver <outcome-spec-path> --project <path> [--executor codex-cli] [--trial-backend local|codex-cli] [--run-id <id>]
   ${CLI_COMMAND} delivery status <run-id>
   ${CLI_COMMAND} delivery usage <run-id>
