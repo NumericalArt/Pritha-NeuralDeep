@@ -11,6 +11,7 @@ import { loadAttachmentDispatch } from "./neuraldeep/attachment-transport.mjs";
 import { readJsonlLines } from "./neuraldeep/jsonl-reader.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import os from "node:os";
 import { atomicWriteFile } from "./lib/atomic-file.mjs";
 import { closeNeuralDeepAdapter, listenNeuralDeepAdapter } from "./neuraldeep/responses-adapter.mjs";
 import { loadNeuralDeepAccountSnapshot, billingContextForModel, sanitizeNeuralDeepLimits } from "./neuraldeep/account-snapshot.mjs";
@@ -186,7 +187,24 @@ export function sanitizedCodexEnvironment(runtime, environment = process.env, ex
   childEnvironment.PRITHA_INSTANCE_ID = runtime.instanceId;
   childEnvironment.NO_PROXY = childEnvironment.NO_PROXY || "127.0.0.1,localhost";
   childEnvironment.no_proxy = childEnvironment.no_proxy || childEnvironment.NO_PROXY;
+  const utf8Locale = pickUtf8Locale(childEnvironment);
+  childEnvironment.LANG = utf8Locale;
+  childEnvironment.LC_ALL = utf8Locale;
   return childEnvironment;
+}
+
+export function pickUtf8Locale(environment = process.env) {
+  const current = String(environment.LC_ALL || environment.LANG || "");
+  return /utf-?8/i.test(current) ? current : "en_US.UTF-8";
+}
+
+export function resolveTemporaryParent(runtime, environment = process.env) {
+  const asciiOnly = /^[\x20-\x7e]+$/;
+  const configured = environment.PRITHA_NEURALDEEP_TMP_ROOT ? path.resolve(environment.PRITHA_NEURALDEEP_TMP_ROOT) : null;
+  if (configured && asciiOnly.test(configured)) return path.join(configured, "neuraldeep-runs");
+  const fallback = path.join(os.tmpdir(), "pritha-nd", String(runtime.instanceId || "default"));
+  if (!asciiOnly.test(fallback)) throw new Error("runtime_temporary_root_non_ascii");
+  return path.join(fallback, "neuraldeep-runs");
 }
 
 function appendProvenance(runtime, event, { includeCodexVersion = true } = {}) {
@@ -301,8 +319,8 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
       resumed_session: options.resume || null, worker_pid: process.pid, worker_started: worker.started,
       process_protocol: 1, dispatch_authorized: false, process_exited: false, usage_ledger_recorded: false } });
   receiptCreated = true;
-  const temporaryParent=path.join(runtime.stateRoot,"tmp","neuraldeep-runs");
-  for(const directory of [runtime.stateRoot,path.dirname(temporaryParent),temporaryParent]) {
+  const temporaryParent = resolveTemporaryParent(runtime, process.env);
+  for (const directory of [path.dirname(temporaryParent), temporaryParent]) {
     if(existsSync(directory) && (lstatSync(directory).isSymbolicLink() || !lstatSync(directory).isDirectory()))throw new Error("runtime_temporary_root_unverified");
     mkdirSync(directory,{recursive:true,mode:0o700});
   }
