@@ -69,6 +69,8 @@ test("unsupported CLI preflight makes no project or report writes and preserves 
   assert.equal(preview.capability.supported, false); assert.equal(preview.contractStatus, "accepted");
   const result = spawnSync(process.execPath, ["scripts/pritha.mjs", "scaffold", f.file], { encoding: "utf8", env: f.env });
   assert.notEqual(result.status, 0); assert.match(result.stderr, /local-model scaffold adapter/);
+  assert.match(`${result.stdout}\n${result.stderr}`, /supported runtimes/);
+  assert.match(`${result.stdout}\n${result.stderr}`, /runtime-adapter-missing/);
   assert.equal(existsSync(f.target), false);
   assert.equal(existsSync(path.join(f.stateRoot, "agents/reports")), false);
   assert.equal(readFileSync(f.file, "utf8"), f.text);
@@ -81,6 +83,13 @@ test("CLI scaffold completes structural checks and a local Git baseline without 
   const result = spawnSync(process.execPath, ["scripts/pritha.mjs", "scaffold", f.file, "--allow-missing-research", "--allow-pending-external-verification"], { encoding: "utf8", env: f.env, timeout: 30_000 });
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.match(result.stdout, /experimental scaffold overrides/);
+  assert.match(result.stdout, /project_path: \//);
+  assert.match(result.stdout, /contract_path: \//);
+  assert.equal(
+    result.stdout.includes(`contract_path: ${f.file}`) || result.stdout.includes(`contract_path: ${realpathSync(f.file)}`),
+    true,
+    result.stdout,
+  );
   assert.equal(readFileSync(f.file, "utf8"), f.text);
   assert.equal(existsSync(path.join(f.target, "operations")), false);
   const reports = path.join(f.stateRoot, "agents/reports");

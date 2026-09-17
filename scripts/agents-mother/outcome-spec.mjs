@@ -552,7 +552,7 @@ privacy: public
 retention: durable
 review_status: draft
 confidence: medium
-contract_path: ${yamlScalar(data.relPath)}
+contract_path: ${yamlScalar(data.fullPath || path.resolve(data.root, data.relPath))}
 contract_fingerprint: ${data.fingerprint}
 agent_slug: ${agentSlug}
 interaction_mode: ${mode}
@@ -664,6 +664,7 @@ export function reviseOutcomeSpec(specPath, options = {}) {
     throw new Error("Outcome revision starts from the currently approved Outcome Spec; edit an existing draft directly");
   }
   const date = options.date || today();
+  const contract = contractForParsed(parsed, { ...options, root });
   const contractDir = path.join(resolvePrithaAgentMemoryRoot({ root, stateRoot: options.stateRoot }), "contracts");
   mkdirSync(contractDir, { recursive: true });
   const priorRelPath = path.relative(root, fullPath).replaceAll(path.sep, "/");
@@ -672,6 +673,8 @@ export function reviseOutcomeSpec(specPath, options = {}) {
     ({ artifactId }) => replaceFrontmatterFields(original, {
       id: artifactId,
       status: "draft",
+      ...(contract?.fingerprint ? { contract_fingerprint: contract.fingerprint } : {}),
+      ...(contract?.fullPath ? { contract_path: JSON.stringify(contract.fullPath) } : {}),
       created: date,
       updated: date,
       verified: "pending",
@@ -712,7 +715,8 @@ export function outcomeSpecsForContract(contractPath, options = {}) {
         const text = readFileSync(filePath, "utf8");
         const parsed = parseOutcomeSpecText(text);
         if (parsed.frontmatter.type !== "agent-outcome-spec") return null;
-        const samePath = path.normalize(String(parsed.frontmatter.contract_path || "")) === path.normalize(data.relPath);
+        const declaredPath = path.normalize(String(parsed.frontmatter.contract_path || ""));
+        const samePath = declaredPath === path.normalize(data.relPath) || declaredPath === path.normalize(data.fullPath);
         const sameFingerprint = parsed.frontmatter.contract_fingerprint === data.fingerprint;
         if (!samePath && !sameFingerprint) return null;
         const validation = validateOutcomeSpecText(text, { root, contract: data });

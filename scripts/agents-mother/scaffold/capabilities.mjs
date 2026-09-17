@@ -48,10 +48,12 @@ export function scaffoldCapability(data = {}) {
   return { ...base, supported: true, adapter: "codex-workspace-v1", reason: "existing-codex-workspace-adapter", nextAction: "Create the selected harness modules; interface placeholders still require Outcome implementation and Trials." };
 }
 
+const SUPPORTED_RUNTIMES_HINT = "supported runtimes: codex-native, cli; api+process for web/api with service process, no proactivity.";
+
 export function assertScaffoldCapability(data) {
   const capability = scaffoldCapability(data);
   if (!capability.supported) {
-    const error = new Error(`Scaffold capability: ${capability.reason}. ${capability.nextAction}`);
+    const error = new Error(`Scaffold capability: ${capability.reason}. ${capability.nextAction} ${SUPPORTED_RUNTIMES_HINT} reason: ${capability.reason}`);
     error.code = "scaffold_adapter_unavailable";
     error.capability = capability;
     throw error;

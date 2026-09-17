@@ -2053,7 +2053,19 @@ async function main() {
   if (command === "scaffold") {
     const target = options._[0];
     if (!target) throw new Error("Missing contract path.");
-    scaffoldContract(target, options);
+    const plan = planScaffoldContract(target);
+    if (!plan.capability.supported) {
+      console.log(JSON.stringify(plan, null, 2));
+      console.error("supported runtimes: codex-native, cli; api+process for web/api with service process, no proactivity.");
+    }
+    const result = scaffoldContract(target, options);
+    rebuildRegistry();
+    try {
+      const readiness = await checkCardReadiness(path.basename(result.targetPath), { baseUrl: false });
+      console.log(`card-readiness: ${readiness.status}`);
+    } catch (error) {
+      console.log(`card-readiness: skipped (${redactSensitiveText(String(error?.message || error)).slice(0, 200)})`);
+    }
     return;
   }
   if (command === "test") {

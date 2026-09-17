@@ -1621,6 +1621,8 @@ export function scaffoldContract(contractPath, options = {}) {
   const reportPath = writtenReport.path;
 
   console.log(`Scaffold: ${targetPath}`);
+  console.log(`project_path: ${path.resolve(targetPath)}`);
+  console.log(`contract_path: ${path.resolve(data.fullPath)}`);
   console.log(`Created files: ${createdFiles.length}`);
   console.log(`Smoke test: ${smokeResult.ok ? "pass" : "fail"}`);
   console.log(`Healthcheck: ${healthResult.ok ? "pass" : "fail"}`);
