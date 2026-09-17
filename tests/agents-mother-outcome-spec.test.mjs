@@ -232,3 +232,71 @@ test("user correction creates a new draft revision and supersedes the old approv
   approveOutcomeSpec(revision.path, { root, stateRoot, approvedBy: "user", approvedAt: "2026-08-17T12:00:00.000Z" });
   assert.equal(verifyOutcomeApproval(revision.path, { root, stateRoot }).ok, true);
 });
+
+test("validator prints allowed enum values in status messages", () => {
+  const { root, specPath } = fixture();
+  const text = readFileSync(specPath, "utf8");
+  const invalid = text
+    .replace("status: draft", "status: banana")
+    .replace("outcome_spec_status: draft", "outcome_spec_status: banana");
+  const result = validateOutcomeSpecText(invalid, { root });
+
+  assert.equal(result.issues.some((entry) => entry.code === "OS002"), true);
+  assert.equal(
+    result.issues.some((entry) => entry.code === "OS002" && entry.message.includes("allowed:") && entry.message.includes("draft")),
+    true,
+    result.issues.map((entry) => `${entry.code}: ${entry.message}`).join("\n"),
+  );
+});
+
+test("shared Then artifact asserted by two automated trials fails validation", () => {
+  const { root, specPath } = fixture();
+  const valid = readFileSync(specPath, "utf8");
+  const appended = valid.replace(
+    "## Demo script",
+    `### Trial: shared-assert-a
+
+- Statement: First trial asserts the shared artifact.
+- Kind: automated
+- Covers: deliverable:02-runnable-project-with-a-user-guide-and-verification-evidence
+- Isolation: none
+- When argv: ["node", "scripts/smoke-test.mjs"]
+- Then exit code: 0
+- Then artifact: data/shared.json
+- Timeout ms: 120000
+
+### Trial: shared-assert-b
+
+- Statement: Second trial asserts the same shared artifact.
+- Kind: automated
+- Covers: deliverable:02-runnable-project-with-a-user-guide-and-verification-evidence
+- Isolation: none
+- When argv: ["node", "scripts/smoke-test.mjs"]
+- Then exit code: 0
+- Then artifact: data/shared.json
+- Timeout ms: 120000
+
+## Demo script`,
+  );
+  const result = validateOutcomeSpecText(appended, { root });
+  const shared = result.issues.find((entry) => entry.code === "OS022");
+
+  assert.notEqual(shared, undefined, "expected OS022 shared_asserted_artifact issue");
+  assert.equal(result.issues.some((entry) => entry.code === "OS022" && entry.message.includes("shared_asserted_artifact") && entry.message.includes("data/shared.json")), true, result.issues.map((entry) => `${entry.code}: ${entry.message}`).join("\n"));
+});
+
+test("product target colliding with a protected fixture fails validation", () => {
+  const { root, specPath } = fixture();
+  const valid = readFileSync(specPath, "utf8");
+  const conflicted = valid.replace(
+    "- Timeout ms: 120000",
+    `- Timeout ms: 120000
+- Product target: tests/fixtures/x.json
+- Fixture: tests/fixtures/x.json`,
+  );
+  const result = validateOutcomeSpecText(conflicted, { root });
+  const conflict = result.issues.find((entry) => entry.code === "OS023");
+
+  assert.notEqual(conflict, undefined, "expected OS023 trial_input_protected_conflict issue");
+  assert.equal(conflict.message.includes("trial_input_protected_conflict"), true, conflict.message);
+});

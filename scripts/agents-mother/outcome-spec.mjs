@@ -263,6 +263,10 @@ function issue(code, message, location = "") {
   return { code, message, location };
 }
 
+function allowedHint(values) {
+  return `allowed: ${Array.from(values).join(", ")}`;
+}
+
 function missing(value) {
   const normalized = String(value || "").trim();
   return !normalized || /^(?:tbd|pending|unknown)$/i.test(normalized);
@@ -319,7 +323,7 @@ export function validateOutcomeSpecText(text, options = {}) {
     issues.push(issue("OS020", "Outcome identity must match its exact agent contract", "frontmatter.agent_id/subject.id"));
   }
   if (!OUTCOME_STATUSES.has(status) || String(fm.outcome_spec_status || "").toLowerCase() !== status) {
-    issues.push(issue("OS002", "status and outcome_spec_status must match an allowed value", "frontmatter.status"));
+    issues.push(issue("OS002", `status and outcome_spec_status must match an allowed value (${allowedHint(OUTCOME_STATUSES)})`, "frontmatter.status"));
   }
   if (missing(fm.contract_path) || missing(fm.contract_fingerprint)) {
     issues.push(issue("OS003", "contract_path and contract_fingerprint are required", "frontmatter.contract_fingerprint"));
@@ -330,7 +334,7 @@ export function validateOutcomeSpecText(text, options = {}) {
   }
   if (!/^[a-z0-9][a-z0-9-]*$/.test(String(fm.agent_slug || ""))) issues.push(issue("OS004", "agent_slug must be lowercase kebab-case", "frontmatter.agent_slug"));
   if (!INTERACTION_MODES.has(parsed.interactionMode) || parsed.shape.interactionMode !== parsed.interactionMode) {
-    issues.push(issue("OS005", "interaction mode must be interface, headless or hybrid and match the body", "Shape.Interaction mode"));
+    issues.push(issue("OS005", `interaction mode must be interface, headless or hybrid and match the body (${allowedHint(INTERACTION_MODES)})`, "Shape.Interaction mode"));
   }
   if (missing(parsed.shape.oneLiner) || missing(parsed.shape.doneWhen)) issues.push(issue("OS006", "One-liner and Done when must be concrete", "Shape"));
 
@@ -355,13 +359,13 @@ export function validateOutcomeSpecText(text, options = {}) {
   for (const trial of parsed.trials) {
     const location = `Trial:${trial.id || "unknown"}`;
     if (!/^[a-z0-9][a-z0-9-]*$/.test(trial.id) || ids.has(trial.id) || missing(trial.statement) || !TRIAL_KINDS.has(trial.kind)) {
-      issues.push(issue("OS010", "Trial needs a unique kebab-case id, statement and valid kind", location));
+      issues.push(issue("OS010", `Trial needs a unique kebab-case id, statement and valid kind (${allowedHint(TRIAL_KINDS)})`, location));
     }
     ids.add(trial.id);
     if (trial.covers.length === 0 || trial.covers.some((value) => !/^(?:core|deliverable|safety|recovery):[a-z0-9][a-z0-9-]*$/.test(value))) {
-      issues.push(issue("OS013", "Trial needs one or more valid Covers references", location));
+      issues.push(issue("OS013", "Trial needs one or more valid Covers references (example: core:01-kebab, deliverable:01-kebab, safety:01-kebab, recovery:01-kebab)", location));
     }
-    if (!TRIAL_ISOLATION.has(trial.isolation)) issues.push(issue("OS011", "Isolation must be none or sandbox", location));
+    if (!TRIAL_ISOLATION.has(trial.isolation)) issues.push(issue("OS011", `Isolation must be none or sandbox (${allowedHint(TRIAL_ISOLATION)})`, location));
     if (trial.kind === "automated") {
       automated += 1;
       if (trial.argvError || !trial.argv || !safeRelativePath(trial.cwd, { allowDot: true })) {
@@ -392,8 +396,27 @@ export function validateOutcomeSpecText(text, options = {}) {
     }
   }
 
+  const assertedBy = new Map();
   for (const trial of parsed.trials) {
-    for (const message of trialInputDeclarationIssues(trial)) issues.push(issue("OS020", message, `Trials.${trial.id}`));
+    if (trial.kind !== "automated") continue;
+    for (const artifact of trial.thenArtifacts) {
+      if (!artifact) continue;
+      const owners = assertedBy.get(artifact) || [];
+      owners.push(trial.id);
+      assertedBy.set(artifact, owners);
+    }
+  }
+  for (const [artifact, owners] of assertedBy) {
+    if (owners.length > 1) {
+      issues.push(issue("OS022", `shared_asserted_artifact: Then artifact ${artifact} is asserted by trials ${owners.join(", ")}; each Then artifact may belong to one trial`, `Trials.${owners[0]}`));
+    }
+  }
+
+  for (const trial of parsed.trials) {
+    for (const message of trialInputDeclarationIssues(trial)) {
+      const conflict = message.includes("must be separate");
+      issues.push(issue(conflict ? "OS023" : "OS020", conflict ? `trial_input_protected_conflict: ${message}` : message, `Trials.${trial.id}`));
+    }
   }
   const waiver = automatedTrialWaiver(fm.automated_trial_waiver);
   for (const message of automatedTrialWaiverIssues(waiver, parsed.trials, { allowLegacy: status === "approved" })) {
