@@ -252,6 +252,17 @@ function injectRuntimeArgs(args, runtime, adapterPort) {
   return next;
 }
 
+export function withTemporaryWritableRoot(args, temporaryPath) {
+  const prefix = "sandbox_workspace_write.writable_roots=";
+  const index = args.findIndex(value => typeof value === "string" && value.startsWith(prefix));
+  if (index === -1) return args;
+  const roots = JSON.parse(args[index].slice(prefix.length));
+  if (!roots.includes(temporaryPath)) roots.push(temporaryPath);
+  const next = [...args];
+  next[index] = `${prefix}${JSON.stringify(roots)}`;
+  return next;
+}
+
 export function buildCodexExecArgs(options = {}) {
   const model = safeModelId(options.model);
   const sandbox = safeSandbox(options.sandbox);
@@ -367,7 +378,7 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
     await closeNeuralDeepAdapter(server);
     throw new Error("neuraldeep_adapter_address_unavailable");
   }
-  const args = injectRuntimeArgs(codexArgs, runtime, address.port);
+  const args = withTemporaryWritableRoot(injectRuntimeArgs(codexArgs, runtime, address.port), temporaryPath);
   const searchInsert = args[0] === "exec" && args[1] === "resume" ? 2 : args[0] === "exec" ? 1 : 0;
   args.splice(searchInsert, 0, ...searchMcpArgs(runtime.projectRoot));
   const startedAt = new Date().toISOString();

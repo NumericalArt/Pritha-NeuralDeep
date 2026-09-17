@@ -5,6 +5,7 @@ import {
   pickUtf8Locale,
   resolveTemporaryParent,
   sanitizedCodexEnvironment,
+  withTemporaryWritableRoot,
 } from "../scripts/neuraldeep-codex.mjs";
 
 process.env.TMPDIR = "/tmp";
@@ -42,4 +43,15 @@ test("resolveTemporaryParent falls back for a non-ASCII PRITHA_NEURALDEEP_TMP_RO
   assert.ok(!resolved.includes("прита"));
   assert.ok(resolved.startsWith(os.tmpdir()));
   assert.ok(resolved.endsWith("neuraldeep-runs"));
+});
+
+test("withTemporaryWritableRoot appends the temporary run path to writable_roots exactly once", () => {
+  const once = withTemporaryWritableRoot(["exec", "-c", "sandbox_workspace_write.writable_roots=[\"/w\"]"], "/t/run1");
+  assert.equal(once[2], "sandbox_workspace_write.writable_roots=[\"/w\",\"/t/run1\"]");
+  assert.deepEqual(withTemporaryWritableRoot(once, "/t/run1"), once);
+});
+
+test("withTemporaryWritableRoot returns args unchanged when writable_roots are absent", () => {
+  const args = ["exec", "-m", "gpt-5"];
+  assert.deepEqual(withTemporaryWritableRoot(args, "/t/run1"), args);
 });
