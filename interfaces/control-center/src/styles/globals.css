@@ -7171,6 +7171,32 @@ button:active,
 
 .codex-composer-input textarea { display: block; }
 
+.codex-subject-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.codex-subject-row > label {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.codex-subject-row select,
+.codex-subject-slug {
+  min-height: 31px;
+  padding: 0 9px;
+  border: 1px solid var(--border-medium);
+  border-radius: 8px;
+  color: var(--text-primary);
+  background: var(--surface-input);
+}
+
+.codex-subject-row select {
+  cursor: pointer;
+}
+
 .codex-working-indicator {
   position: absolute;
   inset-block-start: 0;

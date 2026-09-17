@@ -27,6 +27,7 @@ import { AttachmentCapabilityNotice } from "./AttachmentCapabilityNotice";
 import { useDraftAttachments } from "./useDraftAttachments";
 import { browserDraftTab, readBrowserDraft, writeBrowserDraft } from "@/lib/codex-chat/browser-drafts";
 import { parseBudgetIntent } from "@/lib/codex-chat/budget-intent";
+import { composeChatSubject, type ChatComposerSubject } from "@/lib/codex-chat/chat-subject";
 import type { TaskDeliveryView } from "@/lib/codex-chat/delivery-types";
 import {
   checkControlCenterHealth,
@@ -100,6 +101,7 @@ type PendingNewChatDelivery = SubmittedDraft & {
   clientThreadId: string;
   clientMessageId: string;
   text: string;
+  subject: ChatComposerSubject;
   status: "sending" | "delivery_unknown";
 };
 
@@ -307,6 +309,8 @@ export function CodexChatPage() {
   const [draftTab, setDraftTab] = useState<string | null>(null);
   const [activeNewDraft, setActiveNewDraft] = useState(() => `draft_${crypto.randomUUID()}`);
   const activeNewDraftRef = useRef(activeNewDraft);
+  const [newChatKind, setNewChatKind] = useState<"self" | "child">("self");
+  const [newChatSlug, setNewChatSlug] = useState("");
   const revisionsRef = useRef<Record<string, number>>({});
   const persistDraftsRef = useRef<() => Promise<void>>(async () => {});
   const [error, setError] = useState<ChatFailure | null>(null);
@@ -1057,7 +1061,11 @@ export function CodexChatPage() {
     window.history.replaceState(null, "", "/task-chat?group=my_chats");
   }, []);
 
-  const startNewDraft = useCallback(() => openNewDraft(`draft_${crypto.randomUUID()}`), [openNewDraft]);
+  const startNewDraft = useCallback(() => {
+    setNewChatKind("self");
+    setNewChatSlug("");
+    openNewDraft(`draft_${crypto.randomUUID()}`);
+  }, [openNewDraft]);
 
   const startReplacementDraft = useCallback(() => {
     const chatId = selectedChatIdRef.current;
@@ -1174,6 +1182,7 @@ export function CodexChatPage() {
         body: JSON.stringify({
           clientThreadId: delivery.clientThreadId,
           source: "chat",
+          subject: delivery.subject,
           settings: delivery.settings,
           initialTurn: {
             clientMessageId: delivery.clientMessageId,
@@ -1225,12 +1234,18 @@ export function CodexChatPage() {
       return;
     }
     if (!chatId) {
+      const composed = composeChatSubject(newChatKind, newChatSlug);
+      if (!composed.ok) {
+        setError({ message: composed.error, source: "turn", kind: "turn_failed" });
+        return;
+      }
       newChatDraftActiveRef.current = true;
       await deliverNewChatMessage({
         ...submitted,
         clientThreadId: draftKey,
         clientMessageId: crypto.randomUUID(),
         text,
+        subject: composed.subject,
         status: "sending",
       });
       return;
@@ -1648,6 +1663,29 @@ export function CodexChatPage() {
             onDragOver={event => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
             onDrop={event => { if (event.dataTransfer.files.length) { event.preventDefault(); void draftAttachments.add(draftKey, Array.from(event.dataTransfer.files)); } }}>
             {voiceQueue?<small role="note">The message will wait for the Voice workflow to finish. Answer its questions using the task card; this message does not answer or approve them.</small>:null}
+            {!selectedChatId ? (
+              <div className="codex-subject-row">
+                <label htmlFor="codex-new-chat-subject-kind">Subject</label>
+                <select
+                  id="codex-new-chat-subject-kind"
+                  aria-label="Chat subject"
+                  value={newChatKind}
+                  onChange={(event) => setNewChatKind(event.target.value === "child" ? "child" : "self")}
+                >
+                  <option value="self">Pritha (self)</option>
+                  <option value="child">New child agent</option>
+                </select>
+                {newChatKind === "child" ? (
+                  <input
+                    aria-label="Child agent slug"
+                    className="codex-subject-slug"
+                    placeholder="paper-radar"
+                    value={newChatSlug}
+                    onChange={(event) => setNewChatSlug(event.target.value)}
+                  />
+                ) : null}
+              </div>
+            ) : null}
             <div className="codex-composer-input">
               <textarea
                 aria-describedby="codex-working-status"
@@ -1722,7 +1760,7 @@ export function CodexChatPage() {
                     <Square size={15} /> Stop
                   </button>
                 ) : null}
-                <button className="codex-send" type="button" onClick={() => void sendMessage()} disabled={(!draft.trim() && !currentAttachments.length) || attachmentsBusy || !draftStoreReady || !draftAttachments.ready || sending || hasActiveTurn || Boolean(pendingDelivery) || Boolean(selectedChatId && historyState !== "ready") || backendOffline || runtime?.availability !== "ready"}>
+                <button className="codex-send" type="button" onClick={() => void sendMessage()} disabled={(!draft.trim() && !currentAttachments.length) || attachmentsBusy || !draftStoreReady || !draftAttachments.ready || sending || hasActiveTurn || Boolean(pendingDelivery) || Boolean(selectedChatId && historyState !== "ready") || backendOffline || runtime?.availability !== "ready" || (!selectedChatId && newChatKind === "child" && !composeChatSubject("child", newChatSlug).ok)}>
                   {sending ? <LoaderCircle className="spin" size={16} /> : <Send size={16} />} {voiceQueue ? "Send after Voice" : "Send"}
                 </button>
               </div>
