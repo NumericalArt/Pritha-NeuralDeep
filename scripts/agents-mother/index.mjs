@@ -15,6 +15,7 @@ import { markdownDocumentLock } from "../lib/markdown-content-lock.mjs";
 import { redactSensitiveText, redactStructuredText } from "../lib/redaction.mjs";
 import { readBoundedRegularFile } from "../lib/safe-file-read.mjs";
 import { resolvePrithaAgentMemoryRoot, resolvePrithaStatePath, resolveTechscopeRoot } from "../lib/paths.mjs";
+import { requirePrithaInstanceEnv } from "../lib/env.mjs";
 import { slug as makeSlug } from "../lib/slug.mjs";
 import { today } from "../lib/date.mjs";
 import {
@@ -1899,6 +1900,13 @@ async function main() {
     return;
   }
   if (command === "deliver") {
+    const instance = requirePrithaInstanceEnv({ root: ROOT });
+    if (options["dry-run"]) {
+      console.log(`instanceId: ${instance.target.PRITHA_INSTANCE_ID}`);
+      console.log(`stateRoot: ${instance.stateRoot}`);
+      console.log(`keychainService: ${instance.target.PRITHA_NEURALDEEP_KEYCHAIN_SERVICE || ""}`);
+      return;
+    }
     const target = options._[0];
     if (!target) throw new Error("Missing Outcome Spec path.");
     if (!options.project) throw new Error("Missing --project path.");

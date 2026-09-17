@@ -30,10 +30,20 @@ export function loadPrithaRuntimeEnv(options = {}) {
   const target = options.target || process.env;
   loadEnv({ root, target });
   const pointer = path.join(root, ".pritha-instance.json");
-  if (!target.PRITHA_STATE_ROOT && existsSync(pointer)) {
+  if (existsSync(pointer)) {
     const c = JSON.parse(readFileSync(pointer, "utf8"));
-    const values = { TECHSCOPE_ROOT: root, PRITHA_STATE_ROOT: c.stateRoot, PRITHA_AGENT_PARENT: c.agentParent, PRITHA_INSTANCE_ID: c.id, PRITHA_CONTROL_CENTER_PORT: String(c.port), PRITHA_NEURALDEEP_KEYCHAIN_SERVICE: c.keychainService, PRITHA_NEURALDEEP_CODEX_HOME: path.join(c.stateRoot,"codex-home") };
-    for (const [key,value] of Object.entries(values)) if (target[key] === undefined) target[key] = value;
+    const values = {
+      TECHSCOPE_ROOT: root,
+      PRITHA_STATE_ROOT: c.stateRoot,
+      PRITHA_AGENT_PARENT: c.agentParent,
+      PRITHA_INSTANCE_ID: c.id,
+      PRITHA_CONTROL_CENTER_PORT: String(c.port),
+      PRITHA_NEURALDEEP_KEYCHAIN_SERVICE: c.keychainService,
+      PRITHA_NEURALDEEP_CODEX_HOME: c.stateRoot ? path.join(c.stateRoot, "codex-home") : undefined,
+    };
+    for (const [key, value] of Object.entries(values)) {
+      if (target[key] === undefined && value != null && value !== "") target[key] = String(value);
+    }
   }
   const stateRoot = target.PRITHA_STATE_ROOT
     ? path.resolve(target.PRITHA_STATE_ROOT)
@@ -42,4 +52,14 @@ export function loadPrithaRuntimeEnv(options = {}) {
     loadEnvFile(path.join(stateRoot, "config", "runtime.env"), target);
   }
   return { root, stateRoot, target };
+}
+
+export function requirePrithaInstanceEnv(options = {}) {
+  const loaded = loadPrithaRuntimeEnv(options);
+  if (!loaded.target.PRITHA_INSTANCE_ID) {
+    const error = new Error("instance_env_missing");
+    error.code = "instance_env_missing";
+    throw error;
+  }
+  return loaded;
 }

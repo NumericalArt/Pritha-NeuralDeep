@@ -10,7 +10,7 @@ const entrypoint = path.resolve("scripts/pritha.mjs");
 function run(root, stateRoot, args) {
   return spawnSync(process.execPath, [entrypoint, ...args], {
     encoding: "utf8",
-    env: { ...process.env, TECHSCOPE_ROOT: root, PRITHA_STATE_ROOT: stateRoot },
+    env: { ...process.env, TECHSCOPE_ROOT: root, PRITHA_STATE_ROOT: stateRoot, PRITHA_INSTANCE_ID: "cli-test" },
   });
 }
 
