@@ -232,3 +232,47 @@ test("launcher crash preserves its paid-attempt receipt and recovers only after 
   store.reconcileDeadWorkers();assert.equal(store.get('runtime_crashed-fixture').status,'resume_confirmation_required');
   store.reconcileWorkload('crashed-fixture','cancelled');assert.equal(store.get('runtime_crashed-fixture').status,'cancelled');
 });
+
+test('launcher accounts request receipts without turn.completed and blocks dispatch after an accounting gap', {timeout:20000}, async t=>{
+  const stateRoot=mkdtempSync(path.join(os.tmpdir(),'nd-partial-usage-'));
+  t.after(()=>rmSync(stateRoot,{recursive:true,force:true}));
+  const binary=path.join(stateRoot,'fake-codex'),statuses=path.join(stateRoot,'statuses.json');
+  writeFileSync(binary,`#!${process.execPath}
+if(process.argv.includes('--version')){console.log('fixture-cli');process.exit(0);}
+const base=JSON.parse(process.argv.find(x=>x.startsWith('model_providers.neuraldeep.base_url=')).split('=').slice(1).join('='));
+process.stdin.resume();process.stdin.on('end',async()=>{
+ console.log(JSON.stringify({type:'thread.started',thread_id:'request-usage-session'}));
+ const results=[];
+ for(let i=0;i<(process.argv.includes('gap')?3:1);i++){
+  const response=await fetch(base+'/responses',{method:'POST',body:JSON.stringify({model:'fixture',input:String(i)})});
+  await response.text();results.push(response.status);
+ }
+ require('node:fs').writeFileSync(${JSON.stringify(statuses)},JSON.stringify(results));
+});
+`,{mode:0o700});
+  let upstreamCalls=0,failSecond=false;
+  t.mock.method(globalThis,'fetch',async(url)=>{
+    if(new URL(url).pathname==='/v1/responses') {
+      upstreamCalls++;
+      if(failSecond && upstreamCalls===2)throw new Error('incomplete provider response');
+      return Response.json({usage:{input_tokens:120,output_tokens:20,total_tokens:140}});
+    }
+    return Response.json({});
+  });
+  const runtime=neuralDeepRuntimeConfig({PRITHA_STATE_ROOT:stateRoot,PRITHA_CODEX_BIN:binary,
+    PRITHA_NEURALDEEP_KEYCHAIN_SERVICE:'unused-nd-unit-fixture',PRITHA_NEURALDEEP_UPSTREAM_ORIGIN:'https://neuraldeep.invalid'});
+  for(const runId of ['measured-one','measured-two']) {
+    const result=await runCodexWithNeuralDeep(runtime,['exec'],{input:'fixture',runId,model:'fixture'});
+    assert.equal(result.usageRecord.usageKnown,true);assert.equal(result.usageRecord.usage.totalTokens,140);
+  }
+  failSecond=true;upstreamCalls=0;
+  const interrupted=await runCodexWithNeuralDeep(runtime,['exec','gap'],{input:'fixture',runId:'interrupted-receipt',model:'fixture'});
+  assert.equal(interrupted.usageRecord.usageKnown,false);assert.equal(interrupted.usageRecord.usage.totalTokens,140);
+  assert.deepEqual(JSON.parse(readFileSync(statuses,'utf8')),[200,502,409]);assert.equal(upstreamCalls,2);
+  const store=new NeuralDeepCoordinationStore(neuralDeepCoordinationPaths(stateRoot,runtime.projectRoot));
+  try {
+    const run=store.runtimeRun('interrupted-receipt');
+    assert.equal(run.process_tree_exited,true);assert.equal(run.adapter_closed,true);
+    assert.equal(run.provider_usage.unknownRequests,1);assert.equal(run.usage_status,'unknown');
+  } finally {store.close();}
+});

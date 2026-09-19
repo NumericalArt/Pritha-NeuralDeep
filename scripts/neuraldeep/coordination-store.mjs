@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { processSnapshot, processTreeExited } from "./process-snapshot.mjs";
 import { normalizeResourceClaims } from "./execution-resources.mjs";
 import { HANDOFF_SCHEMA, HANDOFF_ELIGIBLE, NeuralDeepHandoffBarriers } from "./handoff-barriers.mjs";
+import { neuralDeepUsageKnown, normalizeNeuralDeepUsage } from './usage-ledger.mjs';
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const SCOPE = /^[a-f0-9]{24,64}$/;
@@ -388,6 +389,41 @@ export class NeuralDeepCoordinationStore {
       this.db.prepare("INSERT INTO provider_dispatches VALUES(?,?,?,?)").run(runId, requestHash, new Date().toISOString(), JSON.stringify(metadata));
       return this.db.prepare("SELECT count(*) AS count FROM provider_dispatches WHERE run_id=?").get(runId).count;
     });
+  }
+
+  /** Persist only counts and transport status; never a prompt, response or credential. */
+  recordProviderResponse(runId, { requestHash, status, usage, upstreamAttempted }) {
+    // A rejected replay is not evidence about the earlier accepted request.
+    if (upstreamAttempted !== true) return false;
+    if (!/^[a-f0-9]{64}$/.test(requestHash || '') || !Number.isInteger(status)) throw new Error('provider_response_identity_invalid');
+    return this.transaction(() => {
+      const row=this.db.prepare('SELECT metadata FROM provider_dispatches WHERE run_id=? AND request_hash=?').get(runId,requestHash);
+      if(!row)throw new Error('provider_dispatch_missing');
+      const metadata=JSON.parse(row.metadata);
+      const completion={status,usage:neuralDeepUsageKnown(usage)?normalizeNeuralDeepUsage(usage):null};
+      if(metadata.completion) {
+        if(JSON.stringify(metadata.completion)!==JSON.stringify(completion))throw new Error('provider_response_receipt_conflict');
+        return false;
+      }
+      metadata.completion=completion;
+      this.db.prepare('UPDATE provider_dispatches SET metadata=? WHERE run_id=? AND request_hash=?').run(JSON.stringify(metadata),runId,requestHash);
+      return true;
+    });
+  }
+
+  providerUsageSummary(runId) {
+    const rows=this.db.prepare('SELECT metadata FROM provider_dispatches WHERE run_id=? ORDER BY request_hash').all(runId);
+    const usage=normalizeNeuralDeepUsage();let unknownRequests=0;
+    for(const row of rows) {
+      const observed=JSON.parse(row.metadata).completion?.usage;
+      if(!neuralDeepUsageKnown(observed)){unknownRequests++;continue;}
+      const normalized=normalizeNeuralDeepUsage(observed);
+      for(const key of Object.keys(usage)) {
+        if(!Number.isSafeInteger(usage[key]+normalized[key]))throw new Error('provider_usage_overflow');
+        usage[key]+=normalized[key];
+      }
+    }
+    return {providerRequests:rows.length,unknownRequests,usageKnown:rows.length>0 && unknownRequests===0,usage};
   }
 
   runtimeRun(runId) {

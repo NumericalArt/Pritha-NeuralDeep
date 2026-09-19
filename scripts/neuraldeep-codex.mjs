@@ -347,15 +347,19 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
   });
   let providerRequests = 0;
   let providerError = null;
+  let providerAccountingError = null;
   server = await listenNeuralDeepAdapter({ host: runtime.host, port: 0,
     transformResponsesRequest: flattenSearchTools, transformResponsesStream: restoreSearchToolsStream,
     upstreamOrigin: runtime.upstreamOrigin,
     validateResponsesRequest: async payload => { await attachmentDispatch?.validate(payload); await options.validateResponsesRequest?.(payload); },
     beforeResponsesDispatch: ({ requestHash, model, bytes }) => {
+      if(providerAccountingError || journal.providerUsageSummary(runId).unknownRequests>0) throw Object.assign(new Error('Previous provider response accounting is unresolved.'), {code:'provider_usage_unconfirmed',statusCode:409});
       providerRequests = journal.claimProviderRequest(runId, requestHash, { model, bytes });
     },
     onRequest: (requestEvent) => {
       if (requestEvent.path === "/v1/responses") {
+        try { journal.recordProviderResponse(runId,requestEvent); }
+        catch { providerAccountingError='provider_usage_receipt_failed'; }
         try {
           appendProvenance(runtime, { event: "provider_request_finished", run_id: runId,
             request_hash: requestEvent.requestHash, status: requestEvent.status, duration_ms: requestEvent.durationMs,
@@ -502,19 +506,26 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
     started_at: startedAt,
   });
   let usageRecord = null;
+  const requestUsage=journal.providerUsageSummary(runId);
+  // Request receipts are deltas for this run. A resumed native thread may emit
+  // cumulative totals covering previous paid runs; never add both counters.
+  const useRequestUsage=requestUsage.providerRequests>0;
+  const accountedUsage=useRequestUsage?requestUsage.usage:latestUsage;
+  const accountedKnown=useRequestUsage?requestUsage.usageKnown && !providerAccountingError:neuralDeepUsageKnown(latestUsage);
   outcome = launchError ? "failed" : result.signal ? "cancelled" : result.code === 0 ? "completed" : "failed";
   const usageEvent = {
     profileIdentity: neuralDeepRuntimeIdentity(runtime.stateRoot, { PRITHA_NEURALDEEP_CODEX_HOME: runtime.codexHome, PRITHA_NEURALDEEP_UPSTREAM_ORIGIN: runtime.upstreamOrigin }).profileIdentity,
     stateRoot: runtime.stateRoot, runId, source: usageSource, workloadId, model: selectedModel, sessionId,
     status: outcome === "cancelled" ? "interrupted" : outcome,
     startedAt, finishedAt: new Date().toISOString(), providerRequests,
-    usage: latestUsage, usageKnown: neuralDeepUsageKnown(latestUsage), cumulative: true, billing: await billingPromise,
+    usage: accountedUsage, usageKnown: accountedKnown, cumulative: !useRequestUsage, billing: await billingPromise,
     providerError: providerError ? { class: providerError.class, code: providerError.code } : null,
   };
   journal.updateRuntimeRun(runId, { status: processExited ? usageEvent.status : "resume_confirmation_required", session_id: sessionId,
     process_exited: processExited && adapterClosed, process_tree_exited: processExited, adapter_closed: adapterClosed, process_evidence: processEvidence,
     exit_code: result.code, signal: result.signal, supervisor_error: result.error || null,
-    usage_status: usageEvent.usageKnown ? "measured" : "unknown", usage_event: usageEvent });
+    usage_status: usageEvent.usageKnown ? "measured" : "unknown", usage_event: usageEvent,
+    provider_usage:requestUsage, ...(providerAccountingError?{accounting_error:providerAccountingError}:{}) });
   try {
     usageRecord = recordNeuralDeepRun(usageEvent);
     journal.updateRuntimeRun(runId, { usage_ledger_recorded: true, usage_record: usageRecord });

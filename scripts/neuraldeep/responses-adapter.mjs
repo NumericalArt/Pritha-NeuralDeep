@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { RESPONSES_REQUEST_LIMIT } from "./attachment-policy.mjs";
 import { classifyNeuralDeepProviderError, parseProviderErrorPayload } from "./provider-error.mjs";
+import { neuralDeepUsageKnown, normalizeNeuralDeepUsage } from "./usage-ledger.mjs";
 
 const { Agent } = createRequire(new URL("../../interfaces/control-center/package.json", import.meta.url))("undici");
 const DEFAULT_UPSTREAM = "https://api.neuraldeep.ru";
@@ -40,6 +41,15 @@ function parseSseData(raw) {
     }
   }
   return events;
+}
+
+export function responsesUsage(body, contentType = '') {
+  try {
+    const value = contentType.includes('text/event-stream')
+      ? parseSseData(String(body)).findLast(event => ['response.completed','response.incomplete','response.failed'].includes(event?.type))?.response
+      : JSON.parse(String(body));
+    return neuralDeepUsageKnown(value?.usage) ? normalizeNeuralDeepUsage(value.usage) : null;
+  } catch { return null; }
 }
 
 function outputTextParts(message) {
@@ -297,6 +307,7 @@ export function createNeuralDeepAdapter(options = {}) {
     response.once("close", abortIfClientLeaves);
     let upstreamAttempted = false;
     let requestHash = null;
+    let providerUsage = null;
     try {
       let body = await readNodeBody(request, requestLimit);
       if (requestUrl.pathname === "/v1/responses") {
@@ -330,6 +341,7 @@ export function createNeuralDeepAdapter(options = {}) {
       timings.responseCompletedMs = Date.now() - upstreamStartedAt;
       const isResponses = requestUrl.pathname === "/v1/responses";
       const isEventStream = upstream.headers.get("content-type")?.includes("text/event-stream");
+      if(isResponses)providerUsage=responsesUsage(upstreamBody.toString('utf8'),upstream.headers.get('content-type') || '');
       const output = isResponses && isEventStream
         ? Buffer.from(normalizeResponsesSse(options.transformResponsesStream ? options.transformResponsesStream(upstreamBody.toString("utf8")) : upstreamBody.toString("utf8")))
         : upstreamBody;
@@ -345,6 +357,7 @@ export function createNeuralDeepAdapter(options = {}) {
         timings: { ...timings },
         requestHash,
         upstreamAttempted,
+        usage: providerUsage,
         error: upstream.ok ? null : classifyNeuralDeepProviderError({
           status: upstream.status,
           payload: parseProviderErrorPayload(upstreamBody),
@@ -366,6 +379,7 @@ export function createNeuralDeepAdapter(options = {}) {
         timings: { ...timings },
         requestHash,
         upstreamAttempted,
+        usage: providerUsage,
         error: classifyNeuralDeepProviderError({
           status: Number.isInteger(error?.statusCode) ? error.statusCode : null,
           transportCode: error?.name === "AbortError" ? "timeout" : error?.code,
