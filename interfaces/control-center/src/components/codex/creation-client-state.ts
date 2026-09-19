@@ -2,6 +2,14 @@ import type { CreationAction, CreationJobView, CreationRequest } from "@/lib/cod
 
 const actions = new Set<CreationAction>(["approve_contract", "approve_outcome", "continue", "pause", "cancel", "revise_proposal"]);
 export const creationPendingKey = (chatId: string) => `pritha.creation.pending.v1:${chatId}`;
+export const creationOperatorKey = (chatId: string) => `pritha.creation.operator.v1:${chatId}`;
+export function readCreationOperator(text: string | null): { actor: CreationRequest["actor"]; basis: string } {
+  try {
+    const value = text && text.length <= 8192 ? JSON.parse(text) : null;
+    if (value && ["user", "codex-operator"].includes(value.actor) && typeof value.basis === "string" && value.basis.length <= 2000) return { actor: value.actor, basis: value.basis };
+  } catch { /* A corrupt preference cannot create an approval or erase history. */ }
+  return { actor: "user", basis: "" };
+}
 
 const phases: Record<string, string> = { request: "Описание задачи", proposal: "Предложение", interview: "Уточнение задачи", approvals: "Согласования", contract: "Контракт", outcome: "Outcome Spec", research: "Проверка архитектуры", scaffold: "Подготовка проекта", implementation: "Реализация", implement: "Реализация", verification: "Проверки", verify: "Проверки", demonstration: "Демонстрация", demo: "Демонстрация", finish: "Результат" };
 const statuses: Record<string, string> = { pending: "Ожидает следующего шага", running: "Выполняется", ready: "Готов к демонстрации", completed: "Завершено", cancelled: "Отменено", failed: "Шаг завершился с ошибкой", paused: "Приостановлено", blocked: "Нужна проверка", awaiting_approval: "Ожидает согласования", awaiting_acceptance: "Ожидает приёмки пользователя", awaiting_input: "Нужен ваш ответ", awaiting_contract_approval: "Ожидает подтверждения контракта", awaiting_outcome_approval: "Ожидает подтверждения Outcome Spec" };

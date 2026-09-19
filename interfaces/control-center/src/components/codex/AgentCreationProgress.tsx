@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { controlCenterRequest, ControlCenterRequestError, deliveryMayBeUnknown } from "@/lib/control-center-request";
 import type { CreationAction, CreationJobView, CreationRequest } from "@/lib/codex-chat/creation-types";
 import { CodexMarkdown } from "./CodexMarkdown";
-import { creationPendingKey, creationRequestForAction, readCreationPending, creationPhaseLabel, creationStatusLabel, creationShouldPoll, creationResultPresentation } from "./creation-client-state";
+import { creationPendingKey, creationOperatorKey, readCreationOperator, creationRequestForAction, readCreationPending, creationPhaseLabel, creationStatusLabel, creationShouldPoll, creationResultPresentation } from "./creation-client-state";
 
 const labels: Record<CreationAction, string> = { approve_contract: "Подтвердить контракт", approve_outcome: "Подтвердить Outcome Spec", continue: "Продолжить создание", pause: "Приостановить", cancel: "Отменить создание", revise_proposal: "Пересмотреть предложение" };
 const shortSha = (value: string | null | undefined) => value ? value.slice(0, 12) : "неизвестна";
@@ -25,9 +25,21 @@ export function AgentCreationProgress({ chatId, refreshKey }: { chatId: string; 
 
   useEffect(() => {
     mounted.current = true;
-    try { setPending(readCreationPending(sessionStorage.getItem(key))); } catch { /* Browser storage may be unavailable. */ }
+    let operator = readCreationOperator(null);
+    try {
+      setPending(readCreationPending(sessionStorage.getItem(key)));
+      operator = readCreationOperator(sessionStorage.getItem(creationOperatorKey(chatId)));
+    } catch { /* Browser storage may be unavailable. */ }
+    setActor(operator.actor); setBasis(operator.basis); setReviewed({});
     return () => { mounted.current = false; };
-  }, [key]);
+  }, [key, chatId]);
+
+  function chooseOperator(nextActor: CreationRequest["actor"], nextBasis: string) {
+    setActor(nextActor); setBasis(nextBasis);
+    // This is an unfinished form preference, never host approval evidence.
+    try { sessionStorage.setItem(creationOperatorKey(chatId), JSON.stringify({ actor: nextActor, basis: nextBasis })); }
+    catch { /* The current page still retains the form values. */ }
+  }
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     const { data } = await controlCenterRequest<{ job: CreationJobView | null; legacy?: boolean }>(endpoint, { signal }, { timeoutMs: 15_000 });
@@ -103,7 +115,8 @@ export function AgentCreationProgress({ chatId, refreshKey }: { chatId: string; 
     <h2>Создание агента · {creationPhaseLabel(job.phase)}</h2>
     <p role="status">{creationStatusLabel(job.status)}. Агент {job.agentId}.</p>
     {result.verified ? <p role="status">{result.message} {result.href ? <a className="outline-button compact" href={result.href}>Открыть карточку агента</a> : <a href="/agents">Открыть список агентов</a>}</p> : null}
-    <p>Расход: {job.budget.tokensUsed.toLocaleString("ru-RU")} / {job.budget.maxTokens.toLocaleString("ru-RU")} токенов; {Math.ceil(job.budget.activeMs / 60_000)} / {Math.ceil(job.budget.maxActiveMs / 60_000)} минут активной работы.</p>
+    <p>{job.budget.unknownAttempts.length > 0 || job.status === "running" ? "Подтверждённый расход завершённых шагов" : "Расход"}: {job.budget.tokensUsed.toLocaleString("ru-RU")} / {job.budget.maxTokens.toLocaleString("ru-RU")} токенов; {Math.ceil(job.budget.activeMs / 60_000)} / {Math.ceil(job.budget.maxActiveMs / 60_000)} минут активной работы.</p>
+    {job.budget.unknownAttempts.length > 0 ? <p role="status">Итоговый расход неизвестен. Ноль в подтверждённой части не означает, что токены не расходовались.</p> : job.status === "running" ? <p role="status">Расход текущего шага ещё уточняется.</p> : null}
     {job.budget.unknownAttempts.length > 0 ? <p className="codex-inline-notice" role="alert">Есть исполнения с неподтверждённым расходом: {job.budget.unknownAttempts.length}. Продолжение доступно после сверки.</p> : null}
     {job.blocker ? <p className="codex-inline-notice" role="alert">{job.blocker.message}</p> : null}
     {pending ? <p role="status">Ожидает подтверждения: «{labels[pending.action]}». Оператор: {pending.actor === "codex-operator" ? "Codex по поручению пользователя" : "пользователь"}. Повтор сохранит исходную ревизию и основание поручения.</p> : null}
@@ -126,8 +139,8 @@ export function AgentCreationProgress({ chatId, refreshKey }: { chatId: string; 
       </div>;
     })}
     <p>Проверка документа не является согласием. Контракт и Outcome Spec подтверждаются отдельно; готовый результат принимает пользователь.</p>
-    <label>Кто выполняет действие <select value={actor} disabled={locked} onChange={event => setActor(event.target.value as CreationRequest["actor"])}><option value="user">Пользователь</option><option value="codex-operator">Codex по поручению пользователя</option></select></label>
-    {actor === "codex-operator" ? <label style={{ display: "block", marginTop: 8 }}>Основание поручения <textarea value={basis} disabled={locked} maxLength={2000} rows={2} onChange={event => setBasis(event.target.value)} placeholder="Какое поручение пользователя разрешает этот контрольный прогон" style={{ width: "100%" }} /></label> : null}
+    <label>Кто выполняет действие <select value={actor} disabled={locked} onChange={event => chooseOperator(event.target.value as CreationRequest["actor"], basis)}><option value="user">Пользователь</option><option value="codex-operator">Codex по поручению пользователя</option></select></label>
+    {actor === "codex-operator" ? <label style={{ display: "block", marginTop: 8 }}>Основание поручения <textarea value={basis} disabled={locked} maxLength={2000} rows={2} onChange={event => chooseOperator(actor, event.target.value)} placeholder="Какое поручение пользователя разрешает этот контрольный прогон" style={{ width: "100%" }} /></label> : null}
     {job.actions.revise_proposal ? <details style={{marginTop:12}}><summary>Пересмотреть предложение до создания проекта</summary>
       <p>Предыдущие согласования сохранятся в истории. Новые контракт и Outcome Spec потребуют отдельных подтверждений.</p>
       <label>Что нужно изменить <textarea value={revisionReason} disabled={locked} maxLength={2000} rows={3} onChange={event => setRevisionReason(event.target.value)} style={{width:"100%"}} /></label>

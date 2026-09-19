@@ -16,7 +16,12 @@ test("uncertain creation requests survive browser reload with the original revis
     }).outputText;
     const file = path.join(temp, "state.mjs");
     writeFileSync(file, compiled);
-    const { creationRequestForAction, readCreationPending, creationPendingKey } = await import(pathToFileURL(file).href);
+    const { creationRequestForAction, readCreationPending, creationPendingKey, creationOperatorKey, readCreationOperator } = await import(pathToFileURL(file).href);
+    const operator={actor:'codex-operator',basis:'User delegated this UI trial'};
+    assert.deepEqual(readCreationOperator(JSON.stringify(operator)),operator);
+    assert.equal(readCreationPending(JSON.stringify(operator)),null,'a saved operator preference is not an approval request');
+    assert.notEqual(creationOperatorKey('one-chat'),creationOperatorKey('other-chat'));
+    for(const invalid of ['{',JSON.stringify({...operator,actor:'system'}),JSON.stringify({...operator,basis:'x'.repeat(2001)})])assert.deepEqual(readCreationOperator(invalid),{actor:'user',basis:''});
     const first = creationRequestForAction(null, "approve_contract", 7, "codex-operator", "  User requested the controlled UI test  ", "request_original_123");
     const restored = readCreationPending(JSON.stringify(first));
     assert.deepEqual(restored, first);

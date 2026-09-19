@@ -82,6 +82,13 @@ for (const width of [1440, 390]) {
     await f.card.getByRole('checkbox', { name: 'Проверена эта ревизия документа' }).check();
     await expect(contractButton).toBeDisabled();
     await f.card.getByLabel('Основание поручения').fill('Explicit user instruction to operate this UI trial; personal acceptance remains separate.');
+    await page.reload();
+    await expect(f.card.getByLabel('Кто выполняет действие')).toHaveValue('codex-operator');
+    await expect(f.card.getByLabel('Основание поручения')).toHaveValue('Explicit user instruction to operate this UI trial; personal acceptance remains separate.');
+    await expect(f.card.getByRole('checkbox')).not.toBeChecked();
+    await expect(contractButton).toBeDisabled();
+    expect(f.requests).toEqual([]);
+    await f.card.getByRole('checkbox').check();
     // A revised document invalidates the checkbox before any approval request.
     f.job.contract!.hash = 'd'.repeat(64); f.job.revision++;
     await f.card.getByRole('button', { name: 'Обновить состояние', exact: true }).click();
@@ -133,6 +140,8 @@ for (const width of [1440, 390]) {
     job.blocker = { code: 'creation_usage_unknown', message: 'Previous usage is not confirmed.' };
     const f = await fixture(page, job);
     await expect(f.card).toContainText('Есть исполнения с неподтверждённым расходом: 1');
+    await expect(f.card).toContainText('Итоговый расход неизвестен');
+    await expect(f.card).toContainText('Подтверждённый расход завершённых шагов');
     await expect(f.card).toContainText('Версии исходников, работающей Pritha и исполнения различаются');
     await expect(f.card.getByRole('button', { name: 'Продолжить создание' })).toHaveCount(0);
     await expect(f.card.getByRole('button', { name: 'Пересмотреть предложение', exact: true })).toHaveCount(0);
