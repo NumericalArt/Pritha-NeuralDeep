@@ -12,6 +12,9 @@ import { NeuralDeepCoordinationStore, neuralDeepCoordinationPaths } from "../neu
 import { recordNeuralDeepRun } from "../neuraldeep/usage-ledger.mjs";
 
 export const BUILD_EXECUTOR_RESULT_SCHEMA = "pritha-build-executor-result-v1";
+const processReceiptFields = (runtime) => Object.fromEntries([
+  "worker_pid", "worker_started", "process_protocol", "process_evidence", "process_tree_exited", "adapter_closed", "process_exited",
+].filter((field) => runtime?.[field] !== undefined).map((field) => [field, runtime[field]]));
 
 function bounded(value, maximum = 20_000) {
   const text = String(value || "").trim();
@@ -45,6 +48,10 @@ function outcomeProjection(plan) {
       statement: trial.statement,
       kind: trial.kind,
       covers: trial.covers,
+      given: trial.given,
+      argv: trial.argv,
+      product_targets: trial.productTargets,
+      verifier_inputs: trial.verifierInputs,
       pass_criteria: trial.passCriteria || null,
       assertions: trial.kind === "automated" ? {
         exit_code: trial.thenExitCode,
@@ -250,7 +257,18 @@ export class CodexCliBuildExecutor {
     return result.status === 0 ? String(result.stdout || "").trim() : "codex-cli/unknown";
   }
 
+  savedProcessReceipt(input, attemptId) {
+    const root = input.stateRoot || process.env.PRITHA_STATE_ROOT;
+    if (!root) return {};
+    const paths = neuralDeepCoordinationPaths(root, this.projectRoot);
+    if (!existsSync(paths.databasePath)) return {};
+    const store = new NeuralDeepCoordinationStore(paths);
+    try { return processReceiptFields(store.runtimeRun(attemptId)); }
+    finally { store.close(); }
+  }
+
   async phase(input, phase, options) {
+    if (input.signal?.aborted) throw new ExecutionBackendError("build_executor_aborted", "Build dispatch was cancelled before starting");
     await input.beforeDispatch?.({ phase });
     const attemptId = `nd_${randomUUID()}`;
     let receipt = {
@@ -273,18 +291,20 @@ export class CodexCliBuildExecutor {
     // This checkpoint must finish before invoking a runner, including a capability probe.
     await checkpoint();
     try {
-      const result = await this.run({ ...options, runId: attemptId });
+      const result = await this.run({ ...options, runId: attemptId, signal: input.signal });
       const measured = result.usageKnown !== false && Number.isSafeInteger(result.tokensUsed) && result.tokensUsed >= 0;
-      receipt = { ...receipt, status: result.timedOut ? "interrupted" : result.code === 0 ? "completed" : "failed",
+      receipt = { ...receipt, status: result.timedOut || result.aborted ? "interrupted" : result.code === 0 ? "completed" : "failed",
         thread_id: result.threadId || null, turn_id: null,
         usage_status: measured ? "measured" : "unknown", tokens_used: measured ? result.tokensUsed : null,
         process_exited: result.processExited !== false, finished_at: new Date().toISOString(),
+        ...this.savedProcessReceipt(input, attemptId),
         usage_ledger_recorded: result.usageLedgerRecorded ?? null };
       await checkpoint();
       return { ...result, receipt };
     } catch (error) {
       // A lost acknowledgement cannot authorize another paid attempt.
       receipt = { ...receipt, status: "uncertain", error_code: error.code || "runner_result_unavailable" };
+      try { receipt = { ...receipt, ...this.savedProcessReceipt(input, attemptId) }; } catch { /* receipt stays unresolved */ }
       await checkpoint();
       throw error;
     }
@@ -295,8 +315,14 @@ export class CodexCliBuildExecutor {
     const root = input.stateRoot || process.env.PRITHA_STATE_ROOT;
     const store = new NeuralDeepCoordinationStore(neuralDeepCoordinationPaths(root, this.projectRoot));
     try {
-      const runtime = store.runtimeRun(saved.launcher_run_id);
-      if (!runtime?.process_exited) return saved;
+      let runtime = store.runtimeRun(saved.launcher_run_id);
+      if (runtime?.process_protocol === 1) {
+        store.reconcileRuntimeRunExit(saved.launcher_run_id);
+        runtime = store.runtimeRun(saved.launcher_run_id);
+      }
+      const processReceipt = processReceiptFields(runtime);
+      if (!runtime?.process_exited || runtime.process_protocol === 1 &&
+        (runtime.process_tree_exited !== true || runtime.adapter_closed !== true)) return { ...saved, ...processReceipt };
       let accounting = runtime.usage_record;
       if (!runtime.usage_ledger_recorded && runtime.usage_event) {
         accounting = recordNeuralDeepRun(runtime.usage_event);
@@ -304,12 +330,13 @@ export class CodexCliBuildExecutor {
       }
       const usage = accounting?.usage;
       const measured = runtime.usage_status === "measured" && Number.isSafeInteger(usage?.totalTokens);
-      return { ...saved, status: runtime.status, process_exited: true, thread_id: runtime.session_id || null,
+      return { ...saved, ...processReceipt, status: runtime.status, process_exited: true, thread_id: runtime.session_id || null,
         usage_status: measured ? "measured" : "unknown", tokens_used: measured ? usage.totalTokens : null };
     } finally { store.close(); }
   }
 
-  run({ cwd, prompt, sandbox, timeoutMs, outputSchemaPath, outputPath, usageSource = "agent-mother", workloadId, runId }) {
+  run({ cwd, prompt, sandbox, timeoutMs, outputSchemaPath, outputPath, usageSource = "agent-mother", workloadId, runId, signal: abortSignal }) {
+    if (abortSignal?.aborted) return Promise.reject(new ExecutionBackendError("build_executor_aborted", "Build dispatch was cancelled before starting"));
     const args = [
       this.runner,
       "exec-json",
@@ -331,6 +358,7 @@ export class CodexCliBuildExecutor {
     let stdoutBytes = 0;
     let stderrBytes = 0;
     let timedOut = false;
+    let aborted = false;
     const startedAt = Date.now();
     return new Promise((resolve, reject) => {
       const child = spawn(process.execPath, args, {
@@ -338,6 +366,16 @@ export class CodexCliBuildExecutor {
         env: this.environment(),
         stdio: ["pipe", "pipe", "pipe"],
       });
+      let killTimer;
+      const stopOwnedWrapper = () => {
+        // Only this ChildProcess handle is addressed. The runner's supervisor
+        // still owns descendant teardown and its durable process proof.
+        child.kill("SIGTERM");
+        killTimer = setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); }, 5000);
+        killTimer.unref();
+      };
+      const abort = () => { aborted = true; stopOwnedWrapper(); };
+      abortSignal?.addEventListener("abort", abort, { once: true });
       let lineBuffer = "";
       child.stdout.setEncoding("utf8");
       child.stdout.on("data", (chunk) => {
@@ -358,12 +396,13 @@ export class CodexCliBuildExecutor {
       child.stdin.end(prompt);
       const timer = setTimeout(() => {
         timedOut = true;
-        child.kill("SIGTERM");
-        setTimeout(() => child.exitCode === null && child.kill("SIGKILL"), 5_000).unref();
+        stopOwnedWrapper();
       }, timeoutMs);
       child.once("error", reject);
       child.once("close", (code, signal) => {
         clearTimeout(timer);
+        clearTimeout(killTimer);
+        abortSignal?.removeEventListener("abort", abort);
         if (lineBuffer.trim()) {
           try { events.push(JSON.parse(lineBuffer)); } catch { /* retained below */ }
         }
@@ -381,6 +420,7 @@ export class CodexCliBuildExecutor {
           code,
           signal,
           timedOut,
+          aborted,
           durationMs: Date.now() - startedAt,
           stdout: stdout.join(""),
           stderr: stderr.join(""),
@@ -495,6 +535,7 @@ export class CodexCliBuildExecutor {
         usageSource: "child-agent",
         workloadId: `${input.runId}-iteration-${input.iteration}`,
       });
+      if (result.aborted) throw new ExecutionBackendError("build_executor_aborted", "The owning creation task stopped this build attempt; receipts were preserved");
       if (result.timedOut) throw new ExecutionBackendError("build_executor_timeout", "NeuralDeep Codex CLI build turn timed out");
       if (result.code !== 0) {
         throw new ExecutionBackendError("codex_cli_build_failed", bounded(result.stderr || `Codex CLI exited with ${result.code}`, 2_000));

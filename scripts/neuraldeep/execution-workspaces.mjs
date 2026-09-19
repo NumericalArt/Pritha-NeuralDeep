@@ -65,27 +65,40 @@ export class NeuralDeepExecutionWorkspaces {
       if(identity.common!==record.common||identity.gitDir!==record.gitDir||identity.sourceRoot!==record.cwd)throw new ExecutionWorkspaceError('workspace_identity_changed');
       const listed=await git(record.source,['worktree','list','--porcelain','-z']);
       if(!listed.split('\0').includes(`worktree ${record.cwd}`))throw new ExecutionWorkspaceError('workspace_registration_missing');
+      if(record.expectedCommit && await git(record.cwd,['rev-parse','HEAD'])!==record.expectedCommit)throw new ExecutionWorkspaceError('workspace_execution_revision_mismatch');
     }
     return record;
   }
-  async prepare({ownerId,sourcePath,mutating,existingCwd=null,nativeSession=false,scratch=false}){
+  async prepare({ownerId,sourcePath,mutating,existingCwd=null,nativeSession=false,scratch=false,expectedCommit=null,requireClean=false}){
     if(!ID.test(ownerId)||typeof mutating!=='boolean')throw new ExecutionWorkspaceError('workspace_request_invalid');
+    if(expectedCommit!==null && !/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/.test(expectedCommit) || typeof requireClean!=='boolean')throw new ExecutionWorkspaceError('workspace_revision_policy_invalid');
     const source=directory(sourcePath);
+    const assertSource=async()=>{
+      if(expectedCommit && await git(source,['rev-parse','HEAD'])!==expectedCommit)throw new ExecutionWorkspaceError('workspace_source_revision_mismatch');
+      if(requireClean && await git(source,[...await checkoutOptions(source),'status','--porcelain=v1','--untracked-files=normal']))throw new ExecutionWorkspaceError('workspace_source_dirty');
+    };
+    await assertSource();
+    const verifyPinned=async(record)=>{
+      if(expectedCommit && (record.mode!=='worktree' || record.baseCommit!==expectedCommit))throw new ExecutionWorkspaceError('workspace_release_migration_required');
+      if(expectedCommit && await git(record.cwd,['rev-parse','HEAD'])!==expectedCommit)throw new ExecutionWorkspaceError('workspace_execution_revision_mismatch');
+      return this.verify(record);
+    };
     const prior=this.get(ownerId);
     if(prior?.state==='ready'){
       if(source!==prior.source)throw new ExecutionWorkspaceError('workspace_binding_conflict');
       if(existingCwd&&directory(existingCwd)!==prior.cwd)throw new ExecutionWorkspaceError('workspace_session_cwd_conflict');
-      return this.verify(prior);
+      return verifyPinned(prior);
     }
-    const hash=digest([ownerId,source,nativeSession?directory(existingCwd||source):null]);
+    if(expectedCommit && (scratch || nativeSession || !mutating))throw new ExecutionWorkspaceError('workspace_release_requires_worktree');
+    const hash=digest([ownerId,source,nativeSession?directory(existingCwd||source):null,...(expectedCommit || requireClean ? [expectedCommit,requireClean] : [])]);
     const control=digest(['workspace-prepare',this.stateRoot,ownerId]).slice(0,24),token=`workspace_${randomUUID()}`;
     if(!this.store.acquireSessionControl(control,token))throw new ExecutionWorkspaceError('workspace_preparing');
     try{
       let record=this.get(ownerId);
-      if(record?.state==='ready')return this.verify(record);
+      if(record?.state==='ready')return verifyPinned(record);
       if(record&&record.requestHash!==hash)throw new ExecutionWorkspaceError('workspace_binding_conflict');
       if(!record){
-        const base={version:1,ownerId,source,requestHash:hash,createdAt:new Date().toISOString(),retention:'session-bound'};
+        const base={version:1,ownerId,source,requestHash:hash,createdAt:new Date().toISOString(),retention:'session-bound',...(expectedCommit ? {expectedCommit} : {}),...(requireClean ? {requireClean:true} : {})};
         if(!nativeSession && scratch){
           const cwd=path.join(this.root,`scratch-${digest(ownerId).slice(0,32)}`);
           if(existsSync(cwd))throw new ExecutionWorkspaceError('workspace_allocation_unconfirmed');
@@ -106,12 +119,14 @@ export class NeuralDeepExecutionWorkspaces {
         if(identity.sourceRoot!==source)throw new ExecutionWorkspaceError('workspace_source_root_required');
         const revision=await git(source,['rev-parse','HEAD']);
         if(!/^[a-f0-9]{40,64}$/.test(revision))throw new ExecutionWorkspaceError('workspace_source_revision_unverified');
+        if(expectedCommit && revision!==expectedCommit)throw new ExecutionWorkspaceError('workspace_source_revision_mismatch');
         const files=(await git(source,['ls-tree','-rz','--name-only',revision])).split('\0').filter(Boolean);
         // Scaffold templates are public inputs, including .env.example.tmpl.
         // Keep the exception exact so backups and real environment files stay blocked.
         if(files.some(name=>/(^|\/)(\.env(?!\.(example|sample|template)(\.tmpl)?$)(\.|$)|\.private\/|\.memory-private\/|\.queue\/|\.logs\/|codex-home\/)/.test(name)))throw new ExecutionWorkspaceError('workspace_sensitive_tracked_files');
         record={...base,mode:'worktree',cwd:path.join(this.root,`workspace-${digest([ownerId,source]).slice(0,32)}`),
           common:identity.common,sourceGitDir:identity.gitDir,baseCommit:revision,sourceDirty:Boolean(await git(source,[...await checkoutOptions(source),'status','--porcelain=v1','--untracked-files=normal'])),state:'planned'};
+        if(requireClean && record.sourceDirty)throw new ExecutionWorkspaceError('workspace_source_dirty');
         this.save(ownerId,hash,record);
       }
       if(record.mode==='scratch')throw new ExecutionWorkspaceError('workspace_allocation_unconfirmed');
@@ -126,7 +141,7 @@ export class NeuralDeepExecutionWorkspaces {
         if(identity.common!==record.common||identity.sourceRoot!==record.cwd)throw new ExecutionWorkspaceError('workspace_identity_changed');
         if(await git(record.cwd,['rev-parse','HEAD'])!==record.baseCommit)throw new ExecutionWorkspaceError('workspace_allocation_unconfirmed');
         record={...record,gitDir:identity.gitDir,state:'ready',preparedAt:new Date().toISOString()};
-        await this.verify(record);return this.save(ownerId,hash,record);
+        await assertSource();await verifyPinned(record);return this.save(ownerId,hash,record);
       }finally{this.store.releaseSessionControl(gitControl,gitOwner);}
     }finally{this.store.releaseSessionControl(control,token);}
   }

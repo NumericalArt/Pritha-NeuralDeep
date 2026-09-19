@@ -20,6 +20,9 @@ test('persistent timeouts remain failures and never return stale exit evidence',
   assert.throws(()=>processSnapshot({runProbe(){calls++;return {status:70};}}),/process_snapshot_timeout/);
   assert.equal(calls,2);
   assert.equal(processTreeExited({version:1,session:40,coverage:'unknown',escaped:[]},[]),false);
+  assert.equal(processTreeExited({
+    version:1,session:40,coverage:'unknown',escaped:[{pid:99,started:'already gone'}],
+  },[]),false,'recorded children exiting cannot account for missed escaped descendants');
 });
 
 test('malformed ownership data fails closed without accepting another snapshot',()=>{

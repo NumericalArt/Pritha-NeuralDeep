@@ -46,6 +46,34 @@ test('worktree checkout disables local hooks, fsmonitor and external filters',as
  assert.equal(readFileSync(path.join(result.cwd,'original.txt'),'utf8'),'Tracked original\n');assert.equal(existsSync(marker),false);
 });
 
+test('new creation workspaces pin a clean source release and reject silent source or execution migration',async t=>{
+ const f=fixture(t),sha=git(f.source,'rev-parse','HEAD');
+ const input={ownerId:'creation',sourcePath:f.source,mutating:true,expectedCommit:sha,requireClean:true};
+ const workspace=await f.workspaces.prepare(input);
+ assert.equal(workspace.baseCommit,sha);assert.equal(workspace.expectedCommit,sha);assert.equal(workspace.sourceDirty,false);
+ assert.equal((await f.workspaces.prepare({...input,nativeSession:true,existingCwd:workspace.cwd})).cwd,workspace.cwd);
+ writeFileSync(path.join(f.source,'original.txt'),'unpublished source');
+ await assert.rejects(f.workspaces.prepare(input),{code:'workspace_source_dirty'});
+ await assert.rejects(f.workspaces.prepare({...input,ownerId:'second'}),{code:'workspace_source_dirty'});
+ assert.equal(f.workspaces.get('second'),null,'preflight fails before allocating');
+ git(f.source,'add','.');git(f.source,'commit','-m','next release');
+ await assert.rejects(f.workspaces.prepare(input),{code:'workspace_source_revision_mismatch'});
+ await assert.rejects(f.workspaces.prepare({...input,expectedCommit:git(f.source,'rev-parse','HEAD')}),{code:'workspace_release_migration_required'});
+ git(workspace.cwd,'checkout','--detach',git(f.source,'rev-parse','HEAD'));
+ await assert.rejects(f.workspaces.verify(workspace),{code:'workspace_execution_revision_mismatch'});
+});
+
+test('a pinned source refuses untracked edits, abbreviated revisions and non-worktree fallback',async t=>{
+ const f=fixture(t),sha=git(f.source,'rev-parse','HEAD');
+ const input={ownerId:'strict',sourcePath:f.source,mutating:true,expectedCommit:sha,requireClean:true};
+ writeFileSync(path.join(f.source,'untracked.txt'),'pending source');
+ await assert.rejects(f.workspaces.prepare(input),{code:'workspace_source_dirty'});
+ rmSync(path.join(f.source,'untracked.txt'));
+ await assert.rejects(f.workspaces.prepare({...input,expectedCommit:sha.slice(0,12)}),{code:'workspace_revision_policy_invalid'});
+ await assert.rejects(f.workspaces.prepare({...input,scratch:true}),{code:'workspace_release_requires_worktree'});
+ await assert.rejects(f.workspaces.prepare({...input,mutating:false}),{code:'workspace_release_requires_worktree'});
+});
+
 test('native sessions and non-Git tasks keep exact cwd, and invalid or sensitive allocations never fall back to another project',async t=>{
  const f=fixture(t,{repository:false});const existing=await f.workspaces.prepare({ownerId:'legacy',sourcePath:f.source,existingCwd:f.source,nativeSession:true,mutating:true});
  assert.equal(existing.cwd,f.source);assert.equal(existing.mode,'existing');

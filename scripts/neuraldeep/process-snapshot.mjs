@@ -49,7 +49,11 @@ export function processSnapshot({ runProbe = runSyncProbe } = {}) {
 /** Reconciliation is read-only; saved identities never authorize a signal. */
 export function processTreeExited(evidence, snapshot = processSnapshot()) {
   if (evidence?.version !== 1 || !Number.isSafeInteger(evidence.session) || evidence.session < 1
-    || evidence.coverage === "unknown" || !Array.isArray(evidence.escaped)) return false;
+    || !Array.isArray(evidence.escaped)) return false;
+  // A missed snapshot may have hidden another escaped child. The disappearance
+  // of the children we did observe cannot prove that the entire tree exited.
+  if (evidence.coverage === "unknown") return false;
+  if (evidence.coverage !== undefined && evidence.coverage !== "observed") return false;
   if (snapshot.some(row => row.session === evidence.session && !row.state.startsWith("Z"))) return false;
   return evidence.escaped.every(saved => Number.isSafeInteger(saved.pid) && typeof saved.started === "string"
     && !snapshot.some(row => row.pid === saved.pid && row.started === saved.started && !row.state.startsWith("Z")));

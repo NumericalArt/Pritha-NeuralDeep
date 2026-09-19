@@ -755,8 +755,11 @@ async function runDeliveryLoopLocked(input = {}) {
 
       const phaseContext = {
         runId: state.run_id, iteration: state.iteration, stateRoot: input.stateRoot,
+        signal: input.signal,
         tokenBudget: deliveryTokenPreflight(state.budget).available,
         beforeDispatch: async () => {
+          if (input.signal?.aborted || input.shouldContinue && !await input.shouldContinue()) throw new DeliveryLoopError("creation_paused", "The owning creation task paused further model dispatch.");
+          await input.beforeDispatch?.();
           const preflight = deliveryTokenPreflight(readDeliveryLedger(runRoot).budget);
           if (preflight.available === null) throw new DeliveryLoopError("goal_usage_unavailable", "Resolve the saved attempt before a new model call.");
           if (preflight.available < 1) throw new DeliveryLoopError("token_budget_exhausted", "Continue this same run with an explicitly extended budget.");
@@ -768,6 +771,7 @@ async function runDeliveryLoopLocked(input = {}) {
       };
       let executorResult;
       try {
+        await phaseContext.beforeDispatch();
         if (!buildProbeCompleted) {
           const probe = typeof buildExecutor.probe === "function"
             ? await buildExecutor.probe({ ...phaseContext, cwd: worktree.worktree, worktree: worktree.worktree, timeoutMs: input.probeTimeoutMs })
@@ -794,6 +798,7 @@ async function runDeliveryLoopLocked(input = {}) {
           return blockDelivery(runRoot, plan, worktree, blockerForError(new DeliveryLoopError("token_budget_exhausted", "The confirmed build token budget is exhausted")), input);
         }
         const goalRequired = executionState.budget.goal_enforcement !== "waived-once";
+        await phaseContext.beforeDispatch();
         executorResult = await buildExecutor.execute({
           ...phaseContext,
           runId: state.run_id,
@@ -829,6 +834,8 @@ async function runDeliveryLoopLocked(input = {}) {
           "goal_api_unavailable",
           "goal_usage_unavailable",
           "token_budget_exhausted",
+          "creation_paused",
+          "build_executor_aborted",
         ].includes(error?.code)) {
           return blockDelivery(runRoot, plan, worktree, blockerForError(error), input);
         }
@@ -867,6 +874,14 @@ export async function deliverOutcome(specPath, projectPath, options = {}) {
     allowDraft: Boolean(options.allowDraft),
   });
   const bound = policyBoundOptions(compiled.plan, options);
+  if (options.onLedgerReady) {
+    await withDeliveryExecution(compiled.runRoot, () => {
+      ensureRunPlan(compiled.runRoot, compiled.plan);
+      ensureLedger(compiled.runRoot, compiled.plan, projectPath, compiled.runId, bound);
+    });
+    // Binding uses the same delivery lease, so invoke it between transactions.
+    await options.onLedgerReady({ runId: compiled.runId, runRoot: compiled.runRoot, plan: compiled.plan });
+  }
   return runDeliveryLoop({
     ...bound,
     root,

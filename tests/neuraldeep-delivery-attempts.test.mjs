@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -30,6 +30,25 @@ function context(f) {
     beforeDispatch:()=>{const available=deliveryTokenPreflight(readDeliveryLedger(f.runRoot).budget).available; if(available===null)throw Object.assign(new Error('unknown'),{code:'goal_usage_unavailable'});if(available<1)throw Object.assign(new Error('limit'),{code:'token_budget_exhausted'});}};
 }
 
+test('pre-dispatch abort issues no attempt receipt or model call',async t=>{
+ const f=fixture(t),executor=new CodexCliBuildExecutor(),controller=new AbortController();let calls=0;
+ controller.abort();executor.run=async()=>{calls++;throw Error('must not run');};
+ await assert.rejects(executor.phase({...context(f),signal:controller.signal},'build',{}),{code:'build_executor_aborted'});
+ assert.equal(calls,0);assert.equal(readDeliveryLedger(f.runRoot).budget.unaccounted_attempts.length,0);
+});
+
+test('active abort terminates only its owned wrapper and preserves unknown usage',async t=>{
+ const f=fixture(t),executor=new CodexCliBuildExecutor(),controller=new AbortController();executor.runtimeVersion=()=> 'fixture';
+ const runner=path.join(f.root,'owned-runner.mjs'),marker=path.join(f.root,'stopped.txt');
+ writeFileSync(runner,`import {writeFileSync} from 'node:fs';process.on('SIGTERM',()=>{writeFileSync(${JSON.stringify(marker)},'owned stop');process.exit(0);});setInterval(()=>{},1000);`);
+ executor.runner=runner;
+ const timer=setTimeout(()=>controller.abort(),500);t.after(()=>clearTimeout(timer));
+ const result=await executor.phase({...context(f),signal:controller.signal},'build',{cwd:f.worktree,prompt:'fixture',sandbox:'read-only',timeoutMs:5000});
+ assert.equal(result.aborted,true);assert.equal(result.receipt.status,'interrupted');
+ assert.equal(readFileSync(marker,'utf8'),'owned stop');
+ assert.equal(deliveryTokenPreflight(readDeliveryLedger(f.runRoot).budget).available,null);
+});
+
 test('failed structured summary preserves build, exact phase charges and native identity',async t=>{
   const f=fixture(t), executor=new CodexCliBuildExecutor({model:'fixture'}); executor.runtimeVersion=()=> 'fixture';
   let calls=0;
@@ -56,6 +75,39 @@ test('unknown build usage prevents paid summary and preserves existing implement
   const result=await executor.execute(context(f));assert.equal(calls,1);assert.equal(result.status,'completed');
   const state=readDeliveryLedger(f.runRoot);assert.equal(state.budget.tokens_used,0);assert.equal(deliveryTokenPreflight(state.budget).available,null);
   assert.equal(state.budget.unaccounted_attempts[0].process_exited,true);
+});
+
+test('executor bridges host-owned process identities even when the wrapper loses its acknowledgement',async t=>{
+ const f=fixture(t),executor=new CodexCliBuildExecutor();executor.runtimeVersion=()=> 'fixture';
+ const evidence={version:1,session:40,coverage:'observed',escaped:[{pid:99,started:'orphan birth'}]};
+ executor.run=async options=>{
+  const store=new NeuralDeepCoordinationStore(neuralDeepCoordinationPaths(f.root,executor.projectRoot));
+  store.beginRuntimeRun({runId:options.runId,requestHash:'b'.repeat(64),receipt:{process_protocol:1,
+   worker_pid:123,worker_started:'original worker',process_evidence:evidence,process_exited:false,process_tree_exited:false,adapter_closed:false}});
+  store.close();throw new Error('lost acknowledgement');
+ };
+ await assert.rejects(executor.phase(context(f),'build',{}),/lost acknowledgement/);
+ const pending=readDeliveryLedger(f.runRoot).budget.unaccounted_attempts[0];
+ assert.equal(pending.worker_pid,123);assert.equal(pending.worker_started,'original worker');
+ assert.deepEqual(pending.process_evidence,evidence);assert.equal(pending.process_exited,false);
+ assert.equal(deliveryTokenPreflight(readDeliveryLedger(f.runRoot).budget).available,null);
+});
+
+test('a measured wrapper result retains a blocker when host process receipt has unknown tree coverage',async t=>{
+ const f=fixture(t),executor=new CodexCliBuildExecutor();executor.runtimeVersion=()=> 'fixture';
+ executor.run=async options=>{
+  const store=new NeuralDeepCoordinationStore(neuralDeepCoordinationPaths(f.root,executor.projectRoot));
+  store.beginRuntimeRun({runId:options.runId,requestHash:'c'.repeat(64),receipt:{process_protocol:1,
+   worker_pid:2147483647,worker_started:'original worker',process_evidence:{version:1,session:40,coverage:'unknown',escaped:[]},
+   dispatch_authorized:true,process_exited:false,process_tree_exited:false,adapter_closed:true}});
+  store.close();return{code:0,processExited:true,tokensUsed:12,usageKnown:true};
+ };
+ const result=await executor.phase(context(f),'build',{});
+ assert.equal(result.receipt.process_exited,false,'host receipt is authoritative');
+ assert.equal(readDeliveryLedger(f.runRoot).budget.tokens_used,12);
+ assert.equal(deliveryTokenPreflight(readDeliveryLedger(f.runRoot).budget).available,null);
+ const recovered=await executor.recover(context(f),result.receipt);
+ assert.equal(recovered.process_exited,false);assert.equal(recovered.process_evidence.coverage,'unknown');
 });
 
 test('checkpoint failure prevents a model call, thrown runner remains unresolved',async t=>{

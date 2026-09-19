@@ -11,6 +11,7 @@ import path from "node:path";
 import { atomicWriteFile, withFileLock } from "../lib/atomic-file.mjs";
 import { parseBoundedJson } from "../lib/bounded-json.mjs";
 import { redactFilesystemPaths } from "../lib/redaction.mjs";
+import { processSnapshot, processTreeExited } from "../neuraldeep/process-snapshot.mjs";
 
 export const DELIVERY_LEDGER_SCHEMA = "pritha-delivery-ledger-v2";
 export const LEGACY_DELIVERY_LEDGER_SCHEMA = "pritha-delivery-ledger-v1";
@@ -96,6 +97,15 @@ export function normalizeDeliveryLedger(value) {
   if (!value || typeof value !== "object") return value;
   if (![DELIVERY_LEDGER_SCHEMA, LEGACY_DELIVERY_LEDGER_SCHEMA].includes(value.schema)) return value;
   const budget = value.budget && typeof value.budget === "object" ? value.budget : {};
+  const unaccounted = budget.unaccounted_attempts ?? [];
+  // Older recovery moved missing workers out of accounting without a usage
+  // receipt. Restore that uncertainty on read, preserving the historical entry.
+  const historicalUnknown = Array.isArray(unaccounted) && Array.isArray(budget.lost_attempts)
+    ? budget.lost_attempts.filter((entry) => entry?.reason === "worker_lost" && typeof entry.executor_result === "string"
+      && !unaccounted.some((pending) => pending.executor_result === entry.executor_result)
+      && !(budget.accounted_turns || []).some((accounted) => accounted.executor_result === entry.executor_result))
+      .map((entry) => ({ ...entry, process_exited: false, reason: "legacy_worker_loss_usage_unverified" }))
+    : [];
   return {
     ...value,
     schema: DELIVERY_LEDGER_SCHEMA,
@@ -111,7 +121,7 @@ export function normalizeDeliveryLedger(value) {
       accounting_version: budget.accounting_version ?? 1,
       usage_scope: budget.usage_scope ?? "build-executor",
       legacy_usage_unverified: budget.legacy_usage_unverified ?? (budget.accounting_version === undefined),
-      unaccounted_attempts: budget.unaccounted_attempts ?? [],
+      unaccounted_attempts: historicalUnknown.length ? [...unaccounted, ...historicalUnknown] : unaccounted,
       amendments: budget.amendments ?? [],
     },
   };
@@ -323,50 +333,35 @@ function latestEventState(eventsPath) {
   return latest?.state || null;
 }
 
-export function recoverLostDeliveryAttempts(runRoot) {
+/** Inspect saved process identities. Only executor receipts reconcile usage. */
+export function recoverLostDeliveryAttempts(runRoot, { snapshot = processSnapshot } = {}) {
   return updateDeliveryLedger(runRoot, (current) => {
-    const remaining = [];
-    const lost = [];
-    for (const attempt of current.budget.unaccounted_attempts || []) {
-      const pid = Number(attempt.worker_pid);
-      const hasPid = Number.isSafeInteger(pid) && pid > 0;
-      let alive = false;
-      if (hasPid) {
-        try {
-          process.kill(pid, 0);
-          alive = true;
-        } catch {
-          alive = false;
-        }
-      }
-      const deadWorker = hasPid && !alive && attempt.process_exited === false;
-      if (deadWorker) {
-        lost.push({
-          ...attempt,
-          process_exited: true,
-          reason: "worker_lost",
-          lost_at: new Date().toISOString(),
-        });
-        continue;
-      }
-      remaining.push(attempt);
-    }
-    if (!lost.length) return current;
+    // Historical terminal runs are evidence, never candidates for auto-resume.
+    if (DELIVERY_TERMINAL_STATUSES.has(current.status) || !current.budget.unaccounted_attempts.some((attempt) => Number.isSafeInteger(attempt.worker_pid) && attempt.worker_pid > 0)) return current;
+    let rows;
+    try { rows = snapshot(); } catch { return current; }
+    const remaining = current.budget.unaccounted_attempts.map((attempt) => {
+      if (!Number.isSafeInteger(attempt.worker_pid) || attempt.worker_pid < 1) return attempt;
+      const row = rows.find((entry) => entry.pid === attempt.worker_pid && !entry.state.startsWith("Z"));
+      const hasBirth = typeof attempt.worker_started === "string" && attempt.worker_started.length > 0;
+      const worker = row && (!hasBirth || row.started === attempt.worker_started)
+        ? hasBirth ? "running" : "identity_unknown"
+        : hasBirth ? "exited" : "pid_absent";
+      // A worker's birth identity and full observed tree are separate evidence.
+      // An absent bare PID cannot prove no descendants are still writing.
+      const treeExited = worker === "exited" && processTreeExited(attempt.process_evidence, rows);
+      return {
+        ...attempt,
+        worker_status: worker,
+        ...(treeExited ? { process_exited: true, process_tree_exited: true,
+          exit_evidence: "original_worker_absent_and_owned_session_empty" } : {}),
+      };
+    });
     return {
       ...current,
-      budget: {
-        ...current.budget,
-        unaccounted_attempts: remaining,
-        lost_attempts: [...(current.budget.lost_attempts || []), ...lost].slice(-20),
-      },
-      phase: remaining.length ? current.phase : "attempts_recovered",
-      next_action: remaining.length ? current.next_action : (current.status === "blocked" ? "resume_delivery" : current.next_action),
-      blockers: remaining.length || current.budget.legacy_usage_unverified ? current.blockers : [],
-      status: remaining.length || current.budget.legacy_usage_unverified
-        ? current.status
-        : current.status === "blocked" && current.blockers[0]?.code === "goal_usage_unavailable"
-          ? "correcting"
-          : current.status,
+      // Exit is not a zero-token receipt. Keep the reservation and usage blocker
+      // until accountDeliveryExecutorResult receives a bound terminal receipt.
+      budget: { ...current.budget, unaccounted_attempts: remaining },
     };
   }, { eventType: "delivery_attempts_recovered", skipUnchanged: true }).state;
 }
@@ -610,6 +605,7 @@ export function accountDeliveryExecutorResult(runRoot, result, executorPath) {
   return updateDeliveryLedger(runRoot, (current) => {
     if (result.run_id && result.run_id !== current.run_id) throw new Error("Executor receipt belongs to another delivery run");
     const budget = { ...current.budget };
+    const priorAttempt = budget.unaccounted_attempts.find((entry) => entry.executor_result === executorPath);
     let unresolved = budget.unaccounted_attempts.filter((entry) => entry.executor_result !== executorPath);
     const threadId = String(result.thread_id || "");
     const turnId = String(result.turn_id || "");
@@ -638,12 +634,19 @@ export function accountDeliveryExecutorResult(runRoot, result, executorPath) {
           model_observed: result.model_observed || previous?.model_observed || null,
           provider_observed: result.provider_observed || previous?.provider_observed || null,
         };
-        budget.accounted_turns = [...budget.accounted_turns.filter((item) => item.key !== key), entry];
+        budget.accounted_turns = previous
+          ? budget.accounted_turns.map((item) => item.key === key ? entry : item)
+          : [...budget.accounted_turns, entry];
         budget.tokens_used = nextTotal;
       }
     } else if (!["not-started", "not-applicable"].includes(status)) reason = "usage_unavailable";
     if (result.thread_cleanup === "pending") reason ||= "thread_cleanup_pending";
-    if (reason) unresolved.push({ executor_result: executorPath, thread_id: threadId || null, turn_id: turnId || null, phase: "build-executor", reason,
+    if (result.process_exited === false || result.process_protocol === 1 &&
+      (result.process_tree_exited !== true || result.adapter_closed !== true)) reason ||= "process_exit_unconfirmed";
+    if (reason) unresolved.push({ ...priorAttempt,
+      ...Object.fromEntries(["worker_pid", "worker_started", "process_evidence", "process_protocol", "process_tree_exited", "adapter_closed"]
+        .filter((field) => result[field] !== undefined).map((field) => [field, result[field]])),
+      executor_result: executorPath, thread_id: threadId || null, turn_id: turnId || null, phase: "build-executor", reason,
       turn_status: result.turn_status || result.status, thread_cleanup: result.thread_cleanup || "unknown",
       process_exited: result.process_exited === true,
       reserved_tokens: ["dispatching", "running", "uncertain"].includes(result.status) && Number.isSafeInteger(result.token_budget) ? result.token_budget : 0 });
@@ -657,6 +660,7 @@ export function accountDeliveryExecutorResult(runRoot, result, executorPath) {
       next_action: current.status === "building" ? "verify_executor_changes" : current.next_action,
     };
   }, {
+    skipUnchanged: true,
     eventType: "build_usage_recorded",
     payload: { executor_result: executorPath, thread_id: result.thread_id || null, turn_id: result.turn_id || null, usage_status: result.usage_status || "legacy" },
   }).state;

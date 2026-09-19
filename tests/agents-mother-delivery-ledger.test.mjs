@@ -322,8 +322,7 @@ test("repeated identical Trial failures become an actionable blocker", () => {
   assert.equal(third.state.blockers[0].options.length, 3);
 });
 
-test("dead worker with process_exited false is recovered as lost, not goal_usage_unavailable", () => {
-  const { runRoot } = fixture();
+function unresolvedAttempt(runRoot, overrides = {}) {
   updateDeliveryLedger(runRoot, (state) => ({
     ...state,
     status: "blocked",
@@ -346,16 +345,97 @@ test("dead worker with process_exited false is recovered as lost, not goal_usage
         process_exited: false,
         reason: "usage_unavailable",
         reserved_tokens: 8000,
+        ...overrides,
       }],
     },
   }));
+}
+
+test("a missing bare worker PID keeps unknown usage and cannot authorize a retry", () => {
+  const { runRoot } = fixture();
+  unresolvedAttempt(runRoot);
   assert.equal(budgetBlocker(readDeliveryLedger(runRoot)).code, "goal_usage_unavailable");
-  const recovered = recoverLostDeliveryAttempts(runRoot);
-  assert.equal(recovered.budget.unaccounted_attempts.length, 0);
-  assert.equal(recovered.budget.lost_attempts.length, 1);
-  assert.equal(recovered.budget.lost_attempts[0].reason, "worker_lost");
-  assert.equal(deliveryUsageStatus(recovered.budget), "complete");
-  assert.equal(recovered.status, "correcting");
-  assert.equal(recovered.next_action, "resume_delivery");
-  assert.notEqual(budgetBlocker(recovered)?.code, "goal_usage_unavailable");
+  const recovered = recoverLostDeliveryAttempts(runRoot, { snapshot: () => [] });
+  assert.equal(recovered.budget.unaccounted_attempts.length, 1);
+  assert.equal(recovered.budget.unaccounted_attempts[0].worker_status, "pid_absent");
+  assert.equal(recovered.budget.unaccounted_attempts[0].process_exited, false);
+  assert.equal(deliveryUsageStatus(recovered.budget), "unknown");
+  assert.equal(recovered.status, "blocked");
+  assert.equal(recovered.next_action, "");
+  assert.equal(budgetBlocker(recovered)?.code, "goal_usage_unavailable");
+  assert.equal(recoverLostDeliveryAttempts(runRoot, { snapshot: () => [] }).version, recovered.version);
+});
+
+test("a live orphan blocks tree exit despite the original worker disappearing", () => {
+  const { runRoot } = fixture();
+  unresolvedAttempt(runRoot, { worker_started: "original worker", process_evidence: {
+    version: 1, session: 40, coverage: "observed", escaped: [{ pid: 99, started: "orphan birth" }],
+  } });
+  const recovered = recoverLostDeliveryAttempts(runRoot, { snapshot: () => [
+    { pid: 99, parent: 1, session: 99, group: 99, started: "orphan birth", state: "S" },
+  ] });
+  assert.equal(recovered.budget.unaccounted_attempts[0].worker_status, "exited");
+  assert.equal(recovered.budget.unaccounted_attempts[0].process_exited, false);
+  assert.equal(deliveryUsageStatus(recovered.budget), "unknown");
+});
+
+test("confirmed entire tree exit still preserves unknown spend until a bound receipt arrives", () => {
+  const { runRoot } = fixture();
+  const reference = "executor/attempt-nd_dead.json";
+  unresolvedAttempt(runRoot, { worker_started: "original worker", process_evidence: {
+    version: 1, session: 40, coverage: "observed", escaped: [],
+  } });
+  const recovered = recoverLostDeliveryAttempts(runRoot, { snapshot: () => [] });
+  assert.equal(recovered.budget.unaccounted_attempts[0].process_exited, true);
+  assert.equal(recovered.budget.unaccounted_attempts[0].reserved_tokens, 8000);
+  assert.equal(recovered.budget.tokens_used, 0);
+  assert.equal(deliveryTokenPreflight(recovered.budget).available, null);
+  assert.equal(recoverLostDeliveryAttempts(runRoot, { snapshot: () => [] }).version, recovered.version);
+  const measured = accountDeliveryExecutorResult(runRoot, receipt({ process_exited: true }), reference);
+  assert.equal(measured.budget.tokens_used, 120);
+  assert.equal(deliveryUsageStatus(measured.budget), "complete");
+  assert.equal(accountDeliveryExecutorResult(runRoot, receipt({ process_exited: true }), reference).version, measured.version);
+});
+
+test("snapshot failure and terminal abandoned runs leave recovery evidence unchanged", () => {
+  const { runRoot } = fixture();
+  unresolvedAttempt(runRoot, { worker_started: "original worker" });
+  const before = readDeliveryLedger(runRoot);
+  assert.equal(recoverLostDeliveryAttempts(runRoot, { snapshot() { throw new Error("probe unavailable"); } }).version, before.version);
+  const abandoned = transitionDelivery(runRoot, "abandoned").state;
+  assert.equal(recoverLostDeliveryAttempts(runRoot, { snapshot() { assert.fail("terminal runs must not probe processes"); } }).version, abandoned.version);
+  assert.equal(readDeliveryLedger(runRoot).status, "abandoned");
+});
+
+test("a measured receipt cannot authorize another turn while its process tree remains unresolved", () => {
+  const { runRoot } = fixture();
+  const reference = "executor/iteration-001.json";
+  const pending = receipt({ process_protocol: 1, process_exited: false, process_tree_exited: false, adapter_closed: false,
+    worker_pid: 42, worker_started: "original worker", process_evidence: { version: 1, session: 40, escaped: [], coverage: "observed" } });
+  const state = accountDeliveryExecutorResult(runRoot, pending, reference);
+  assert.equal(state.budget.tokens_used, 120);
+  assert.equal(state.budget.unaccounted_attempts[0].reason, "process_exit_unconfirmed");
+  assert.equal(state.budget.unaccounted_attempts[0].worker_started, "original worker");
+  assert.equal(budgetBlocker(state).code, "goal_usage_unavailable");
+  assert.equal(accountDeliveryExecutorResult(runRoot, pending, reference).version, state.version);
+  const complete = accountDeliveryExecutorResult(runRoot, { ...pending, process_exited: true, process_tree_exited: true, adapter_closed: true }, reference);
+  assert.equal(complete.budget.tokens_used, 120);
+  assert.equal(deliveryUsageStatus(complete.budget), "complete");
+});
+
+test("legacy worker-loss entries remain unaccounted until an actual matching receipt arrives", () => {
+  const { runRoot } = fixture();
+  const reference = "executor/historical-lost.json";
+  updateDeliveryLedger(runRoot, state => ({ ...state, budget: { ...state.budget,
+    lost_attempts: [{ executor_result: reference, worker_pid: 999999999, process_exited: true, reason: "worker_lost" }],
+  } }));
+  const unresolved = readDeliveryLedger(runRoot);
+  assert.equal(deliveryUsageStatus(unresolved.budget), "unknown");
+  assert.equal(unresolved.budget.unaccounted_attempts[0].process_exited, false);
+  assert.equal(unresolved.budget.unaccounted_attempts[0].reason, "legacy_worker_loss_usage_unverified");
+  assert.equal(unresolved.budget.lost_attempts.length, 1);
+  const measured = accountDeliveryExecutorResult(runRoot, receipt({ process_exited: true }), reference);
+  assert.equal(deliveryUsageStatus(measured.budget), "complete");
+  assert.equal(readDeliveryLedger(runRoot).budget.unaccounted_attempts.length, 0);
+  assert.equal(measured.budget.tokens_used, 120);
 });

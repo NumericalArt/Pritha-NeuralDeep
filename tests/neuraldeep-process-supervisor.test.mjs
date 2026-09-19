@@ -92,6 +92,9 @@ test('abrupt launcher death closes the lifeline and ends its CLI session',{timeo
 test('reconciliation never claims unknown coverage or a surviving detached child has exited',()=>{
   const row={pid:40,parent:1,group:40,session:40,state:'S',started:'exact fixture start'};
   assert.equal(processTreeExited({version:1,session:20,coverage:'unknown',escaped:[]},[]),false);
+  assert.equal(processTreeExited({
+    version:1,session:20,coverage:'unknown',escaped:[{pid:99,started:'already gone'}],
+  },[]),false);
   assert.equal(processTreeExited({version:1,session:20,escaped:[{pid:40,started:row.started}]},[row]),false);
   assert.equal(processTreeExited({version:1,session:20,escaped:[{pid:40,started:'previous start'}]},[row]),true,'a reused PID is inspected, never signalled');
 });
