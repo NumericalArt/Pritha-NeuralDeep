@@ -62,7 +62,16 @@ console.log("API process scaffold structure: pass. Product and managed lifecycle
     { path: "scripts/server.mjs", content: pending },
     { path: "scripts/service-control.mjs", content: pending },
     { path: "scripts/smoke-test.mjs", content: smoke },
-    { path: "scripts/healthcheck.mjs", content: '// Structural scaffold check only. Replace with product health during delivery.\nimport "./smoke-test.mjs";\n' },
+    { path: "scripts/healthcheck.mjs", content: `// Read-only live health; refreshing data is a separate product operation.
+const port = Number(process.env[${JSON.stringify(variable)}] || process.env.PORT || ${port});
+try {
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid local port");
+  const response = await fetch("http://127.0.0.1:" + port + "/health", {signal: AbortSignal.timeout(3000)});
+  const body = await response.json();
+  if (!response.ok || body.status !== "ok") throw new Error("Service is not healthy");
+  console.log("Live service health: ok");
+} catch (error) { console.error(error.message); process.exitCode = 1; }
+` },
     { path: "scripts/deploy-service.mjs", content: 'const action=process.argv[2]||"plan";\nif(["plan","status"].includes(action)) console.log(JSON.stringify({service_mode:"process",installed:false,action,implementation:"required",mutates:false}));\nelse { console.error("Process service has no install/uninstall or autostart action.");process.exitCode=64; }\n' },
   ];
 }

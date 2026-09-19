@@ -22,6 +22,7 @@ import { withChildTests } from "./tests.mjs";
 import { selectedScaffoldModules } from "./modules.mjs";
 import { headlessCliFiles } from "./headless-cli.mjs";
 import { apiProcessFiles, apiProcessManifest } from "./api-process.mjs";
+import { outcomeVerifierPresetFiles, verifyPreparedOutcomeVerifierPreset } from "../outcome-verifier-presets.mjs";
 
 const ROOT = resolveTechscopeRoot();
 const AGENT_MEMORY_ROOT = resolvePrithaAgentMemoryRoot({ root: ROOT });
@@ -352,7 +353,7 @@ function resolveTargetPath(data, options = {}) {
   return path.resolve(ROOT, contractTarget);
 }
 
-function ensureWritableTarget(targetPath) {
+function ensureWritableTarget(targetPath, preset) {
   const requested = path.resolve(targetPath);
   if (existsSync(targetPath)) {
     const targetStat = lstatSync(targetPath);
@@ -361,7 +362,8 @@ function ensureWritableTarget(targetPath) {
     }
     const entries = readdirSync(targetPath).filter((entry) => entry !== ".DS_Store");
     if (entries.length > 0) {
-      throw new Error(`Target folder is not empty: ${targetPath}`);
+      try { verifyPreparedOutcomeVerifierPreset(targetPath, preset, { root: ROOT }); }
+      catch (error) { throw new Error(`Target folder is not empty or its host reservation is invalid: ${targetPath}: ${error.message}`); }
     }
   } else {
     let ancestor = path.dirname(requested);
@@ -383,7 +385,7 @@ function ensureWritableTarget(targetPath) {
   return realpathSync(requested);
 }
 
-function writeProjectFile(projectRoot, relPath, content) {
+function writeProjectFile(projectRoot, relPath, content, preparedFiles = new Set()) {
   const canonicalRoot = realpathSync(projectRoot);
   const normalizedRelative = String(relPath || "").replaceAll("\\", "/");
   if (!normalizedRelative || path.posix.isAbsolute(normalizedRelative) || normalizedRelative.split("/").some((segment) => !segment || segment === "." || segment === "..")) {
@@ -400,7 +402,10 @@ function writeProjectFile(projectRoot, relPath, content) {
   if (!parentStat.isDirectory() || parentStat.isSymbolicLink() || (realParent !== canonicalRoot && !realParent.startsWith(`${canonicalRoot}${path.sep}`))) {
     throw new Error(`Generated project parent is unsafe: ${relPath}`);
   }
-  if (existsSync(fullPath)) throw new Error(`Refusing to overwrite existing file: ${fullPath}`);
+  if (existsSync(fullPath)) {
+    if (preparedFiles.has(relPath) && lstatSync(fullPath).isFile() && !lstatSync(fullPath).isSymbolicLink() && readFileSync(fullPath, "utf8") === content) return relPath;
+    throw new Error(`Refusing to overwrite existing file: ${fullPath}`);
+  }
   writeFileSync(fullPath, content, { flag: "wx" });
   return relPath;
 }
@@ -813,7 +818,8 @@ node scripts/telegram-bot.mjs healthcheck
     path: ".env.example",
     content: renderScaffoldTemplate(new URL("./templates/.env.example.tmpl", import.meta.url), {
     value0: telegramEnabled ? "TELEGRAM_BOT_TOKEN=\nTELEGRAM_ALLOWED_USER_IDS=\n" : "",
-    value1: agentSlug
+    value1: agentSlug,
+    value2: /neuraldeep/i.test(String(data.providerBinding || "")) ? "NEURALDEEP_API_KEY=\nNEURALDEEP_API_URL=\nNEURALDEEP_MODEL=\n" : ""
   }),
   });
 
@@ -1219,9 +1225,10 @@ if (!envExample.includes("TELEGRAM_ALLOWED_USER_IDS=")) issues.push("missing TEL
   });
   files.push({ path: "logs/.gitkeep", content: "" });
   const capability = scaffoldCapability(data);
-  if (capability.adapter === "headless-cli-v1") return withChildTests(headlessCliFiles(files, data, capability, selected), capability);
-  if (capability.adapter === "api-process-v1") return withChildTests(apiProcessFiles(files, data, capability, selected), capability);
-  return withChildTests(files, capability);
+  const finalize = selectedFiles => withChildTests([...selectedFiles, ...outcomeVerifierPresetFiles(data.fm?.outcome_trial_preset)], capability);
+  if (capability.adapter === "headless-cli-v1") return finalize(headlessCliFiles(files, data, capability, selected));
+  if (capability.adapter === "api-process-v1") return finalize(apiProcessFiles(files, data, capability, selected));
+  return finalize(files);
 }
 
 export function runSmoke(projectRoot) {
@@ -1582,7 +1589,9 @@ export function scaffoldContract(contractPath, options = {}) {
     ...(!researchGate.ok && options["allow-pending-external-verification"] ? ["allow-pending-external-verification"] : []),
   ];
   const requestedTargetPath = resolveTargetPath(data, options);
-  const targetPath = ensureWritableTarget(requestedTargetPath);
+  const preset = data.fm?.outcome_trial_preset;
+  const targetPath = ensureWritableTarget(requestedTargetPath, preset);
+  const preparedFiles = new Set(outcomeVerifierPresetFiles(preset).map(file => file.path));
   ensureDirs();
   const logicalSiblingTarget = !scalar(options.output || "", "")
     && (!scalar(data.targetFolder || "", "") || /^sibling of (?:pritha|techscope)$/i.test(scalar(data.targetFolder || "", "")));
@@ -1597,12 +1606,18 @@ export function scaffoldContract(contractPath, options = {}) {
     voiceCopyTarget,
     outcome,
   })) {
-    createdFiles.push(writeProjectFile(targetPath, file.path, file.content));
+    createdFiles.push(writeProjectFile(targetPath, file.path, file.content, preparedFiles));
   }
 
   const smokeResult = runSmoke(targetPath);
-  const healthResult = runHealthcheck(targetPath);
-  const deliveryGit = smokeResult.ok && healthResult.ok
+  // A process scaffold has not started a server. Structural readiness permits
+  // its baseline; live health is checked after implementation and start.
+  const deferredLiveHealth = capability.adapter === "api-process-v1";
+  const healthResult = deferredLiveHealth
+    ? { ok: false, status: "implementation-required", output: "Live /health is deferred until the product is implemented and running." }
+    : runHealthcheck(targetPath);
+  const structuralReady = smokeResult.ok && (deferredLiveHealth || healthResult.ok);
+  const deliveryGit = structuralReady
     ? initializeDeliveryGit(targetPath, data)
     : { ok: false, status: "skipped-structural-failure", revision: null };
   const writtenReport = writeLifecycleReport(
@@ -1625,7 +1640,7 @@ export function scaffoldContract(contractPath, options = {}) {
   console.log(`contract_path: ${path.resolve(data.fullPath)}`);
   console.log(`Created files: ${createdFiles.length}`);
   console.log(`Smoke test: ${smokeResult.ok ? "pass" : "fail"}`);
-  console.log(`Healthcheck: ${healthResult.ok ? "pass" : "fail"}`);
+  console.log(`Healthcheck: ${deferredLiveHealth ? "implementation-required (not run)" : healthResult.ok ? "pass" : "fail"}`);
   console.log(`Delivery Git baseline: ${deliveryGit.status}`);
   console.log(`Scaffold report: ${path.relative(ROOT, reportPath)}`);
   console.log(`Outcome Spec: ${outcome ? `${outcome.status}${outcome.approvalValid ? " (approval valid)" : " (approval pending)"}` : "missing; run outcome init"}`);
@@ -1635,7 +1650,7 @@ export function scaffoldContract(contractPath, options = {}) {
   if (experimentalOverrides.length) {
     console.log(`Warning: experimental scaffold overrides: ${experimentalOverrides.join(", ")}. This is not production readiness evidence.`);
   }
-  if (!smokeResult.ok || !healthResult.ok || !deliveryGit.ok) {
+  if (!structuralReady || !deliveryGit.ok) {
     console.log([smokeResult.ok ? "" : smokeResult.output, healthResult.ok ? "" : healthResult.output, deliveryGit.ok ? "" : deliveryGit.error].filter(Boolean).join("\n"));
     process.exitCode = 1;
   }

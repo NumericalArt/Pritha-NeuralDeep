@@ -8,6 +8,8 @@ import { contractData, validateContract, SERVICE_MODES } from "../scripts/agents
 import { scaffoldCapability } from "../scripts/agents-mother/scaffold/capabilities.mjs";
 import { generatedAgentFiles } from "../scripts/agents-mother/scaffold/index.mjs";
 import { deriveExternalResearchTopics } from "../scripts/agents-mother/external-research-topics.mjs";
+import { prepareOutcomeVerifierPreset } from "../scripts/agents-mother/outcome-verifier-presets.mjs";
+import { approveOutcomeSpec, createOutcomeSpec } from "../scripts/agents-mother/outcome-spec.mjs";
 
 const selected = { runtimeFamily: "api", primaryInterface: "web", secondaryInterfaces: "API", serviceMode: "process", autostart: "optional", proactiveMode: "none", telegramMode: "none", repositoryAdoptionMode: "none" };
 function fixture(t) {
@@ -53,7 +55,7 @@ test("API files preserve process contract, planned endpoints and non-running str
   for (const file of files) { const target = path.join(f.target, file.path); mkdirSync(path.dirname(target), { recursive: true }); writeFileSync(target, file.content); }
   const run = argv => spawnSync(process.execPath, argv, { cwd: f.target, encoding: "utf8", timeout: 5000 });
   assert.equal(run(["scripts/smoke-test.mjs"]).status, 0);
-  assert.equal(run(["scripts/healthcheck.mjs"]).status, 0);
+  assert.equal(run(["scripts/healthcheck.mjs"]).status, 1, "Structural scaffold cannot claim a live /health endpoint");
   for (const argv of [["scripts/server.mjs"], ["scripts/service-control.mjs", "start"], ["scripts/service-control.mjs", "stop"]]) {
     const result = run(argv); assert.equal(result.status, 78); assert.match(result.stderr, /implementation-required/);
   }
@@ -77,6 +79,7 @@ test("API scaffold CLI preserves acceptance/research gates then makes a clean ba
   assert.notEqual(denied.status, 0); assert.equal(existsSync(f.target), false);
   const result = spawnSync(process.execPath, [...args, "--allow-missing-research", "--allow-pending-external-verification"], { encoding: "utf8", env: f.env, timeout: 30000 });
   assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /Healthcheck: implementation-required \(not run\)/);
   assert.equal(execFileSync("git", ["status", "--porcelain"], { cwd: f.target, encoding: "utf8" }), "");
   const reports = path.join(f.stateRoot, "agents/reports");
   const report = readFileSync(path.join(reports, readdirSync(reports).find(name => name.endsWith("-scaffold-report.md"))), "utf8");
@@ -85,4 +88,36 @@ test("API scaffold CLI preserves acceptance/research gates then makes a clean ba
   assert.match(report, /Control Center runtime contract \| implementation-required/);
   assert.doesNotMatch(report, /scripts\/control-center-agent-service|scripts\/control-center-runtime/);
   assert.equal(readFileSync(f.file, "utf8"), f.source);
+});
+
+test("host-prepared verifier permits Outcome approval before scaffold and survives the clean baseline", t => {
+  const f = fixture(t), options = { root: f.root, stateRoot: f.stateRoot };
+  writeFileSync(f.file, f.source.replace("type: agent-contract", "type: agent-contract\noutcome_trial_preset: llm-http-app-v1"));
+  mkdirSync(f.target);
+  const prepared = prepareOutcomeVerifierPreset(f.target, "llm-http-app-v1", { ...options, jobId: "creation-fixture" });
+  assert.equal(prepared.creationJobId, "creation-fixture");
+  assert.ok(prepared.receiptPath.startsWith(f.stateRoot));
+  const verifierPath = path.join(f.target, prepared.files[0].path), verifier = readFileSync(verifierPath, "utf8");
+  const spec = createOutcomeSpec(f.file, options);
+  approveOutcomeSpec(spec.path, { ...options, projectPath: f.target, approvedBy: "user" });
+  const result = spawnSync(process.execPath, ["scripts/pritha.mjs", "scaffold", f.file, "--allow-missing-research", "--allow-pending-external-verification"], { encoding: "utf8", env: f.env, timeout: 30000 });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.equal(readFileSync(verifierPath, "utf8"), verifier);
+  assert.equal(execFileSync("git", ["status", "--porcelain"], { cwd: f.target, encoding: "utf8" }), "");
+});
+
+test("prepared verifier receipt cannot authorize unrelated or changed target contents", t => {
+  for (const mutation of ["extra", "changed", "missing-receipt"]) {
+    const f = fixture(t), options = { root: f.root, stateRoot: f.stateRoot };
+    writeFileSync(f.file, f.source.replace("type: agent-contract", "type: agent-contract\noutcome_trial_preset: llm-http-app-v1"));
+    mkdirSync(f.target);
+    const prepared = prepareOutcomeVerifierPreset(f.target, "llm-http-app-v1", options);
+    if (mutation === "extra") writeFileSync(path.join(f.target, "user-notes.txt"), "Keep these notes");
+    if (mutation === "changed") writeFileSync(path.join(f.target, prepared.files[0].path), "console.log('fake');");
+    if (mutation === "missing-receipt") rmSync(prepared.receiptPath);
+    const result = spawnSync(process.execPath, ["scripts/pritha.mjs", "scaffold", f.file, "--allow-missing-research", "--allow-pending-external-verification"], { encoding: "utf8", env: f.env, timeout: 30000 });
+    assert.notEqual(result.status, 0, mutation);
+    assert.match(result.stderr, /host reservation is invalid/);
+    assert.equal(existsSync(path.join(f.target, "AGENTS.md")), false);
+  }
 });

@@ -12,6 +12,12 @@ import { scaffoldTemplateCases } from "./helpers/scaffold-template-fixtures.mjs"
 // Captured before template extraction. Update individual hashes only after
 // reviewing an intentional change to generated child-agent behavior.
 const snapshot = JSON.parse(readFileSync(new URL("./snapshots/scaffold-template-hashes.json", import.meta.url), "utf8"));
+test('provider configuration is generated only for an explicitly selected provider',()=>{
+  const data=scaffoldTemplateCases()[0][1];
+  const env=patch=>generatedAgentFiles({...data,...patch}).find(file=>file.path==='.env.example').content;
+  assert.doesNotMatch(env({}),/NEURALDEEP/);
+  assert.match(env({providerBinding:'NeuralDeep explicit local configuration'}),/NEURALDEEP_API_KEY=\nNEURALDEEP_API_URL=\nNEURALDEEP_MODEL=\n$/);
+});
 for (const [name, data] of scaffoldTemplateCases()) {
   test(`extracted scaffold templates preserve ${name} output bytes`, t => {
     // CLI workflow frontmatter contains today's date. Freeze the capture date
