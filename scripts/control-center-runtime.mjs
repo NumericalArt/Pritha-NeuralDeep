@@ -385,8 +385,26 @@ function validateProduction() {
 
 function runtimeProcessMatches(pid) {
   const info = processInfo(pid);
-  if (!info) return false;
-  return info.command.includes(path.resolve(process.argv[1])) && /\brun\b/.test(info.command);
+  if (!info || info.pid !== pid || !info.cwd) return false;
+  let cwd;
+  let canonicalScript;
+  try {
+    cwd = realpathSync(info.cwd);
+    if (cwd !== realpathSync(config.codeRoot)) return false;
+    canonicalScript = realpathSync(path.resolve(process.argv[1]));
+  } catch { return false; }
+  // ps renders argv without quoting paths containing spaces. Match complete,
+  // known command prefixes instead of splitting it or accepting a substring
+  // somewhere in another program's arguments. Relative paths belong to this
+  // checkout only after the process working directory has been verified.
+  const script = path.resolve(process.argv[1]);
+  const relative = path.relative(cwd, canonicalScript);
+  const scripts = [script, canonicalScript, relative, `.${path.sep}${relative}`];
+  const executables = [process.execPath, path.basename(process.execPath)];
+  return executables.some((executable) => scripts.some((entry) => {
+    const prefix = `${executable} ${entry} run`;
+    return info.command === prefix || info.command.startsWith(`${prefix} `);
+  }));
 }
 
 function acquireLock() {
@@ -644,6 +662,7 @@ async function runService() {
 async function assertSafeStop() {
   const state = readJson(statePath);
   const ownership = listenerOwnership(state);
+  if (ownership.error === "listener_check_failed") throw new Error(ownership.error);
   if (ownership.listenerPids.length && !ownership.ownerMatch) {
     appendLifecycle("owner-mismatch", { phase: "stop", listenerPids: ownership.listenerPids });
     throw new Error("owner_mismatch:refusing_to_stop_foreign_listener");
@@ -658,7 +677,8 @@ async function stopService() {
   if (launchd.loaded) {
     const result = run(launchctlBinary, ["bootout", serviceTarget], { timeoutMs: 30_000 });
     if (!result.ok) throw new Error("launchd_bootout_failed");
-  } else if (state?.wrapperPid && processExists(state.wrapperPid) && runtimeProcessMatches(state.wrapperPid)) {
+  } else if (state?.wrapperPid && processExists(state.wrapperPid)) {
+    if (!runtimeProcessMatches(state.wrapperPid)) throw new Error("owner_mismatch:runtime_wrapper_unconfirmed");
     process.kill(state.wrapperPid, "SIGTERM");
   }
   if (state?.childPid) await waitForExit(state.childPid, STOP_GRACE_MS + 3_000);

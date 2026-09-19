@@ -70,7 +70,7 @@ exit 0
 
 function invoke(item, command, extra = []) {
   return spawnSync(process.execPath, [
-    runtimeScript,
+    item.runtimeScript || runtimeScript,
     command,
     "--root", item.checkout,
     "--state-root", item.stateRoot,
@@ -281,9 +281,86 @@ test("Darwin runtime process inspection preserves non-ASCII paths independently 
     writeFileSync(statePath, JSON.stringify({ schema: "pritha-control-center-runtime-state-v1", instanceId: item.instanceId, codeRoot: item.checkout,
       stateRoot: item.stateRoot, port: item.port, label: `com.numericalart.pritha.control-center.${item.instanceId}`, wrapperPid: process.pid }));
     const result = invoke(item, "stop", ["--yes"]);
-    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.equal(result.status, 1, result.stderr || result.stdout);
+    assert.equal(JSON.parse(result.stdout).code, "owner_mismatch");
     const inspected = JSON.parse(readFileSync(capture, "utf8"));
     assert.equal(inspected.locale, "en_US.UTF-8");
     assert.ok(inspected.args.includes("-ww"));
   } finally { rmSync(item.directory, { recursive: true, force: true }); }
+});
+
+for (const invocation of ["absolute", "relative"]) {
+  test(`stop terminates its verified ${invocation}-path wrapper and child without launchd`, async () => {
+    const item = fixture();
+    let running;
+    try {
+      writeFileSync(item.nextBinary, "setInterval(() => undefined, 1000);\n");
+      item.runtimeScript = path.join(item.checkout, "scripts", "control-center-runtime.mjs");
+      copyFileSync(runtimeScript, item.runtimeScript);
+      mkdirSync(path.join(item.checkout, "scripts", "lib"));
+      for (const name of ["env", "paths", "release-artifact", "sync-probe"]) {
+        copyFileSync(path.join(sourceRoot, "scripts", "lib", `${name}.mjs`), path.join(item.checkout, "scripts", "lib", `${name}.mjs`));
+      }
+      executable(path.join(item.fakeBin, "lsof"), `#!${process.execPath}
+const args = process.argv.slice(2);
+if (args.includes('-d')) console.log('n' + process.env.TECHSCOPE_ROOT);
+else process.exit(1);
+`);
+      const script = invocation === "relative" ? "scripts/control-center-runtime.mjs" : item.runtimeScript;
+      running = spawn(process.execPath, [script, "run", "--root", item.checkout, "--env", item.runtimeEnv, "--json"],
+        { cwd: item.checkout, env: item.env, stdio: ["ignore", "pipe", "pipe"] });
+      const statePath = path.join(item.stateRoot, "setup", "control-center-runtime", "state.json");
+      const deadline = Date.now() + 5_000;
+      while (!existsSync(statePath) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
+      assert.equal(existsSync(statePath), true, "the real test wrapper must start its own child");
+      const state = JSON.parse(readFileSync(statePath, "utf8"));
+      assert.equal(state.wrapperPid, running.pid);
+      const stopped = invoke(item, "stop", ["--yes"]);
+      assert.equal(stopped.status, 0, stopped.stderr || stopped.stdout);
+      const lockPath = path.join(path.dirname(statePath), "runtime.lock.json");
+      const stopDeadline = Date.now() + 1_000;
+      while (existsSync(lockPath) && Date.now() < stopDeadline) await new Promise((resolve) => setTimeout(resolve, 20));
+      assert.equal(existsSync(lockPath), false, "stop must release the live wrapper's lock");
+      assert.equal(JSON.parse(readFileSync(statePath, "utf8")).running, false);
+      assert.throws(() => process.kill(state.childPid, 0), { code: "ESRCH" });
+    } finally {
+      if (running && running.exitCode == null) {
+        running.kill("SIGTERM");
+        await new Promise((resolve) => running.once("close", resolve));
+      }
+      rmSync(item.directory, { recursive: true, force: true });
+    }
+  });
+}
+
+test("stop preserves a live process when wrapper identity is unconfirmed", async (t) => {
+  for (const scenario of ["foreign-cwd", "missing-cwd", "script-as-argument", "script-suffix", "wrong-command", "failed-listener-probe"]) {
+    await t.test(scenario, async () => {
+      const item = fixture();
+      const foreign = spawn(process.execPath, ["-e", "setInterval(() => undefined, 1000)"], { stdio: "ignore" });
+      try {
+        const statePath = path.join(item.stateRoot, "setup", "control-center-runtime", "state.json");
+        mkdirSync(path.dirname(statePath), { recursive: true });
+        writeFileSync(statePath, JSON.stringify({ schema: "pritha-control-center-runtime-state-v1", instanceId: item.instanceId, codeRoot: item.checkout,
+          stateRoot: item.stateRoot, port: item.port, label: `com.numericalart.pritha.control-center.${item.instanceId}`, wrapperPid: foreign.pid }));
+        const command = scenario === "script-as-argument" ? `${process.execPath} other.mjs ${runtimeScript} run`
+          : scenario === "script-suffix" ? `${process.execPath} ${runtimeScript}.other run`
+            : `${process.execPath} ${runtimeScript} ${scenario === "wrong-command" ? "runner" : "run"}`;
+        executable(path.join(item.fakeBin, "ps"), `#!${process.execPath}\nconsole.log(${JSON.stringify(`${foreign.pid} 1 ${foreign.pid} ${command}`)});\n`);
+        const cwd = scenario === "foreign-cwd" ? item.directory : item.checkout;
+        executable(path.join(item.fakeBin, "lsof"), `#!${process.execPath}
+if (process.argv.includes('-d')) { ${scenario === "missing-cwd" ? "process.exit(1);" : `console.log(${JSON.stringify(`n${cwd}`)});`} }
+else process.exit(${scenario === "failed-listener-probe" ? "2" : "1"});
+`);
+        const rejected = invoke(item, "stop", ["--yes"]);
+        assert.equal(rejected.status, 1, rejected.stderr || rejected.stdout);
+        assert.equal(JSON.parse(rejected.stdout).code, scenario === "failed-listener-probe" ? "listener_check_failed" : "owner_mismatch");
+        assert.doesNotThrow(() => process.kill(foreign.pid, 0), "unconfirmed process must not receive a stop signal");
+      } finally {
+        foreign.kill("SIGTERM");
+        await new Promise((resolve) => foreign.once("close", resolve));
+        rmSync(item.directory, { recursive: true, force: true });
+      }
+    });
+  }
 });

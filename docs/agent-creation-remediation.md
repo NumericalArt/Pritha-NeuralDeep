@@ -90,6 +90,16 @@ non-SQLite lookalikes and symlink targets remain protected. Finder's regular
 databases fail the release check. Regression controls cover checkpoint churn,
 uncheckpointed user edits, schema changes, corruption and ordinary files.
 
+A subsequent release attempt reached the manager stop but retained the old
+build: a terminal-started manager used a relative script path, while the stop
+check searched for an absolute path. Stop now verifies the process working
+directory and an exact Node/script/run prefix for absolute or relative paths.
+An unconfirmed wrapper or failed listener inspection blocks the stop explicitly.
+Tests exercise real wrapper/child shutdown and reject foreign directories,
+missing process evidence, path lookalikes and script names appearing only as
+another program's arguments. The release still uses the instance manager;
+no port-based process termination or live build replacement is introduced.
+
 Research created under an execution worktree contains references relative to
 that worktree. Copying its bytes to the primary instance changes how those
 references resolve. Promotion now checks the original complete gate and frozen
