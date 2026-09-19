@@ -21,6 +21,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import process from "node:process";
 import { loadEnvFile, loadPrithaRuntimeEnv } from "./lib/env.mjs";
 import { ND_STORAGE_COMPATIBILITY, compatibleBuild, readBuildIdentity, sealBuildIdentity, verifyRollbackArtifact, buildTreeDigest } from "./lib/release-artifact.mjs";
@@ -794,6 +795,80 @@ async function updateInstance() {
   return { ...plan, ok: true, applied: true, status: "deployed", stopped, pid, health, isolationMatch, postIsolation, finalHead, finalGitClean, memoryDocuments: bootstrap.memory_documents, manifest };
 }
 
+async function adoptInstance() {
+  const { planInstanceAdoption, applyInstanceAdoption, adoptionStateFingerprint } = await import("./lib/instance-adoption.mjs");
+  const { inspectNeuralDeepReleaseState } = await import("./neuraldeep/release-state.mjs");
+  const keychainService = String(options["keychain-service"] || process.env.PRITHA_NEURALDEEP_KEYCHAIN_SERVICE || "");
+  const input = { codeRoot: config.codeRoot, candidateRoot: options["candidate-root"], backupRoot: options["backup-root"],
+    stateRoot: config.stateRoot, agentParent: config.agentParent, instanceId: config.instanceId, instanceRole: config.instanceRole,
+    port: config.controlCenterPort, expectedCommit: String(options["expected-commit"] || ""), keychainService };
+  const serviceSnapshot = "installed-service.plist";
+  let serviceFile = null;
+  const adapters = {
+    gitIdentity: async (cwd) => {
+      const head = git(["rev-parse", "HEAD"], { cwd }), status = git(["status", "--porcelain=v1", "--untracked-files=all"], { cwd });
+      const remote = git(["remote", "get-url", "origin"], { cwd });
+      return { commit: head.ok ? head.stdout : null, clean: status.ok && !status.stdout, origin: remote.ok ? remote.stdout : null };
+    },
+    manager: async (action) => {
+      const response = action === "stop" ? await stopControlCenter() : controlCenterRuntime(action);
+      if (action === "status") {
+        const label = response.payload?.configured?.serviceLabel;
+        if (typeof label === "string" && /^[a-z0-9._-]+$/i.test(label)) serviceFile = path.join(os.homedir(), "Library", "LaunchAgents", `${label}.plist`);
+      }
+      return response.ok ? response.payload : { ok: false };
+    },
+    activity: async () => inspectNeuralDeepReleaseState({ codeRoot: config.codeRoot, stateRoot: config.stateRoot }),
+    isolation: async () => {
+      const value = await isolationSnapshot();
+      return { state_root: value.state_root, agent_parent: value.agent_parent, agent_state: value.agent_state, registry_sha256: value.registry_sha256, child_agent_folders: value.child_agent_folders };
+    },
+    rollbackIdentity: async () => {
+      const directory = path.join(config.codeRoot, "interfaces/control-center/.next");
+      const identity = readBuildIdentity(directory), current = git(["rev-parse", "HEAD"]);
+      const health = await httpStatus({ requireIdentity: true });
+      const buildFile = path.join(directory, "BUILD_ID"), buildId = existsSync(buildFile) ? readFileSync(buildFile, "utf8").trim() : null;
+      if (!current.ok || !health.ok || !buildId || health.release?.commit !== current.stdout.slice(0, 12) || health.release?.buildId !== buildId) return null;
+      return { commit: current.stdout, buildId, storage: identity?.storage || {}, digest: buildTreeDigest(directory) };
+    },
+    backupService: async (_input, destination) => {
+      if (!serviceFile || !existsSync(serviceFile) || lstatSync(serviceFile).isSymbolicLink() || !lstatSync(serviceFile).isFile()) return { ok: false };
+      copyFileSync(serviceFile, path.join(destination, serviceSnapshot)); chmodSync(path.join(destination, serviceSnapshot), 0o600);
+      return { ok: true, filename: serviceSnapshot, sha256: sha256(path.join(destination, serviceSnapshot)) };
+    },
+    restoreService: async (_input, destination) => {
+      const saved = path.join(destination, serviceSnapshot);
+      // Adoption never rewrites launchd configuration. An external concurrent
+      // service change is a blocker rather than permission to overwrite it.
+      return { ok: existsSync(saved) && !lstatSync(saved).isSymbolicLink() && Boolean(serviceFile && existsSync(serviceFile)
+        && !lstatSync(serviceFile).isSymbolicLink() && lstatSync(serviceFile).isFile() && sha256(serviceFile) === sha256(saved)) };
+    },
+    bootstrapAndBuild: async () => {
+      process.env.PRITHA_NEURALDEEP_KEYCHAIN_SERVICE = keychainService;
+      const bootstrap = runInstanceBootstrap();
+      if (!bootstrap.ok || !Number.isSafeInteger(bootstrap.memory_documents) || bootstrap.memory_documents < 1) return { ok: false };
+      const metadata = ["next-env.d.ts", "tsconfig.json"].map(name => {
+        const file = path.join(config.codeRoot, "interfaces/control-center", name);
+        return { file, content: existsSync(file) ? readFileSync(file) : null };
+      });
+      let build;
+      try { build = run("npm", ["--prefix", "interfaces/control-center", "run", "build"], { timeoutMs: 900_000, env: { PRITHA_CONTROL_CENTER_DIST_DIR: ".next" } }); }
+      finally { for (const item of metadata) { if (item.content) writeFileSync(item.file, item.content); else rmSync(item.file, { force: true }); } }
+      if (!build.ok) return { ok: false };
+      sealBuildIdentity(path.join(config.codeRoot, "interfaces/control-center/.next"), input.expectedCommit, ND_STORAGE_COMPATIBILITY);
+      return { ok: true };
+    },
+    stateFingerprint: async () => adoptionStateFingerprint(config.stateRoot),
+    health: async (commit) => {
+      if (!(await waitForHealth()).ok) return { ok: false };
+      const file = path.join(config.codeRoot, "interfaces/control-center/.next/BUILD_ID");
+      return strictReleaseHealth(commit, existsSync(file) ? readFileSync(file, "utf8").trim() : null);
+    },
+  };
+  return options.apply ? applyInstanceAdoption(input, adapters, { yes: options.yes === true, expectedPlanHash: options["expected-plan-hash"] })
+    : planInstanceAdoption(input, adapters);
+}
+
 function print(payload) {
   if (options.json) console.log(JSON.stringify(payload, null, 2));
   else {
@@ -814,6 +889,8 @@ function usage() {
   node scripts/pritha-instance.mjs update --apply --yes [--json]
   node scripts/pritha-instance.mjs update --source local --expected-commit <full-sha> --plan [--json]
   node scripts/pritha-instance.mjs update --source local --expected-commit <full-sha> --apply --yes [--json]
+  node scripts/pritha-instance.mjs adopt --candidate-root <prepared-clone> --backup-root <new-private-directory> --expected-commit <full-sha> --keychain-service <existing-reference> --plan --json
+  node scripts/pritha-instance.mjs adopt --candidate-root <same-clone> --backup-root <same-new-directory> --expected-commit <same-sha> --keychain-service <same-reference> --expected-plan-hash <plan-hash> --apply --yes --json
 
 Environment: TECHSCOPE_ROOT, PRITHA_INSTANCE_ID, PRITHA_INSTANCE_ROLE,
 PRITHA_STATE_ROOT, PRITHA_AGENT_PARENT, PRITHA_CONTROL_CENTER_PORT,
@@ -826,6 +903,7 @@ try {
   if (command === "status") result = await instanceStatus();
   else if (command === "migrate") result = await migrate();
   else if (command === "update") result = await updateInstance();
+  else if (command === "adopt") result = await adoptInstance();
   else {
     usage();
     process.exitCode = command === "help" ? 0 : 1;
