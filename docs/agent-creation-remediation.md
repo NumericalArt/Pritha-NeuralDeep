@@ -100,6 +100,9 @@ as are all chunks, manifests and build identity.
 Existing receipts retain their original byte-level digest; they are never
 reinterpreted under the new rule. Regression controls cover metadata churn,
 changed executable bytes, symlink substitution and unknown digest versions.
+The updater carries the verified digest version into its second copy check;
+an integration regression visits the backup with Finder metadata before a
+failed staged release, then confirms restoration of the original healthy build.
 
 A subsequent release attempt reached the manager stop but retained the old
 build: a terminal-started manager used a relative script path, while the stop

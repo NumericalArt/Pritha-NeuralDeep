@@ -595,7 +595,8 @@ async function updateInstance() {
   const compatibleNext = rollbackArtifact ? path.join(releaseDir, "compatible-rollback.next") : null;
   if (compatibleNext) {
     copyNext(rollbackArtifact.build, compatibleNext);
-    if (JSON.stringify(buildTreeDigest(compatibleNext)) !== JSON.stringify(rollbackArtifact.digest)) throw new Error("Rollback artifact changed while copying");
+    const copiedDigest = buildTreeDigest(compatibleNext, { excludeFinderMetadata: rollbackArtifact.digestVersion === 2 });
+    if (JSON.stringify(copiedDigest) !== JSON.stringify(rollbackArtifact.digest)) throw new Error("Rollback artifact changed while copying");
   }
   const stagedName = ".next-pritha-staging";
   const stagedNext = path.join(config.codeRoot, "interfaces", "control-center", stagedName);

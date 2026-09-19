@@ -77,5 +77,5 @@ export function verifyRollbackArtifact(directory, required = ND_STORAGE_COMPATIB
   if (receipt.schema !== "pritha-rollback-artifact-v1" || !compatibleBuild(identity, required)
       || JSON.stringify(receipt.identity) !== JSON.stringify(identity)
       || receipt.digest?.sha256 !== digest.sha256 || receipt.digest?.files !== digest.files) throw new Error("Rollback artifact integrity or writer compatibility failed");
-  return { root, build, identity, digest };
+  return { root, build, identity, digest, digestVersion: receipt.digest.version ?? 1 };
 }

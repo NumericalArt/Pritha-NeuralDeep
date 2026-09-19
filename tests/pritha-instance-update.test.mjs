@@ -16,6 +16,8 @@ test("schema upgrade uses the verified compatible artifact and preserves state o
     mkdirSync(source); writeFileSync(path.join(source, "BUILD_ID"), "fixture-build\n"); writeFileSync(path.join(source, "version"), "good\n");
     const floor = git(fixture.checkout, "rev-parse", "HEAD");
     sealBuildIdentity(source, floor, ND_STORAGE_COMPATIBILITY); prepareRollbackArtifact(source, artifact);
+    // Finder may visit a sealed backup before the updater copies it again.
+    writeFileSync(path.join(artifact, "build/.DS_Store"), Buffer.from("000000014275643146696e6465722076696577", "hex"));
     mkdirSync(path.join(fixture.checkout, "scripts/neuraldeep"));
     writeFileSync(path.join(fixture.checkout, "scripts/neuraldeep/coordination-store.mjs"), "// fixture schema writer\n");
     git(fixture.checkout, "add", "."); git(fixture.checkout, "commit", "-m", "feat: schema upgrade fixture");
