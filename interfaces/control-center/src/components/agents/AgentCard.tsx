@@ -128,7 +128,7 @@ export function AgentCard({
   const displayUrlLabel = useDirectUrl ? displayUrl?.replace("http://", mobile ? "" : "http://") : "Status page";
   const canShowUrl = agent.state === "alive" && Boolean(displayUrl);
   const canOpenPlan = Boolean(onAction);
-  const canOpenCredentials = Boolean(onCredentials && agent.credentials?.total);
+  const canOpenCredentials = Boolean(onCredentials && agent.state !== "missing");
   const hasOutcome = Boolean(agent.outcome && agent.outcome.status !== "missing");
   const canApproveOutcome = Boolean(onOutcomeAction && hasOutcome && !agent.outcome?.approved);
   const canDeliver = Boolean(onOutcomeAction && agent.outcome?.approved && agent.state !== "missing");
@@ -187,9 +187,9 @@ export function AgentCard({
 
       <AgentResultReadiness agent={agent} />
 
-      {agent.credentials?.total ? (
+      {agent.credentials?.total || canOpenCredentials ? (
         <button
-          className={`agent-credentials-button ${agent.credentials.status === "ready" ? "ready" : agent.credentials.missingRequired ? "missing" : "unavailable"}`}
+          className={`agent-credentials-button ${agent.credentials?.status === "ready" ? "ready" : agent.credentials?.missingRequired ? "missing" : "unavailable"}`}
           type="button"
           data-testid="agent-credentials-button"
           data-agent-id={agent.id}
@@ -206,7 +206,7 @@ export function AgentCard({
           title={`Configure credentials for ${agent.name}`}
         >
           <KeyRound size={16} />
-          <span>Credentials</span>
+          <span>Connections</span>
           <strong>{credentialLabel(agent)}</strong>
         </button>
       ) : null}

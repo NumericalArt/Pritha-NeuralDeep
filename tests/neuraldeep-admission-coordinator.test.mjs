@@ -50,6 +50,22 @@ function delay(milliseconds = 25) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+test('child provider requests share task admission capacity and release without pausing retry', async () => {
+  const loaded = await loadCoordinator();
+  const coordinator = new loaded.module.NeuralDeepAdmissionCoordinator({ ledgerPath: null, limitProvider: async () => 1 });
+  try {
+    const task = await coordinator.acquire({ attemptId: 'task_owns_capacity', surface: 'task_chat', workloadId: 'task', coordinationKey: 'task-key' });
+    let admitted = false;
+    const pending = coordinator.acquire({ attemptId: 'child_digest', surface: 'child_agent', workloadId: 'child-agent', coordinationKey: 'child-provider:child-agent' }).then(lease => { admitted = true; return lease; });
+    await delay(); assert.equal(admitted, false);
+    await task.release();
+    const child = await pending; assert.equal(child.surface, 'child_agent');
+    await child.release('cancelled');
+    const retry = await coordinator.acquire({ attemptId: 'child_digest_retry', surface: 'child_agent', workloadId: 'child-agent', coordinationKey: 'child-provider:child-agent' });
+    await retry.release(); assert.equal(coordinator.snapshot().active.length, 0);
+  } finally { coordinator.close(); loaded.cleanup(); }
+});
+
 test("unknown NeuralDeep limit admits only one launch", async () => {
   const loaded = await loadCoordinator();
   try {

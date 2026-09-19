@@ -57,8 +57,11 @@ import { deliveryStateView } from "./delivery-state";
 import { readAgentCatalog, findCatalogAgent, currentAgentMission, readCatalogArtifact, readIdentityEvidence, agentOperationsApplicability, type CatalogAgent } from "../../../../../scripts/agents-mother/identity.mjs";
 
 import { outcomeDocumentLock as currentOutcomeDocumentLock } from "../../../../../scripts/agents-mother/outcome-lock.mjs";
+import { approvalEventMatchesSpec } from "../../../../../scripts/agents-mother/outcome-approval-match.mjs";
 import { readAgentResultReadinessAsync } from "../../../../../scripts/agents-mother/result-readiness-async.mjs";
 import { readProjectMetadataAsync, unavailableProjectMetadata, type ProjectMetadata, type ProjectMetadataFile } from "../../../../../scripts/agents-mother/project-metadata-async.mjs";
+import { managedAgentEnvironment, redactAgentRuntimeOutput, AgentProviderError } from "../../../../../scripts/neuraldeep/agent-provider-binding.mjs";
+import { agentProviderStartEnvironment } from "./agent-provider";
 
 type RegistryRecord = CatalogAgent & { routeAliases: string[] };
 
@@ -634,16 +637,14 @@ function outcomeApprovalIntegrity(root: string, outcomePath: string, fallbackCon
       return null;
     }
   }).filter((event): event is Record<string, unknown> => Boolean(event));
-  const matched = events.reverse().find((event) => (
-    event.schema === "pritha-outcome-approval-v1"
-    && event.spec_path === relativePath(root, outcomePath)
-    && event.spec_id === scalarValue(outcomeFront, "id")
-    && event.contract_fingerprint === contractFingerprint
-    && event.semantic_lock === semanticLock
-    && event.document_lock === documentLock
-    && event.approved_by === "user"
-    && typeof event.approval_id === "string" && event.approval_id.length > 0
-  ));
+  const matched = events.reverse().find((event) => approvalEventMatchesSpec(event, {
+    specId: scalarValue(outcomeFront, "id"),
+    specPath: outcomePath,
+    root,
+    contractFingerprint,
+    semanticLock,
+    documentLock,
+  }));
   return matched
     ? { valid: true, reason: undefined, approvalId: String(matched.approval_id) }
     : { valid: false, reason: "Host approval evidence does not match the current Outcome Spec" };
@@ -3273,7 +3274,7 @@ async function executeStructuredAgentCommand(params: {
   manifest: OperationsManifest | null;
   command: StructuredOperationsCommand;
   cwd: string;
-  env: Record<string, string>;
+  env: NodeJS.ProcessEnv;
   timeoutMs: number;
 }) {
   const argv = params.command.argv || [];
@@ -3281,7 +3282,7 @@ async function executeStructuredAgentCommand(params: {
   if (params.command.background && params.action === "start") {
     const child = spawn(argv[0], argv.slice(1), {
       cwd: params.cwd,
-      env: { ...process.env, ...params.env },
+      env: params.env,
       detached: true,
       stdio: "ignore",
       shell: false,
@@ -3300,7 +3301,7 @@ async function executeStructuredAgentCommand(params: {
         signal: null,
         pid: child.pid,
         stdout: "",
-        stderr: safeExecutionText(spawnError.message),
+        stderr: safeExecutionText(redactAgentRuntimeOutput(spawnError.message, params.env)),
         readiness: {
           status: "failed" as const,
           detail: "Process failed to spawn.",
@@ -3328,13 +3329,13 @@ async function executeStructuredAgentCommand(params: {
 
   const result = spawnSync(argv[0], argv.slice(1), {
     cwd: params.cwd,
-    env: { ...process.env, ...params.env },
+    env: params.env,
     encoding: "utf8",
     timeout: params.timeoutMs,
     shell: false,
   });
   const exitOk = result.status !== null && successExitCodes.includes(result.status);
-  const stderr = safeExecutionText(result.stderr || result.error?.message || "");
+  const stderr = safeExecutionText(redactAgentRuntimeOutput(result.stderr || result.error?.message || "", params.env));
   const readiness =
     params.action === "start"
       ? await waitForRuntimeReadiness({ manifest: params.manifest, command: params.command, cwd: params.cwd, timeoutMs: Math.min(params.timeoutMs, 8_000) })
@@ -3356,7 +3357,7 @@ async function executeStructuredAgentCommand(params: {
     status: status as "running" | "stopped" | "failed" | "degraded",
     exitCode: result.status,
     signal: result.signal,
-    stdout: safeExecutionText(result.stdout),
+    stdout: safeExecutionText(redactAgentRuntimeOutput(result.stdout, params.env)),
     stderr,
     readiness,
   };
@@ -3428,12 +3429,21 @@ export async function runAgentRuntimeAction(
     return result;
   }
 
+  let bindingEnvironment: Record<string,string> = {};
+  try {
+    if (action === "start") bindingEnvironment = await agentProviderStartEnvironment(agent.id, async () => (await probeHealth(manifest)).status === "ok");
+  } catch (error) {
+    const result = blockedOperatorActionResult({ status, agent, action, plan, generatedAt,
+      errors: [error instanceof AgentProviderError ? error.code : "provider_binding_unavailable"] });
+    appendManualCheckAudit(status, result);
+    return result;
+  }
   const execution = await executeStructuredAgentCommand({
     action,
     manifest,
     command: validation.command,
     cwd: validation.cwd,
-    env: validation.env,
+    env: managedAgentEnvironment(process.env, validation.env, bindingEnvironment),
     timeoutMs: validation.timeoutMs,
   });
   const checks = plan.checks;

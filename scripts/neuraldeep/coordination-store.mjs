@@ -38,7 +38,7 @@ function privateDatabase(file) {
 
 function validateEntry(entry) {
   if (!entry || !ID.test(entry.attemptId) || !ID.test(entry.workloadId)
-    || !["task_chat", "voice", "delivery", "voice_dialogue"].includes(entry.surface)
+    || !["task_chat", "voice", "delivery", "voice_dialogue", "child_agent"].includes(entry.surface)
     || !SCOPE.test(entry.coordinationKeyHash) || !STATUSES.has(entry.status)
     || !Number.isFinite(Date.parse(entry.queuedAt))) throw new Error("admission_registry_invalid");
 }

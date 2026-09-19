@@ -6,6 +6,7 @@ import { readBoundedRegularFile } from "../lib/safe-file-read.mjs";
 import { resolvePrithaAgentMemoryRoot, resolvePrithaAgentParent, resolvePrithaStateRoot, resolveTechscopeRoot, isPrithaCodeCheckout } from "../lib/paths.mjs";
 import { CHILD_AGENT_TYPES } from "../lib/child-agent-artifacts.mjs";
 import { readAgentKind, operationsApplicability } from "./agent-kind.mjs";
+import { readAgentIdentityMigrations, resolveMigratedContract } from "./identity-migration.mjs";
 
 // Identity is attribution, never proof of approval, verification or ownership of
 // a running process. Those decisions still require their host-owned receipts.
@@ -76,9 +77,9 @@ function artifact(file, text, context) {
   const related = fm.related?.agent_contracts;
   const contractRef = value(fm.contract_path) || (Array.isArray(related) && related.length === 1 ? value(related[0]) : "");
   let contractPath = contractRef ? path.resolve(context.root, contractRef) : null;
-  const oldContractRoot = path.join(context.root, "11_agents", "contracts");
-  const legacyContractPath = Boolean(contractPath && path.dirname(contractPath) === oldContractRoot && context.memoryRoot !== path.join(context.root, "11_agents"));
-  if (legacyContractPath) contractPath = path.join(context.memoryRoot, "contracts", path.basename(contractPath));
+  const migratedPath = contractPath ? resolveMigratedContract(file, context) : null;
+  const legacyContractPath = Boolean(migratedPath);
+  if (migratedPath) contractPath = migratedPath;
   const projectRef = value(fm.project_path) || bodyValue(text, "Project path") || bodyValue(text, "Target folder");
   if (!identity.id && !name && !projectRef && !contractRef) return null;
   return {
@@ -137,7 +138,7 @@ function assemble(artifacts, folders, rows, context, diagnostics) {
     group.artifacts.push({ ...item, attribution });
     group.aliases = [...new Set([...group.aliases, ...item.aliases])];
     if (attribution === "legacy") group.diagnostics.push("legacy-attribution-not-approval");
-    if (item.legacyContractPath) group.diagnostics.push("legacy-memory-path-not-approval");
+    if (item.legacyContractPath) group.diagnostics.push("verified-path-migration-not-approval");
   };
   const reject = (item, code) => diagnostics.push({ path: item.path, code });
   const declaredProject = (items) => {
@@ -250,6 +251,7 @@ function assemble(artifacts, folders, rows, context, diagnostics) {
       agentKind: group.agentKind || readAgentKind(), contractSource: group.contractSource || null,
       evidence: `contracts:${group.artifacts.filter((item) => item.type === "agent-contract").length} reports:${group.artifacts.filter((item) => item.type.endsWith("report")).length}`,
       identityStatus: conflict ? "conflict" : group.agentId ? "identified" : "legacy",
+      catalogPresence: group.projectPath && !conflict ? "project" : "history",
       diagnostics: [...new Set(group.diagnostics)],
     };
   });
@@ -261,17 +263,18 @@ export function readAgentCatalog(options = {}) {
   const stateRoot = resolvePrithaStateRoot({ ...options, root });
   const memoryRoot = options.memoryRoot || resolvePrithaAgentMemoryRoot({ ...options, root });
   const agentParent = resolvePrithaAgentParent({ ...options, root });
-  const context = { root, stateRoot, memoryRoot, agentParent, instanceKey: agentInstanceKey(stateRoot) };
+  const context = { root, stateRoot, memoryRoot, agentParent, instanceKey: agentInstanceKey(stateRoot), migrations: readAgentIdentityMigrations({ root, stateRoot, memoryRoot }) };
   const registryPath = path.join(memoryRoot, "registry.md");
   const directories = ["contracts", "outcome-specs", "profiles", "reports"].map((name) => path.join(memoryRoot, name));
-  const stamp = [...directories, registryPath, agentParent].map(fingerprint).join("|");
+  const migrationStamp = fingerprint(path.join(memoryRoot, "identity-migrations.json"));
+  const stamp = [...directories, registryPath, agentParent].map(fingerprint).join("|") + migrationStamp;
   const cacheKey = JSON.stringify([root, stateRoot, memoryRoot, agentParent]);
   const previous = caches.get(cacheKey);
   // GET projections share bounded caches. Host decisions call with fresh:true
   // and independently verify locks/receipts; no cached catalog authorizes them.
   if (!options.fresh && previous?.stamp === stamp && Date.now() - previous.at < CACHE_MS) return previous.result;
   const artifacts = [];
-  const diagnostics = [];
+  const diagnostics = context.migrations.issue ? [{ code: context.migrations.issue }] : [];
   const files = new Map();
   for (const directory of directories) {
     if (!safePath(directory, memoryRoot)) continue;
@@ -281,7 +284,8 @@ export function readAgentCatalog(options = {}) {
       const file = path.join(directory, entry.name);
       const signature = fingerprint(file);
       const cached = previous?.files.get(file);
-      const item = cached?.signature === signature ? cached.item : artifact(file, safeText(file, memoryRoot), context);
+      const hasMigration = context.migrations.entries.some(entry => path.resolve(memoryRoot, entry.artifactPath) === file);
+      const item = cached?.signature === signature && previous?.migrationStamp === migrationStamp && !hasMigration ? cached.item : artifact(file, safeText(file, memoryRoot), context);
       files.set(file, { signature, item });
       if (item) artifacts.push(item);
     }
@@ -295,7 +299,7 @@ export function readAgentCatalog(options = {}) {
   const agents = assemble(artifacts, folders, registryRows(safeText(registryPath, memoryRoot)), context, diagnostics);
   const result = { schemaVersion: 1, instanceKey: context.instanceKey, registryPath, agents, artifacts, diagnostics };
   if (caches.size >= 16) caches.delete(caches.keys().next().value);
-  caches.set(cacheKey, { stamp, at: Date.now(), files, result });
+  caches.set(cacheKey, { stamp, migrationStamp, at: Date.now(), files, result });
   return result;
 }
 
@@ -335,7 +339,8 @@ export function readCatalogArtifact(agent, file, options = {}) {
   const fm = parseFrontmatterData(text.replaceAll("\r\n", "\n")) || {};
   const identity = authoredAgentId(fm);
   if (fm.type !== selected.type || identity.issue || identity.id !== selected.agentId || (fm.instance_key && fm.instance_key !== agent.instanceKey)) return "";
-  const current = artifact(file, text, { root, memoryRoot, instanceKey: agent.instanceKey });
+  const stateRoot = resolvePrithaStateRoot({ ...options, root });
+  const current = artifact(file, text, { root, stateRoot, memoryRoot, instanceKey: agent.instanceKey });
   if (!current || current.contractPath !== selected.contractPath || current.projectRef !== selected.projectRef) return "";
   return text;
 }

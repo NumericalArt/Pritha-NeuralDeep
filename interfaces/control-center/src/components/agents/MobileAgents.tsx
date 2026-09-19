@@ -3,7 +3,7 @@ import type { AccessMode } from "@/lib/access-mode";
 import type { ControlCenterFleetManualAuditResult, ControlCenterStatus } from "@/lib/control-center/types";
 import { AgentCard } from "./AgentCard";
 
-type AgentView = "active" | "drafts" | "all";
+type AgentView = "active" | "drafts" | "all" | "history";
 
 function auditSummaryLabel(result: ControlCenterFleetManualAuditResult) {
   return `Fleet: ${result.summary.passed} ok · ${result.summary.warnings} warn · ${result.summary.failed} failed`;
@@ -30,6 +30,7 @@ export function MobileAgents({
     active: number;
     drafts: number;
     all: number;
+    history?: number;
   };
   access?: ControlCenterStatus["access"];
   accessMode?: AccessMode;
@@ -42,10 +43,10 @@ export function MobileAgents({
   manualAuditRunning?: boolean;
   manualAuditResult?: ControlCenterFleetManualAuditResult;
 }) {
-  const alive = agents.filter((agent) => agent.state === "alive").length;
+  const running = agents.filter((agent) => agent.state !== "missing" && agent.healthStatus === "ok").length;
   const missing = agents.filter((agent) => agent.state === "missing").length;
   const updates = agents.filter((agent) => agent.updateStatus === "available").length;
-  const counts = agentCounts || { active: agents.length, drafts: 0, all: agents.length };
+  const counts = agentCounts || { active: running, drafts: 0, history: missing, all: agents.length };
 
   return (
     <div className="mobile-agents-screen">
@@ -59,9 +60,9 @@ export function MobileAgents({
           <strong>{agents.length}</strong>
         </div>
         <div className="mobile-summary-chip wide">
-          <span><span className="dot green" />Настроены</span>
-          <strong>{alive}</strong>
-          <span><span className="dot red" />Missing</span>
+          <span><span className="dot green" />Работают</span>
+          <strong>{running}</strong>
+          <span><span className="dot red" />История</span>
           <strong>{missing}</strong>
         </div>
         <div className="mobile-summary-chip">
@@ -71,7 +72,7 @@ export function MobileAgents({
       </div>
       <div className="agent-view-toggle mobile-agent-view-toggle" role="group" aria-label="Agent view">
         <button className={agentView === "active" ? "active" : ""} type="button" aria-pressed={agentView === "active"} onClick={() => onAgentViewChange?.("active")}>
-          Active
+          Running
         </button>
         <button
           className={agentView === "drafts" ? "active" : ""}
@@ -81,6 +82,9 @@ export function MobileAgents({
           disabled={!counts.drafts}
         >
           Drafts
+        </button>
+        <button className={agentView === "history" ? "active" : ""} type="button" aria-pressed={agentView === "history"} onClick={() => onAgentViewChange?.("history")} disabled={!counts.history}>
+          History
         </button>
         <button className={agentView === "all" ? "active" : ""} type="button" aria-pressed={agentView === "all"} onClick={() => onAgentViewChange?.("all")}>
           All

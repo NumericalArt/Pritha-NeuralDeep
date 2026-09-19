@@ -14,6 +14,7 @@ export type CatalogAgent = {
   evidence: string; aliases: string[]; artifacts: AgentArtifact[];
   projectPath: string | null; source: string;
   identityStatus: "identified" | "legacy" | "conflict"; diagnostics: string[];
+  catalogPresence: "project" | "history";
   agentKind: AgentKindView; contractSource: string | null;
 };
 export type AgentCatalog = {

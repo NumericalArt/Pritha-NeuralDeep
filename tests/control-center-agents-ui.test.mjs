@@ -68,7 +68,7 @@ test("Mobile Agents mirrors desktop filtering and uses readable fleet audit summ
   assert.match(agentsOperatorSource, /onAgentViewChange=\{setAgentView\}/);
   assert.match(mobileAgentsSource, /type AgentView = "active" \| "drafts" \| "all"/);
   assert.match(mobileAgentsSource, /Fleet: \$\{result\.summary\.passed\} ok · \$\{result\.summary\.warnings\} warn · \$\{result\.summary\.failed\} failed/);
-  assert.match(mobileAgentsSource, /Active\s*<\/button>/);
+  assert.match(mobileAgentsSource, /Running\s*<\/button>/);
   assert.match(mobileAgentsSource, /Drafts\s*<\/button>/);
   assert.match(mobileAgentsSource, /All\s*<\/button>/);
   assert.match(globalCssSource, /\.mobile-agent-view-toggle/);
@@ -99,7 +99,8 @@ test("Agent cards expose confirmation-gated Approve outcome and Deliver actions"
 test("Live child without delivery evidence is not labeled as missing confirmation", () => {
   const readinessSource = readFileSync("interfaces/control-center/src/components/agents/AgentResultReadiness.tsx", "utf8");
   assert.match(readinessSource, /export function resultReadinessSummary/);
-  assert.match(readinessSource, /Живой сервис/);
+  assert.match(readinessSource, /Trials не прогнаны · сервис отвечает/);
   assert.match(readinessSource, /Trials не прогнаны/);
   assert.doesNotMatch(readinessSource, /Нет подтверждения/);
+  assert.match(readinessSource, /agent\.outcome\?\.approved !== true/);
 });

@@ -5,6 +5,8 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { agentInstanceKey, authoredAgentId, currentAgentMission, findCatalogAgent, readAgentCatalog } from "../scripts/agents-mother/identity.mjs";
+import { planAgentIdentityMigration, applyAgentIdentityMigration } from "../scripts/agents-mother/identity-migration.mjs";
+import { contractFingerprint } from "../scripts/agents-mother/contract.mjs";
 import { parseFrontmatterData } from "../scripts/lib/frontmatter.mjs";
 import { approveOutcomeSpec, createOutcomeSpec, validateOutcomeSpecText } from "../scripts/agents-mother/outcome-spec.mjs";
 
@@ -192,7 +194,7 @@ test("registry CLI includes frontmatter-only evidence and reports conflicts with
 test("new interview proposals receive distinct IDs while each contract and Outcome share one identity", (t) => {
   const f = fixture(t);
   for (let i = 0; i < 2; i++) {
-    const result = spawnSync(process.execPath, [path.resolve("scripts/pritha.mjs"), "interview", "--no-input", "--name", "Same label", "--mission", "Produce a fixture report"], {
+    const result = spawnSync(process.execPath, [path.resolve("scripts/pritha.mjs"), "interview", "--no-input", "--name", "Same label", "--slug", `same-label-${i}`, "--mission", "Produce a fixture report"], {
       encoding: "utf8", env: { ...process.env, TECHSCOPE_ROOT: f.root, PRITHA_STATE_ROOT: f.stateRoot, PRITHA_AGENT_PARENT: f.agentParent },
     });
     assert.equal(result.status, 0, result.stderr);
@@ -232,15 +234,20 @@ test("legacy contract revisions and nameless reports join only their exact uniqu
   assert.ok(agent.diagnostics.includes("legacy-project-description-not-binding"));
 });
 
-test("migrated legacy memory references map one recognized prefix without authorizing approval", (t) => {
+test("legacy memory references need a reviewed identity and fingerprint mapping without authorizing approval", (t) => {
   const f = fixture(t);
-  f.contract("alpha", "alpha", f.folder("alpha"));
-  f.write("reports/migrated.md", "agent-handoff-report", "alpha", "", "contract_path: 11_agents/contracts/alpha.md\n");
-  f.write("reports/unknown-prefix.md", "agent-handoff-report", "alpha", "", "contract_path: another-instance/contracts/alpha.md\n");
+  const contract = f.contract("alpha", "alpha", f.folder("alpha"));
+  const fp = contractFingerprint(readFileSync(contract, "utf8"));
+  f.write("reports/migrated.md", "agent-handoff-report", "alpha", "", `contract_fingerprint: ${fp}\ncontract_path: 11_agents/contracts/alpha.md\n`);
+  f.write("reports/unknown-prefix.md", "agent-handoff-report", "alpha", "", `contract_fingerprint: ${fp}\ncontract_path: another-instance/contracts/alpha.md\n`);
+  assert.equal(findCatalogAgent(f.catalog(), "alpha").artifacts.length, 1);
+  const plan = planAgentIdentityMigration(f.options);
+  assert.equal(plan.entries.length, 1);
+  applyAgentIdentityMigration(plan, { ...f.options, planLock: plan.planLock, approvedBy: "user" });
   const catalog = f.catalog(), agent = findCatalogAgent(catalog, "alpha");
   assert.equal(agent.artifacts.length, 2);
   assert.equal(agent.artifacts.find((item) => item.type === "agent-handoff-report").attribution, "legacy");
-  assert.ok(agent.diagnostics.includes("legacy-memory-path-not-approval"));
+  assert.ok(agent.diagnostics.includes("verified-path-migration-not-approval"));
   assert.ok(catalog.diagnostics.some((item) => item.code === "contract-binding-not-found"));
 });
 

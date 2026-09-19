@@ -3,17 +3,18 @@ import type { ExecutionResourceClaim } from "./execution-resources.mjs";
 import type { NeuralDeepHandoffBarriers } from "./handoff-barriers.mjs";
 export type AdmissionStatus = "queued" | "active" | "completed" | "failed" | "cancelled" | "waiting_for_provider" | "waiting_for_operator" | "resume_confirmation_required";
 export type StoredAdmission = {
-  attemptId: string; surface: "task_chat" | "voice" | "delivery" | "voice_dialogue"; workloadId: string; coordinationKeyHash: string;
+  attemptId: string; surface: "task_chat" | "voice" | "delivery" | "voice_dialogue" | "child_agent"; workloadId: string; coordinationKeyHash: string;
   status: AdmissionStatus; queuedAt: string; admittedAt: string | null; finishedAt: string | null;
   ownerToken: string | null; generation: number; workerId: string | null; sessionKeyHash: string | null; payload: unknown;
 };
 export function coordinationHash(value: string): string;
 export function neuralDeepCoordinationPaths(stateRoot: string, codeRoot?: string): { databasePath: string; legacyPath: string };
 export class NeuralDeepCoordinationStore {
+  readonly db: import('node:sqlite').DatabaseSync;
   voiceJournal: NeuralDeepVoiceJournal;
   handoffs: NeuralDeepHandoffBarriers;
   constructor(options?: { databasePath?: string; legacyPath?: string | null; workerId?: string });
-  enqueue(input: { attemptId: string; surface: "task_chat" | "voice" | "delivery" | "voice_dialogue"; workloadId: string; coordinationKeyHash: string; queuedAt: string; payload?: unknown; resources?: ExecutionResourceClaim[]; predecessorPriority?: boolean; resumePausedKey?: boolean; sessionKeyHash?: string | null }): StoredAdmission & { duplicate: boolean };
+  enqueue(input: { attemptId: string; surface: "task_chat" | "voice" | "delivery" | "voice_dialogue" | "child_agent"; workloadId: string; coordinationKeyHash: string; queuedAt: string; payload?: unknown; resources?: ExecutionResourceClaim[]; predecessorPriority?: boolean; resumePausedKey?: boolean; sessionKeyHash?: string | null }): StoredAdmission & { duplicate: boolean };
   get(id: string): StoredAdmission | null;
   claim(id: string, limit?: number): StoredAdmission | null;
   finish(id: string, token: string, outcome?: "completed" | "failed" | "cancelled" | "waiting_for_provider" | "waiting_for_operator"): boolean;

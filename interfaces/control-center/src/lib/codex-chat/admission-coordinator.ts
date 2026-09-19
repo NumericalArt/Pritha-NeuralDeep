@@ -8,7 +8,7 @@ import { NeuralDeepExecutionWorkspaces } from "../../../../../scripts/neuraldeep
 import { NeuralDeepOperatorRequests } from "../../../../../scripts/neuraldeep/operator-requests.mjs";
 import type { ExecutionResourceClaim } from "../../../../../scripts/neuraldeep/execution-resources.mjs";
 
-export type NeuralDeepSurface = "task_chat" | "voice" | "voice_dialogue";
+export type NeuralDeepSurface = "task_chat" | "voice" | "voice_dialogue" | "child_agent";
 export type AdmissionOutcome = "completed" | "failed" | "cancelled" | "waiting_for_provider" | "waiting_for_operator";
 export type AdmissionLease = {
   attemptId: string; surface: NeuralDeepSurface; workloadId: string; coordinationKeyHash: string; admittedAt: string;
@@ -94,7 +94,7 @@ export class NeuralDeepAdmissionCoordinator {
     await this.ensureInitialized();
     const attemptId = input.attemptId || `attempt_${randomUUID().replace(/-/g, "")}`;
     if (!SAFE_ID.test(attemptId)) throw new Error("admission_attempt_id_invalid");
-    if (!["task_chat", "voice", "voice_dialogue"].includes(input.surface)) throw new Error("admission_surface_invalid");
+    if (!["task_chat", "voice", "voice_dialogue", "child_agent"].includes(input.surface)) throw new Error("admission_surface_invalid");
     if (input.signal?.aborted) throw new AdmissionCancelledError();
     const coordinationKeyHash = coordinationHash(input.coordinationKey);
     const workloadId = safeWorkloadId(input.workloadId);

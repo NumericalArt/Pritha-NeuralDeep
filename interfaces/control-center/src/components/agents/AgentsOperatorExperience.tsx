@@ -1,4 +1,5 @@
 "use client";
+import { partitionAgentCards } from "./agent-view";
 
 import {
   Activity,
@@ -40,8 +41,9 @@ import { MobileAgents } from "./MobileAgents";
 import { AgentsGrid } from "./AgentsGrid";
 import { AgentsRightRail } from "./RightRail";
 import { PageHeader } from "../shell/PageHeader";
+import { ProviderBindingPanel } from "./ProviderBindingPanel";
 
-type AgentView = "active" | "drafts" | "all";
+type AgentView = "active" | "drafts" | "all" | "history";
 
 type PanelState = {
   plan?: ControlCenterOperatorActionPlan;
@@ -193,9 +195,9 @@ export function AgentsOperatorExperience({ status, agents }: { status: ControlCe
   const [accessMode, setAccessMode] = useState<AccessMode>(() => preferredAccessMode(status.access));
   const selectedAgent = useMemo(() => agents.find((agent) => agent.id === selectedAgentId) || null, [agents, selectedAgentId]);
   const credentialsAgent = useMemo(() => agents.find((agent) => agent.id === credentialsAgentId) || null, [agents, credentialsAgentId]);
-  const activeAgents = useMemo(() => agents.filter((agent) => agent.control?.runtimeKind !== "scaffold"), [agents]);
-  const draftAgents = useMemo(() => agents.filter((agent) => agent.control?.runtimeKind === "scaffold"), [agents]);
-  const visibleAgents = agentView === "drafts" ? draftAgents : agentView === "all" ? agents : activeAgents;
+  const partitions = useMemo(() => partitionAgentCards(agents), [agents]);
+  const activeAgents = partitions.active, draftAgents = partitions.drafts, historicalAgents = partitions.history;
+  const visibleAgents = partitions[agentView];
 
   function openAction(agent: AgentCardModel, action: ControlCenterOperatorAction = getPrimaryAction(agent)) {
     setSelectedAgentId(agent.id);
@@ -264,6 +266,10 @@ export function AgentsOperatorExperience({ status, agents }: { status: ControlCe
       });
       setPanel((current) => ({ ...current, result, running: false }));
       router.refresh();
+      if (selectedAction === "start" || selectedAction === "stop") {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        router.refresh();
+      }
       await loadPlan(selectedAgent.id, selectedAction);
       setPanel((current) => ({ ...current, result }));
     } catch (error) {
@@ -461,7 +467,7 @@ export function AgentsOperatorExperience({ status, agents }: { status: ControlCe
                       setAgentView("active");
                     }}
                   >
-                    Active
+                    Running
                   </button>
                   <button
                     className={agentView === "drafts" ? "active" : ""}
@@ -475,6 +481,9 @@ export function AgentsOperatorExperience({ status, agents }: { status: ControlCe
                     disabled={!draftAgents.length}
                   >
                     Drafts
+                  </button>
+                  <button className={agentView === "history" ? "active" : ""} type="button" data-filter="history" aria-pressed={agentView === "history"} onClick={() => setAgentView("history")} disabled={!historicalAgents.length}>
+                    History
                   </button>
                   <button
                     className={agentView === "all" ? "active" : ""}
@@ -513,7 +522,7 @@ export function AgentsOperatorExperience({ status, agents }: { status: ControlCe
       <MobileAgents
         agents={visibleAgents}
         agentView={agentView}
-        agentCounts={{ active: activeAgents.length, drafts: draftAgents.length, all: agents.length }}
+        agentCounts={{ active: activeAgents.length, drafts: draftAgents.length, history: historicalAgents.length, all: agents.length }}
         access={status.access}
         accessMode={accessMode}
         onAgentViewChange={setAgentView}
@@ -681,6 +690,8 @@ export function AgentsOperatorExperience({ status, agents }: { status: ControlCe
                 <X size={18} />
               </button>
             </div>
+
+            <ProviderBindingPanel agentId={credentialsAgent.id} />
 
             <div className="operator-action-status-grid credentials-summary-grid">
               <div>

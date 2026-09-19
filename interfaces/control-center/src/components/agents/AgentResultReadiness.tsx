@@ -15,7 +15,7 @@ const acceptanceLabels = {
 };
 
 export function resultReadinessSummary(status: string | undefined, healthStatus?: string) {
-  if (status === "unverified" && healthStatus === "ok") return "Живой сервис";
+  if (status === "unverified" && healthStatus === "ok") return "Trials не прогнаны · сервис отвечает";
   if (status === "unverified") return "Trials не прогнаны";
   return resultLabels[(status || "unknown") as keyof typeof resultLabels] || resultLabels.unknown;
 }
@@ -37,7 +37,7 @@ export function AgentResultReadiness({ agent }: { agent: AgentCardModel }) {
       <dt>Действие</dt><dd>{getCardActionLabel(agent)}{agent.control?.executionMode === "plan_only" ? " · план" : ""}</dd>
       {result.candidate.head && (result.candidate.head !== checked.head || result.candidate.status !== checked.status) ? <><dt>Ветка сборки</dt><dd>{resultReadinessSummary(result.candidate.status, agent.healthStatus)} · {result.candidate.head.slice(0, 12)}</dd></> : null}
     </dl>
-    {checked.reason === "outcome-approval-not-current" ? <p>Требуется актуальное одобрение Outcome Spec.</p> : null}
+    {checked.reason === "outcome-approval-not-current" && agent.outcome?.approved !== true && agent.outcome?.status !== "approved" ? <p>Требуется актуальное одобрение Outcome Spec.</p> : null}
     {checked.status === "unverified" && agent.healthStatus === "ok" ? <p>Сервис отвечает. Delivery-прогон Trials не запускался — это не значит, что агент сломан.</p> : null}
     {result.observedAt ? <p>Состояние на <time dateTime={result.observedAt}>{new Date(result.observedAt).toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" })} UTC</time></p> : null}
   </details>;
