@@ -4,6 +4,10 @@ A local briefing editor: **topic → sources → draft → edit → approve → 
 A complete example agent included with Pritha NeuralDeep. Node.js 24+, no npm
 runtime dependencies, localhost only, manual startup.
 
+NeuralDeep supplies this agent’s search and drafting through one provider. Reusing
+the parent Pritha credential keeps setup convenient and makes Brief Desk a
+practical example of the cost-effective NeuralDeep workflow.
+
 ## Start
 
 Use Start on its Pritha agent card, or run `node server.mjs` from this folder.
