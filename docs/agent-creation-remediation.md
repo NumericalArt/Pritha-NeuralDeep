@@ -100,6 +100,19 @@ missing process evidence, path lookalikes and script names appearing only as
 another program's arguments. The release still uses the instance manager;
 no port-based process termination or live build replacement is introduced.
 
+Real launchd startup also exposed two lifecycle gaps hidden by ordinary
+terminal fixtures. The web UI service was classified as background work;
+on the affected host, runnable processes received almost no CPU and health
+requests timed out. The instance template now uses the Interactive class for
+this HTTP UI and a finite shutdown allowance longer than its child grace
+period, following [Apple's launchd policy definitions](https://github.com/apple-oss-distributions/launchd/blob/main/man/launchd.plist.5).
+Starting a stopped service refreshes its installed template. If the wrapper
+dies first, the manager independently verifies the saved instance, lock,
+child command, working directory and process group before bounded termination.
+Only previously observed, recognized read-only probes are also cleaned up;
+unrelated child-agent services remain outside that authority. Regression
+fixtures cover orphan recovery, SIGTERM-resistant children and foreign locks.
+
 Research created under an execution worktree contains references relative to
 that worktree. Copying its bytes to the primary instance changes how those
 references resolve. Promotion now checks the original complete gate and frozen

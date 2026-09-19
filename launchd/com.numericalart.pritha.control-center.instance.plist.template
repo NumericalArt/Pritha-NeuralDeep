@@ -26,7 +26,9 @@
   <key>ThrottleInterval</key>
   <integer>30</integer>
   <key>ProcessType</key>
-  <string>Background</string>
+  <string>Interactive</string>
+  <key>ExitTimeOut</key>
+  <integer>30</integer>
   <key>StandardOutPath</key>
   <string>__WRAPPER_STDOUT__</string>
   <key>StandardErrorPath</key>

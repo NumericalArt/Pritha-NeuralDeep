@@ -671,8 +671,58 @@ async function assertSafeStop() {
   return { state, ownership };
 }
 
+function assertOwnedChildGroup(state) {
+  const current = readJson(statePath), lock = readJson(lockPath);
+  if (!identityMatches(current) || current.wrapperPid !== state.wrapperPid
+    || current.childPid !== state.childPid || current.processGroupId !== state.processGroupId
+    || current.startedAt !== state.startedAt || current.running !== true
+    || lock?.schema !== "pritha-control-center-runtime-lock-v1" || !lock.token
+    || lock.pid !== state.wrapperPid || !identityMatches({ ...lock, schema: STATE_SCHEMA })) {
+    throw new Error("owner_mismatch:runtime_child_record_unconfirmed");
+  }
+  const child = processInfo(state.childPid);
+  const next = path.join(appRoot, "node_modules", "next", "dist", "bin", "next");
+  const nextCommand = child?.command === "next-server" || /^next-server \(v[\d.]+\)\s*$/.test(child?.command || "")
+    || child?.command.startsWith(`${process.execPath} ${next} start `);
+  let cwdMatches = false;
+  try { cwdMatches = Boolean(child?.cwd) && realpathSync(child.cwd) === realpathSync(appRoot); } catch { /* fail closed */ }
+  if (!child || child.pid !== state.childPid || child.pgid !== state.childPid
+    || child.pgid !== state.processGroupId || !cwdMatches
+    || ![state.wrapperPid, 1].includes(child.ppid) || !nextCommand) {
+    throw new Error("owner_mismatch:runtime_child_process_unconfirmed");
+  }
+  const ownership = listenerOwnership(current);
+  if (!ownership.ownerMatch || ownership.error) throw new Error("owner_mismatch:runtime_child_listener_unconfirmed");
+  return lock;
+}
+
+function ownedReadOnlyProbes(state) {
+  const result = run("pgrep", ["-P", String(state.childPid)]);
+  if (!result.ok) return [];
+  const scripts = ["agents-mother/project-metadata-worker.mjs", "agents-mother/result-readiness-worker.mjs", "launchd-root-audit.mjs"];
+  return result.stdout.split(/\s+/).map(Number).filter(pid => Number.isSafeInteger(pid) && pid > 1).slice(0, 32)
+    .map(processInfo).filter(info => info && info.ppid === state.childPid && info.pgid === info.pid
+      && scripts.some(script => {
+        const prefix = `${process.execPath} ${path.join(config.codeRoot, "scripts", script)}`;
+        return info.command === prefix || info.command.startsWith(`${prefix} `);
+      }));
+}
+
+function signalReadOnlyProbes(probes, signal) {
+  for (const original of probes) {
+    const current = processInfo(original.pid);
+    if (!current || current.command !== original.command || current.cwd !== original.cwd
+      || current.pgid !== original.pgid || ![original.ppid, 1].includes(current.ppid)) continue;
+    try { process.kill(-current.pgid, signal); }
+    catch (error) { if (error.code !== "ESRCH") throw error; }
+    appendLifecycle("read-only-probe-stop", { pid: current.pid, signal });
+  }
+}
+
 async function stopService() {
   const { state } = await assertSafeStop();
+  const stopStartedAt = Date.now();
+  let probes = [];
   const launchd = launchdStatus();
   if (launchd.loaded) {
     const result = run(launchctlBinary, ["bootout", serviceTarget], { timeoutMs: 30_000 });
@@ -680,13 +730,40 @@ async function stopService() {
   } else if (state?.wrapperPid && processExists(state.wrapperPid)) {
     if (!runtimeProcessMatches(state.wrapperPid)) throw new Error("owner_mismatch:runtime_wrapper_unconfirmed");
     process.kill(state.wrapperPid, "SIGTERM");
+  } else if (state?.childPid && processExists(state.childPid)) {
+    assertOwnedChildGroup(state);
+    probes = ownedReadOnlyProbes(state);
+    signalReadOnlyProbes(probes, "SIGTERM");
+    process.kill(-state.processGroupId, "SIGTERM");
+    appendLifecycle("orphan-stop-requested", { childPid: state.childPid, processGroupId: state.processGroupId });
   }
-  if (state?.childPid) await waitForExit(state.childPid, STOP_GRACE_MS + 3_000);
+  if (state?.childPid && !await waitForExit(state.childPid, Math.max(0, STOP_GRACE_MS + 3_000 - (Date.now() - stopStartedAt)))) {
+    // launchd may have killed the wrapper before its own escalation timer ran.
+    // Revalidate its exact state, lock, child and group; a port alone grants no
+    // authority to signal a process, including during release rollback.
+    assertOwnedChildGroup(state);
+    if (!probes.length) probes = ownedReadOnlyProbes(state);
+    signalReadOnlyProbes(probes, "SIGKILL");
+    process.kill(-state.processGroupId, "SIGKILL");
+    appendLifecycle("manager-forced-stop", { childPid: state.childPid, processGroupId: state.processGroupId });
+    if (!await waitForExit(state.childPid, 3_000)) throw new Error("control_center_did_not_stop_within_grace_period");
+  }
+  signalReadOnlyProbes(probes, "SIGKILL");
   const remaining = listenerPids();
+  if (remaining.error) throw new Error(remaining.error);
   if (remaining.pids.length) {
     const ownership = listenerOwnership(state, remaining);
     if (!ownership.ownerMatch) throw new Error("owner_mismatch:listener_changed_during_stop");
     throw new Error("control_center_did_not_stop_within_grace_period");
+  }
+  if (state && !processExists(state.wrapperPid) && !processExists(state.childPid)) {
+    const current = readJson(statePath), lock = readJson(lockPath);
+    if (identityMatches(current) && current.wrapperPid === state.wrapperPid && current.childPid === state.childPid
+      && current.startedAt === state.startedAt) {
+      atomicWriteJson(statePath, { ...current, running: false, stoppedByManagerAt: new Date().toISOString() });
+      if (lock?.schema === "pritha-control-center-runtime-lock-v1" && lock.token
+        && lock.pid === state.wrapperPid && identityMatches({ ...lock, schema: STATE_SCHEMA })) rmSync(lockPath, { force: true });
+    }
   }
   appendLifecycle("stop-complete");
   return { stopped: true };
@@ -729,10 +806,14 @@ async function startService() {
   clearCircuit();
   prepareLaunchdLogs();
   const launchd = launchdStatus();
-  const result = launchd.loaded
-    ? run(launchctlBinary, ["kickstart", "-k", serviceTarget], { timeoutMs: 30_000 })
-    : run(launchctlBinary, ["bootstrap", launchDomain, installedPlistPath], { timeoutMs: 30_000 });
-  if (!result.ok) throw new Error(launchd.loaded ? "launchd_kickstart_failed" : "launchd_bootstrap_failed");
+  if (launchd.loaded) {
+    const result = run(launchctlBinary, ["kickstart", "-k", serviceTarget], { timeoutMs: 30_000 });
+    if (!result.ok) throw new Error("launchd_kickstart_failed");
+  } else {
+    // A stopped instance must load the current checked template, rather than
+    // silently retaining the previous release's launchd policy forever.
+    installService();
+  }
   appendLifecycle("operator-start");
   return { started: true };
 }

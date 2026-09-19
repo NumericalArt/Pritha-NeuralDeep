@@ -128,10 +128,83 @@ test("runtime install renders only private absolute paths and never calls real l
     assert.equal(existsSync(installed), true);
     assert.match(readFileSync(generated, "utf8"), new RegExp(item.checkout.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.doesNotMatch(readFileSync(generated, "utf8"), /OPENAI_API_KEY|PRITHA_STATE_ROOT=/);
+    assert.match(readFileSync(generated, "utf8"), /<key>ProcessType<\/key>\s*<string>Interactive<\/string>/);
+    assert.match(readFileSync(generated, "utf8"), /<key>ExitTimeOut<\/key>\s*<integer>30<\/integer>/);
     assert.match(readFileSync(item.launchctlLog, "utf8"), /bootstrap gui\//);
   } finally {
     rmSync(item.directory, { recursive: true, force: true });
   }
+});
+
+test("start refreshes the installed template after a service has been stopped", () => {
+  const item = fixture();
+  try {
+    const installed = path.join(item.testHome, "Library", "LaunchAgents", "com.numericalart.pritha.control-center.main.plist");
+    mkdirSync(path.dirname(installed), { recursive: true });
+    writeFileSync(installed, "obsolete-service-policy");
+    const started = invoke(item, "start", ["--yes"]);
+    assert.equal(started.status, 0, started.stderr || started.stdout);
+    assert.match(readFileSync(installed, "utf8"), /<string>Interactive<\/string>/);
+    assert.match(readFileSync(item.launchctlLog, "utf8"), /bootstrap gui\//);
+  } finally { rmSync(item.directory, { recursive: true, force: true }); }
+});
+
+for (const stubborn of [false, true]) {
+  test(`stop reconciles its orphan child${stubborn ? " and resistant read-only probe" : ""} after the wrapper dies`, async () => {
+    const item = fixture();
+    let running, state, probePid;
+    try {
+      const statePath = path.join(item.stateRoot, "setup/control-center-runtime/state.json");
+      const ready = path.join(item.directory, "child-ready.json");
+      const worker = path.join(item.checkout, "scripts/agents-mother/project-metadata-worker.mjs");
+      mkdirSync(path.dirname(worker), { recursive: true });
+      writeFileSync(worker, "process.on('SIGTERM',()=>{});setInterval(()=>{},1000);\n");
+      writeFileSync(item.nextBinary, `const fs=require('node:fs');
+const probe=${stubborn ? `require('node:child_process').spawn(process.execPath,[${JSON.stringify(worker)}],{detached:true,stdio:'ignore'})` : "null"};
+${stubborn ? "process.on('SIGTERM',()=>{});" : ""}
+fs.writeFileSync(${JSON.stringify(ready)},JSON.stringify({probePid:probe?.pid}));setInterval(()=>{},1000);
+`);
+      executable(path.join(item.fakeBin, "lsof"), `#!${process.execPath}
+const fs=require('node:fs'),path=require('node:path'),args=process.argv.slice(2);
+let s;try{s=JSON.parse(fs.readFileSync(${JSON.stringify(statePath)},'utf8'));}catch{}
+if(args.includes('-d')) { const pid=Number(args[args.indexOf('-p')+1]);console.log('n'+(pid===s?.wrapperPid?process.env.TECHSCOPE_ROOT:path.join(process.env.TECHSCOPE_ROOT,'interfaces/control-center'))); }
+else {try{process.kill(s.childPid,0);console.log(s.childPid);}catch{process.exit(1);}}
+`);
+      running = spawn(process.execPath, [runtimeScript, "run", "--root", item.checkout, "--env", item.runtimeEnv, "--json"],
+        { cwd: item.checkout, env: item.env, stdio: ["ignore", "pipe", "pipe"] });
+      const deadline = Date.now() + 5_000;
+      while ((!existsSync(ready) || !existsSync(statePath)) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
+      assert(existsSync(ready));
+      state = JSON.parse(readFileSync(statePath, "utf8")); probePid = JSON.parse(readFileSync(ready, "utf8")).probePid;
+      running.kill("SIGKILL"); await new Promise(resolve => running.once("close", resolve));
+      const stopped = invoke(item, "stop", ["--yes"]);
+      assert.equal(stopped.status, 0, stopped.stderr || stopped.stdout);
+      assert.throws(() => process.kill(state.childPid, 0), { code: "ESRCH" });
+      if (probePid) assert.throws(() => process.kill(probePid, 0), { code: "ESRCH" });
+      assert.equal(JSON.parse(readFileSync(statePath, "utf8")).running, false);
+      assert.equal(existsSync(path.join(path.dirname(statePath), "runtime.lock.json")), false);
+    } finally {
+      if (running?.exitCode == null && running?.signalCode == null) running?.kill("SIGKILL");
+      for (const pid of [state?.childPid, probePid]) if (pid) { try { process.kill(-pid, "SIGKILL"); } catch { /* fixture already stopped */ } }
+      rmSync(item.directory, { recursive: true, force: true });
+    }
+  });
+}
+
+test("orphan cleanup refuses a missing or mismatched ownership lock", async () => {
+  const item = fixture();
+  const child = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { detached: true, stdio: "ignore" });
+  try {
+    const directory = path.join(item.stateRoot, "setup/control-center-runtime");mkdirSync(directory,{recursive:true});
+    const state={schema:"pritha-control-center-runtime-state-v1",instanceId:item.instanceId,codeRoot:item.checkout,stateRoot:item.stateRoot,
+      port:item.port,label:`com.numericalart.pritha.control-center.${item.instanceId}`,wrapperPid:999999,childPid:child.pid,processGroupId:child.pid,running:true,startedAt:new Date().toISOString()};
+    writeFileSync(path.join(directory,"state.json"),JSON.stringify(state));
+    for(const lock of [null,{...state,schema:"pritha-control-center-runtime-lock-v1",pid:999998,token:"foreign-owner"}]){
+      if(lock)writeFileSync(path.join(directory,"runtime.lock.json"),JSON.stringify(lock));
+      const result=invoke(item,"stop",["--yes"]);assert.equal(result.status,1);assert.equal(JSON.parse(result.stdout).code,"owner_mismatch");
+      assert.doesNotThrow(()=>process.kill(child.pid,0));
+    }
+  }finally{process.kill(-child.pid,"SIGKILL");await new Promise(resolve=>child.once("close",resolve));rmSync(item.directory,{recursive:true,force:true});}
 });
 
 test("runtime refuses to stop a listener that lacks the exact instance ownership record", () => {
