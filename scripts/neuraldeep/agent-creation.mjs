@@ -7,6 +7,7 @@ import { readBoundedRegularFile } from '../lib/safe-file-read.mjs';
 import { readBuildIdentity } from '../lib/release-artifact.mjs';
 import { parseFrontmatterData } from '../lib/frontmatter.mjs';
 import { contractData, validateContract } from '../agents-mother/contract.mjs';
+import { normalizeInterviewBrief } from '../agents-mother/interview-brief.mjs';
 import { outcomeSpecFile, approveOutcomeSpec, verifyOutcomeApproval, outcomeDocumentLock } from '../agents-mother/outcome-spec.mjs';
 import { prepareOutcomeVerifierPreset } from '../agents-mother/outcome-verifier-presets.mjs';
 import { readAgentCatalog } from '../agents-mother/identity.mjs';
@@ -257,9 +258,20 @@ export function creationPrompt(job) {
     `Use ${cli} help or validate for exact enums. Commands must preserve their true exit status (no failure-masking pipelines).`,
     'Never modify Pritha platform source in the execution workspace. Product implementation is owned by the host delivery loop after approvals.'];
   if(job.proposalRevisionPending) details.push(`The operator requested an explicit proposal revision: ${JSON.stringify(job.revisionInstruction)}. Edit the seeded contract ${job.contract?.path} in place; do not run init or copy the accepted canonical document back. Keep creation_generation=${creationGeneration(job)} and its unique id ending -revision-${creationGeneration(job)}. Preserve target and identity; revise the product/port/adapter as requested. Validate the draft and stop for new contract approval. The new Outcome will be authored only after that approval. Earlier draft history is contextual and cannot supply current approval or research.`);
-  else if(phase==='interview' || phase==='contract')details.push(
-    'Prepare a structured interview brief and a valid draft agent contract using init --brief <file> --contract-only. Set Technical slug and exact Target folder above. Choose explicit preset llm-app only when the requested product uses an LLM, local-feed only for a feed application.',
-    'Write documents in the authoring root. Leave the child target empty for the host scaffold. Once draft validation passes, stop and present the proposal; approval buttons are provided by the host.');
+  else if(phase==='interview' || phase==='contract') {
+    const brief=normalizeInterviewBrief({identity:{name:'<product name from the request>',slug:job.agentId},
+      goal:'<observable result>',user:'<intended user>',successCriteria:['<each acceptance criterion>'],
+      coreFunctions:['<each v1 function>'],workflows:['<each user journey>'],sources:['<each requested source>'],
+      constraints:['<each limit and error-handling requirement>'],nonGoals:['<each excluded feature>'],
+      permissions:{network:['<required sources and provider only>'],filesystem:['<child project only>'],authorization:'<authorized local operator>'},
+      technical:{preset:'generic',targetFolder:job.target}});
+    details.push('Prepare the proposal directly from the product request. The complete supported brief shape is below; replace the angle-bracket values, use empty arrays when a field does not apply, and preserve the exact slug and target. Choose preset llm-app for an LLM application, local-feed for a feed application without an LLM, otherwise generic. Presets supply valid runtime, service, provider and test defaults. Do not invent technical enum values or inspect CLI implementation to discover them.',
+      `\`\`\`pritha-brief-json\n${JSON.stringify(brief,null,2)}\n\`\`\``,
+      `Save this JSON as brief.json in the authoring root, then run: ${cli} init --no-input --brief brief.json --contract-only`,
+      'The brief supplies name and mission; additional --name or --mission flags are unnecessary. Init prints the draft contract path and keeps its status draft. It writes under the authoring root, not the child target. Do not add approval or token-budget-confirmation flags.',
+      `Validate the printed contract path with: ${cli} validate <contract-path>`,
+      'Use the reported validation issues to make only necessary draft corrections. Once validation passes, stop and present the proposal for host approval. Do not read unrelated platform source, prepare the Outcome or implement the product in this step.');
+  }
   else if(phase==='outcome')details.push(`Accepted contract: ${job.contract.path}. Run outcome init for THIS accepted path (older draft-bound specs are not canonical), refine the proposed product and independent Trials, validate, then stop for the separate Outcome approval.`);
   else if(phase==='research')details.push(`Accepted contract: ${job.contract.path}. Approved outcome: ${job.outcome.path}. Complete research, required current source evidence and synthesis using the normal research commands and this authoring root. Repository policy never waives provider/API/source checks. Stop after the research gate is complete; the host will validate, scaffold and deliver.`);
   if(job.checkpoint)details.push(`Saved checkpoint: ${JSON.stringify(job.checkpoint).slice(0,12000)}`);

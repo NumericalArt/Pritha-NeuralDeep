@@ -104,7 +104,8 @@ function usage() {
   ${CLI_COMMAND} help
   ${CLI_COMMAND} questions
   ${CLI_COMMAND} interview [--name <name>] [--mission <text>] [--build-token-budget 1000000] [--runtime codex-native] [--runtime-placement frontier-first] [--interface "Codex project"] [--telegram none] [--service none] [--autostart disabled]
-  ${CLI_COMMAND} init --name <name> --mission <text> [--brief <path> | --from-brief <path>] [--preset generic|local-feed|llm-app] [--contract-only] [--build-token-budget <positive-int> --token-budget-confirmed-by user] [--runtime codex-native] [--runtime-placement frontier-first] [--interface "Codex project"] [--telegram none] [--service none] [--autostart disabled]
+  ${CLI_COMMAND} init --brief <path> [--contract-only] [--preset generic|local-feed|llm-app] (compatible alias: --from-brief <path>)
+  ${CLI_COMMAND} init --name <name> --mission <text> [--contract-only] [--build-token-budget <positive-int> --token-budget-confirmed-by user] [--runtime codex-native] [--runtime-placement frontier-first] [--interface "Codex project"] [--telegram none] [--service none] [--autostart disabled]
   ${CLI_COMMAND} outcome init <contract-path> [--interaction-mode interface|headless|hybrid]
   ${CLI_COMMAND} outcome validate <outcome-spec-path>
   ${CLI_COMMAND} outcome status <outcome-spec-path>
