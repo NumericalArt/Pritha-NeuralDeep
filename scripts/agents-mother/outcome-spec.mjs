@@ -538,8 +538,8 @@ agent: I will complete this outcome, verify it against the agreed Trials, and on
 - Failure visibility: ${mode === "headless" || mode === "hybrid" ? "typed blocker or failed run with next action" : "not-applicable"}`;
 
   return `---
-id: ${options.artifactId || `${date}-${agentSlug}-agent-outcome-spec`}
-type: agent-outcome-spec
+id: ${options.artifactId || `${date}-${agentSlug}-agent-outcome-spec${Number(data.fm?.creation_generation)>1 ? `-revision-${Number(data.fm.creation_generation)}` : ""}`}
+${Number(data.fm?.creation_generation)>1 ? `creation_generation: ${Number(data.fm.creation_generation)}\n` : ""}type: agent-outcome-spec
 status: draft
 created: ${date}
 updated: ${date}
@@ -652,7 +652,7 @@ export function createOutcomeSpec(contractPath, options = {}) {
         status: existing.status, issues: existing.issues };
     }
     return writeUniqueArtifact(
-      path.join(contractDir, `${date}-${slug(data.agentName, { fallback: "agent" })}-agent-outcome-spec.md`),
+      path.join(contractDir, `${date}-${slug(data.agentName, { fallback: "agent" })}-agent-outcome-spec${Number(data.fm?.creation_generation)>1 ? `-revision-${Number(data.fm.creation_generation)}` : ""}.md`),
       ({ artifactId }) => renderOutcomeSpecFromContract(data, { ...options, date, artifactId }),
     );
   });

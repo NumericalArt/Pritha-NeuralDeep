@@ -1,11 +1,11 @@
 export const TASK_CHAT_PHASES = ["interview", "contract", "outcome", "scaffold", "implement", "verify", "finish"];
 
 const PHASE_GOALS = {
-  interview: "Phase goal: ask at most 8 questions, then write the contract draft that passes validate.",
-  contract: "Phase goal: a contract file that passes `agents-mother validate` with zero errors.",
-  outcome: "Phase goal: outcome init -> minimal edits -> validate -> preflight. Approve is a separate step.",
-  scaffold: "Phase goal: scaffold-plan first; scaffold only if the plan has no runtime-adapter-missing.",
-  implement: "Phase goal: one product file, syntax-checked with node --check, nothing else.",
+  interview: "Phase goal: propose product and technical defaults, ask only for missing material decisions, then prepare a valid draft contract.",
+  contract: "Phase goal: a contract file that passes `agents-mother validate`. Use init --brief when a structured brief exists. Preserve success criteria and constraints. Wait for the host's separate contract approval.",
+  outcome: "Phase goal: prepare and validate the canonical Outcome Spec for the exact accepted contract. Preserve authored content. Approval is a separate host UI action; validation never authorizes approval.",
+  scaffold: "Phase goal: inspect scaffold-plan and report its blockers. The host performs scaffold only after separate approvals and a passing research gate. Never add experimental bypass flags.",
+  implement: "Phase goal: complete the next bounded implementation unit and its meaningful checks within the remaining budget. Preserve existing successful work.",
   verify: "Phase goal: run the outcome trials once and report pass/fail per trial. Do not fix code in this turn.",
   finish: "Phase goal: registry rebuild and card-readiness; report the card state."
 };
@@ -25,7 +25,7 @@ export function resolveTaskChatPhase({ subject = null, text = "" } = {}) {
     const candidate = match[1].toLowerCase();
     if (TASK_CHAT_PHASES.includes(candidate)) return candidate;
   }
-  return "implement";
+  return "interview";
 }
 
 export function taskChatTurnTimeoutMs({ subject = null, settingsTimeoutMs, environment = process.env } = {}) {
@@ -41,18 +41,19 @@ export function taskChatTurnTimeoutMs({ subject = null, settingsTimeoutMs, envir
 export function taskChatPhasePreamble({ phase = null, timeoutMs = 720000 } = {}) {
   if (!phase || !TASK_CHAT_PHASES.includes(phase)) return "";
   const minutes = Math.max(1, Math.round(timeoutMs / 60000));
+  const deliverableRule = "Choose bounded steps from dependencies and remaining time, preserving a durable checkpoint before the limit.";
   return [
     `Host turn contract (phase: ${phase}, budget: ${minutes} min).`,
-    "One deliverable per turn: exactly one file or one CLI step. Split anything larger into the next turn.",
+    deliverableRule,
     "Do not run commands expected to take longer than 60 seconds (builds, downloads, transcription, harvests, model calls in loops). Use fixtures and mocks; long jobs belong to the child UI buttons.",
     "Do not study validators or generators. Run the command with --help or validate and follow the printed allowed values.",
-    "Write each file in a single command (heredoc or apply_patch). Do not use Resume or Retry semantics; if the budget is nearly spent, stop and report a checkpoint.",
+    "Preserve actual command exit codes. If the budget is nearly spent, stop and report a checkpoint in this task.",
     "Final message: files changed, commands run, what is left. Nothing else.",
     PHASE_GOALS[phase]
   ].join("\n");
 }
 
-export function taskChatTimeoutCheckpoint({ items = [], phase = null, timeoutMs = null } = {}) {
+export function taskChatTimeoutCheckpoint({ items = [], phase = null, timeoutMs = null, fileDiff = null } = {}) {
   const safeItems = Array.isArray(items) ? items : [];
   const seenPaths = new Set();
   const files = [];
@@ -79,12 +80,16 @@ export function taskChatTimeoutCheckpoint({ items = [], phase = null, timeoutMs 
     }
   }
 
+  if (fileDiff) for (const name of [...fileDiff.added, ...fileDiff.modified, ...fileDiff.deleted]) {
+    if (!seenPaths.has(name)) {seenPaths.add(name);files.push(name);}
+  }
   const recentFiles = files.slice(-MAX_CHECKPOINT_FILES);
   return [
     `Step timeout checkpoint${phase ? ` (phase: ${phase})` : ""}${timeoutMs ? ` after ${Math.round(timeoutMs / 60000)} min` : ""}.`,
-    `Files changed: ${recentFiles.length ? recentFiles.join(", ") : "none recorded"}.`,
+    `Files changed: ${recentFiles.length ? recentFiles.join(", ") : fileDiff?.complete ? "none (verified manifest)" : "not fully observed"}.`,
+    ...(fileDiff?.complete === false ? ["File scan incomplete; inspect the saved manifest before continuing."] : []),
     `Last command: ${lastCommand || "none"}.`,
     `Last assistant note: ${lastNote || "none"}.`,
-    "Next: open a New chat with the same Subject, paste this checkpoint and continue from the next step. Do not Resume or Retry this turn."
+    "Next: review the saved checkpoint and use Continue in this same task. The host reconciles the previous execution before dispatch."
   ].join("\n");
 }

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import { CodexMarkdown } from "./CodexMarkdown";
+import { AgentCreationProgress } from "./AgentCreationProgress";
 import { CopyResponse } from "./CopyResponse";
 import { ActivityFeed } from "./ActivityFeed";
 import { ActivityAction } from "./ActivityAction";
@@ -1546,6 +1547,7 @@ export function CodexChatPage() {
 
         <div ref={transcriptRef} className={`codex-transcript ${transcriptStale ? "stale" : ""}`} role="log" aria-live="polite" aria-label="Task Chat messages" aria-busy={historyBusy || connection === "connecting"}>
           <div ref={transcriptContentRef} className="codex-transcript-content">
+          {selectedChatId ? <AgentCreationProgress key={selectedChatId} chatId={selectedChatId} refreshKey={displayedDetail?.revision} /> : null}
           {loading && !selectedChatId ? <div className="codex-empty-state"><LoaderCircle className="spin" size={28} /><h2>Loading Task Chat</h2></div> : null}
           {!loading && !selectedChatId ? (
             <div className="codex-empty-state">

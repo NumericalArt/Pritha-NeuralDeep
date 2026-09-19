@@ -25,6 +25,7 @@ export type CliTurnOptions = {
   sandbox: "read-only" | "workspace-write" | "danger-full-access";
   cwd: string;
   executionCodeRoot?: string;
+  creationAuthoringRoot?: string;
   prompt: string;
   searchUserText?: string;
   searchOwner?: string;
@@ -236,7 +237,7 @@ export class NeuralDeepCliRuntime {
     if (options.attachmentManifest) args.push("--attachment-manifest", options.attachmentManifest);
     const child = spawn(process.execPath, args, {
       cwd: options.cwd,
-      env: { ...processEnvironment(this.root), PRITHA_SEARCH_INTENT:JSON.stringify(searchIntent(options.searchUserText||"")),PRITHA_SEARCH_OWNER:options.searchOwner||options.workloadId||"standalone",PRITHA_SEARCH_TURN:options.searchTurn||options.workloadId||"standalone", PRITHA_NEURALDEEP_ADMISSION_RECEIPT: options.admission ? JSON.stringify(options.admission) : "" },
+      env: { ...processEnvironment(this.root), ...(options.creationAuthoringRoot ? {PRITHA_AGENT_AUTHORING_ROOT:options.creationAuthoringRoot} : {}), PRITHA_SEARCH_INTENT:JSON.stringify(searchIntent(options.searchUserText||"")),PRITHA_SEARCH_OWNER:options.searchOwner||options.workloadId||"standalone",PRITHA_SEARCH_TURN:options.searchTurn||options.workloadId||"standalone", PRITHA_NEURALDEEP_ADMISSION_RECEIPT: options.admission ? JSON.stringify(options.admission) : "" },
       stdio: ["pipe", "pipe", "pipe"],
     });
     const lifecycle = { closed: false, stopping: false, timer: null as ReturnType<typeof setTimeout> | null };

@@ -13,6 +13,7 @@ import * as policy from '../scripts/neuraldeep/attachment-policy.mjs';
 import * as transport from '../scripts/neuraldeep/attachment-transport.mjs';
 import * as identity from '../scripts/neuraldeep/runtime-identity.mjs';
 import * as resources from '../scripts/neuraldeep/execution-resources.mjs';
+import * as taskPhases from '../scripts/neuraldeep/task-chat-phases.mjs';
 const require = createRequire(import.meta.url), root = process.cwd();
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 function loadGateway(dependencies) {
@@ -77,6 +78,7 @@ test('gateway accepts attachment-only first message once and replays accepted in
   const f=await fixture(t);let catalogAvailable=true,dispatches=0;
   const Gateway=loadGateway({
     '../../../../../scripts/neuraldeep/runtime-identity.mjs':identity,
+    '../../../../../scripts/neuraldeep/task-chat-phases.mjs':taskPhases,
     '../../../../../scripts/neuraldeep/attachment-policy.mjs':policy,
     '../../../../../scripts/neuraldeep/attachment-transport.mjs':{readAttachmentTransport:()=>({...f.evidence,currentCliVersion:f.evidence.cliVersion,currentAdapterHash:f.evidence.adapterHash})},
     './attachment-store':{getChatAttachmentStore:()=>f.originals},
@@ -87,7 +89,7 @@ test('gateway accepts attachment-only first message once and replays accepted in
   const gateway=Object.create(Gateway.prototype);
   const store={stateRoot:f.stateRoot,stateIdentityHash:f.runtimeIdentity.stateIdentityHash,root:f.privateRoot,
     historyStore:async()=>f.history,get:async id=>f.history.get(id),getTurn:async(id,turn)=>f.history.turn(id,turn),receipt:async(id,key)=>f.history.receipt(id,key),findByClientThreadId:async id=>f.history.findByClient(id),putIfAbsentByClientThreadId:async binding=>f.history.putIfAbsent(binding)};
-  Object.assign(gateway,{root,store,recoveryComplete:true,activeTurns:new Map(),runtime:{probe:async()=>({state:'available'})},emit(){},emitThreadUpdated:async()=>{},threadDetail:async id=>({thread:f.history.get(id)}),admitAttempt:async()=>{dispatches++;}});
+  Object.assign(gateway,{root,store,recoveryComplete:true,activeTurns:new Map(),creationAdvances:new Set(),creationDeliveries:new Map(),runtime:{probe:async()=>({state:'available'})},emit(){},emitThreadUpdated:async()=>{},threadDetail:async id=>({thread:f.history.get(id)}),admitAttempt:async()=>{dispatches++;}});
   const initialTurn={clientMessageId:'first-message-fixture',input:[{type:'text',text:''}],attachments:[f.id]};
   const input={clientThreadId:'new-chat-fixture',source:'chat',initialTurn};
   const results=await Promise.all([gateway.createThreadWithFirstTurn(input),gateway.createThreadWithFirstTurn(input)]);

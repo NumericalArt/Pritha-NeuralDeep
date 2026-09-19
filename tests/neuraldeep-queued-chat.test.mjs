@@ -14,6 +14,13 @@ import * as workspaces from '../scripts/neuraldeep/execution-workspaces.mjs';
 import * as resources from '../scripts/neuraldeep/execution-resources.mjs';
 import * as identity from '../scripts/neuraldeep/runtime-identity.mjs';
 import * as handoffs from '../scripts/neuraldeep/handoff-barriers.mjs';
+import * as creationStore from '../scripts/neuraldeep/agent-creation-store.mjs';
+import * as creation from '../scripts/neuraldeep/agent-creation.mjs';
+import * as creationReceipts from '../scripts/neuraldeep/creation-runtime-receipt.mjs';
+import * as creationDelivery from '../scripts/neuraldeep/creation-delivery.mjs';
+import * as targetManifest from '../scripts/neuraldeep/target-file-manifest.mjs';
+import * as taskPhases from '../scripts/neuraldeep/task-chat-phases.mjs';
+import * as taskAgentCreation from '../scripts/neuraldeep/task-chat-agent-creation.mjs';
 import { NeuralDeepChatHistoryStore } from '../scripts/neuraldeep/chat-history-store.mjs';
 const require=createRequire(import.meta.url), root=process.cwd();
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -53,6 +60,14 @@ async function fixture(t,{sourceProject=null}={}) {
     '../../../../../scripts/neuraldeep/coordination-store.mjs':coordination,
     '../../../../../scripts/neuraldeep/execution-workspaces.mjs':workspaces,
     '../../../../../scripts/neuraldeep/execution-resources.mjs':resources,
+    '../../../../../scripts/neuraldeep/agent-creation-store.mjs':creationStore,
+    '../../../../../scripts/neuraldeep/agent-creation.mjs':creation,
+    '../../../../../scripts/neuraldeep/creation-runtime-receipt.mjs':creationReceipts,
+    '../../../../../scripts/neuraldeep/creation-delivery.mjs':creationDelivery,
+    '../../../../../scripts/neuraldeep/target-file-manifest.mjs':targetManifest,
+    '../../../../../scripts/neuraldeep/task-chat-phases.mjs':taskPhases,
+    '../../../../../scripts/neuraldeep/task-chat-agent-creation.mjs':taskAgentCreation,
+    '@/lib/pritha-paths':{resolveTechscopeRoot:()=>root,resolvePrithaAgentParent:()=>path.join(tmp,'children'),resolvePrithaAgentMemoryRoot:()=>path.join(stateRoot,'agents')},
     '@/lib/realtime/pritha-runtime':{getPrithaRuntimeSettings:()=>settings},
     '@/lib/private-user-context':{privateUserContextFor:()=>''},
     './admission-coordinator':coordinatorModule,
@@ -67,7 +82,7 @@ async function fixture(t,{sourceProject=null}={}) {
   };
   const runs=[];
   const gateway=Object.create(CodexChatGateway.prototype);
-  Object.assign(gateway,{root,store,admission,recoveryComplete:true,activeTurns:new Map(),waitingTurns:new Map(),events:new Map(),subscribers:new Map(),
+  Object.assign(gateway,{root,store,admission,recoveryComplete:true,activeTurns:new Map(),waitingTurns:new Map(),events:new Map(),subscribers:new Map(),creationAdvances:new Set(),creationDeliveries:new Map(),
     runtime:{probe:async()=>({ok:true,state:'available'})},emit(){},emitThreadUpdated:async()=>{},threadDetail:async id=>({thread:history.get(id)}),
     prepareAttachments:async()=>[],attachmentDispatch:async()=>({images:[],prompt:''}),
     runner:{start:async options=>{

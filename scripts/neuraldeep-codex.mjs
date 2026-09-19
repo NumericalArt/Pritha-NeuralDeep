@@ -22,6 +22,7 @@ import { spawnSupervisedCli } from "./neuraldeep/process-supervisor.mjs";
 import { processSnapshot } from "./neuraldeep/process-snapshot.mjs";
 import { acquireRuntimeAdmission } from "./neuraldeep/runtime-admission.mjs";
 import { assertNeuralDeepDispatchAllowed } from "./neuraldeep/release-maintenance.mjs";
+import { assertCreationExecutionRoot } from "./neuraldeep/creation-execution-root.mjs";
 
 import { flattenSearchTools, restoreSearchToolsStream } from "./search/responses-bridge.mjs";
 import { searchMcpConfig, searchMcpArgs, searchRuntimeContext } from "./search/runtime-config.mjs";
@@ -302,7 +303,6 @@ export function buildCodexExecArgs(options = {}) {
 
 export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
   assertNeuralDeepDispatchAllowed(runtime.stateRoot);
-  if(options.executionCodeRoot && ![path.resolve(runtime.projectRoot),path.resolve(options.cwd || runtime.projectRoot)].includes(path.resolve(options.executionCodeRoot)))throw new Error("execution_code_root_unverified");
   const runId = options.runId || `nd_${randomUUID()}`;
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(runId)) throw new Error("neuraldeep_run_id_invalid");
   const journal = new NeuralDeepCoordinationStore(neuralDeepCoordinationPaths(runtime.stateRoot, runtime.projectRoot));
@@ -316,6 +316,7 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
   let attachmentDispatch;
   let receiptCreated = false;
   try {
+  await assertCreationExecutionRoot(journal, runtime, options);
   attachmentDispatch = loadAttachmentDispatch(runtime, options);
   if(options.resume) {
     const identity=neuralDeepRuntimeIdentity(runtime.stateRoot,{PRITHA_NEURALDEEP_CODEX_HOME:runtime.codexHome,PRITHA_NEURALDEEP_UPSTREAM_ORIGIN:runtime.upstreamOrigin});

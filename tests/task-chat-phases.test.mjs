@@ -10,7 +10,7 @@ import {
 } from "../scripts/neuraldeep/task-chat-phases.mjs";
 
 const agentSubject = { taskType: "agent_creation", subjectId: "agent-x" };
-const NEXT_LINE = "Next: open a New chat with the same Subject, paste this checkpoint and continue from the next step. Do not Resume or Retry this turn.";
+const NEXT_LINE = "Next: review the saved checkpoint and use Continue in this same task. The host reconciles the previous execution before dispatch.";
 
 test("TASK_CHAT_PHASES is the canonical phase order", () => {
   assert.deepEqual(TASK_CHAT_PHASES, ["interview", "contract", "outcome", "scaffold", "implement", "verify", "finish"]);
@@ -22,15 +22,15 @@ test("resolveTaskChatPhase returns null without an agent_creation subject", () =
   assert.equal(resolveTaskChatPhase({ subject: { taskType: "chat" }, text: "phase=verify" }), null);
 });
 
-test("resolveTaskChatPhase defaults to implement", () => {
-  assert.equal(resolveTaskChatPhase({ subject: agentSubject, text: "" }), "implement");
-  assert.equal(resolveTaskChatPhase({ subject: agentSubject, text: "please continue the work" }), "implement");
+test("resolveTaskChatPhase defaults to interview", () => {
+  assert.equal(resolveTaskChatPhase({ subject: agentSubject, text: "" }), "interview");
+  assert.equal(resolveTaskChatPhase({ subject: agentSubject, text: "please continue the work" }), "interview");
 });
 
 test("resolveTaskChatPhase honours explicit phase markers", () => {
   assert.equal(resolveTaskChatPhase({ subject: agentSubject, text: "phase=Outcome now" }), "outcome");
   assert.equal(resolveTaskChatPhase({ subject: agentSubject, text: "status: phase : VERIFY" }), "verify");
-  assert.equal(resolveTaskChatPhase({ subject: agentSubject, text: "phase=banana" }), "implement");
+  assert.equal(resolveTaskChatPhase({ subject: agentSubject, text: "phase=banana" }), "interview");
 });
 
 test("taskChatTurnTimeoutMs returns base for non-child subjects", () => {
@@ -57,9 +57,27 @@ test("taskChatPhasePreamble is empty for missing or unknown phase", () => {
 test("taskChatPhasePreamble renders budget and implement goal", () => {
   const preamble = taskChatPhasePreamble({ phase: "implement", timeoutMs: 720000 });
   assert.ok(preamble.includes("Host turn contract (phase: implement, budget: 12 min)."));
-  assert.ok(preamble.includes("One deliverable per turn: exactly one file or one CLI step. Split anything larger into the next turn."));
+  assert.ok(preamble.includes("remaining time"));
+  assert.doesNotMatch(preamble, /up to 3 small product files|exactly one file/);
+  assert.ok(!preamble.includes("One deliverable per turn: exactly one file or one CLI step."));
   assert.ok(preamble.includes("Final message: files changed, commands run, what is left. Nothing else."));
-  assert.ok(preamble.includes("Phase goal: one product file, syntax-checked with node --check, nothing else."));
+  assert.ok(preamble.includes("Phase goal: complete the next bounded implementation unit"));
+});
+
+test("taskChatPhasePreamble tells contract phase to init from the interview brief", () => {
+  const preamble = taskChatPhasePreamble({ phase: "contract", timeoutMs: 720000 });
+  assert.ok(preamble.includes("init --brief"));
+  assert.ok(preamble.includes("Preserve success criteria and constraints"));
+  assert.ok(preamble.includes("separate contract approval"));
+});
+
+test("all phase prompts keep approval and research authority with the host", () => {
+  for (const phase of TASK_CHAT_PHASES) {
+    const preamble = taskChatPhasePreamble({phase});
+    assert.doesNotMatch(preamble, /approve --approved-by|allow-draft-scaffold|skip-research|open a New chat/);
+  }
+  assert.match(taskChatPhasePreamble({phase: "outcome"}), /separate host UI action/);
+  assert.match(taskChatPhasePreamble({phase: "scaffold"}), /separate approvals and a passing research gate/);
 });
 
 test("taskChatPhasePreamble renders the verify phase goal", () => {
@@ -72,7 +90,7 @@ test("taskChatTimeoutCheckpoint renders the empty state", () => {
   const output = taskChatTimeoutCheckpoint({});
   assert.deepEqual(output.split("\n"), [
     "Step timeout checkpoint.",
-    "Files changed: none recorded.",
+    "Files changed: not fully observed.",
     "Last command: none.",
     "Last assistant note: none.",
     NEXT_LINE
@@ -122,4 +140,14 @@ test("taskChatTimeoutCheckpoint truncates preview, note and keeps the last 12 fi
   const noteLine = output.split("\n").find((line) => line.startsWith("Last assistant note: "));
   assert.equal(noteLine, `Last assistant note: ${expectedNote}.`);
   assert.equal(noteLine.length, "Last assistant note: ".length + 300 + 1);
+});
+
+
+test("checkpoint includes shell writes discovered by manifest and preserves incomplete evidence", () => {
+  const output=taskChatTimeoutCheckpoint({items:[{kind:'command',commandPreview:'cat > app.mjs',exitCode:null}],
+    fileDiff:{added:['app.mjs'],modified:['package.json'],deleted:['obsolete.mjs'],complete:true}});
+  assert.match(output,/Files changed: app.mjs, package.json, obsolete.mjs/);
+  assert.match(output,/Last command: cat > app.mjs \(exit \?\)/);
+  assert.match(taskChatTimeoutCheckpoint({fileDiff:{added:[],modified:[],deleted:[],complete:false}}),/File scan incomplete/);
+  assert.doesNotMatch(taskChatTimeoutCheckpoint({}),/none recorded/);
 });

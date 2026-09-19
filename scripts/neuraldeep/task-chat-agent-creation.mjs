@@ -1,5 +1,5 @@
-import { mkdirSync, realpathSync } from "node:fs";
-import { resolvePrithaStatePathFrom } from "../lib/paths.mjs";
+import { mkdirSync, realpathSync, existsSync, lstatSync } from "node:fs";
+import path from "node:path";
 
 const SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 
@@ -28,9 +28,6 @@ export function taskChatAgentCreationNotice({ agentTarget = null, agentMemoryRoo
   const extra = [];
   if (writableDirs.length) {
     extra.push(`Writable roots for this turn: ${writableDirs.join(", ")}`);
-    if (writableDirs.some((dir) => String(dir).endsWith("/audit"))) {
-      extra.push("Instance agents/contracts and audit are writable: run outcome approve and copy the contract from this chat, do not ask for host-side approval.");
-    }
   }
   if (!agentTarget) {
     const base = [
@@ -42,11 +39,11 @@ export function taskChatAgentCreationNotice({ agentTarget = null, agentMemoryRoo
   }
   return [
     `Host reserved execution_agent_target: ${agentTarget}`,
-    agentMemoryRoot ? `Instance agent memory (writable): ${agentMemoryRoot}` : "",
+    agentMemoryRoot ? `Instance agent memory (host-owned): ${agentMemoryRoot}` : "",
     "Write the child only into execution_agent_target. The parent directory is not writable.",
-    "If the folder already has files, fill or replace them. Do not create another sibling.",
+    "Preserve existing files. Do not create another sibling or overwrite an unrelated project.",
     "Do not copy secrets, .env, cookies, .memory, .queue or .logs.",
-    "After AGENTS.md exists, rebuild the registry so /agents can show the card. Do not start the child UI from this chat.",
+    "The host owns approvals, scaffold, registry and delivery. Never approve your own documents or start services. Author drafts only in the supplied authoring directory.",
     ...extra,
   ].filter(Boolean).join("\n");
 }
@@ -57,7 +54,7 @@ function normalizeSlug(value) {
   return slug !== "" && SLUG.test(slug) ? slug : null;
 }
 
-/** Reserve one sibling plus instance agent memory. Never add the parent itself. */
+/** Reserve one sibling and optionally a confined draft directory. Canonical memory stays host-owned. */
 export function reserveTaskChatAgentTarget({
   allocator,
   ownerId,
@@ -68,6 +65,8 @@ export function reserveTaskChatAgentTarget({
   task = null,
   stateRoot = null,
   root = null,
+  authoringRoot = null,
+  writableTarget = true,
 } = {}) {
   let parsed = null;
   if (task) {
@@ -91,18 +90,22 @@ export function reserveTaskChatAgentTarget({
       }
       if (!agentTarget) throw error;
     }
-    additionalWritableDirs.push(agentTarget);
+    if (writableTarget) additionalWritableDirs.push(agentTarget);
   }
-  if (agentMemoryRoot) {
-    mkdirSync(agentMemoryRoot, { recursive: true, mode: 0o700 });
-    additionalWritableDirs.push(realpathSync(agentMemoryRoot));
-  }
-  if (stateRoot) {
-    for (const parts of [["agents", "contracts"], ["audit"]]) {
-      const directory = resolvePrithaStatePathFrom({ root: root || undefined, stateRoot }, ...parts);
-      mkdirSync(directory, { recursive: true, mode: 0o700 });
-      additionalWritableDirs.push(realpathSync(directory));
+  // Canonical memory and audit are host-owned. Legacy tasks may edit their
+  // target, but must use the UI for approvals instead of gaining broad writes.
+  if (authoringRoot) {
+    const boundary=stateRoot && path.join(path.resolve(stateRoot),'creation-drafts');
+    if(!boundary || path.dirname(path.resolve(authoringRoot))!==boundary || !/^creation_[a-f0-9]{24}$/.test(path.basename(authoringRoot))) {
+      throw Object.assign(new Error('Invalid creation draft directory'),{code:'creation_document_boundary'});
     }
+    mkdirSync(boundary,{recursive:true,mode:0o700});
+    if(realpathSync(boundary)!==path.join(realpathSync(stateRoot),'creation-drafts') || lstatSync(boundary).isSymbolicLink()
+      || (existsSync(authoringRoot) && lstatSync(authoringRoot).isSymbolicLink())) {
+      throw Object.assign(new Error('Creation draft directory cannot redirect to another location'),{code:'creation_document_boundary'});
+    }
+    mkdirSync(authoringRoot, { recursive: true, mode: 0o700 });
+    additionalWritableDirs.push(realpathSync(authoringRoot));
   }
   return { requested: true, additionalWritableDirs, agentTarget, parsed };
 }

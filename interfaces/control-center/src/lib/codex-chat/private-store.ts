@@ -38,6 +38,7 @@ export type ChatBinding = {
   workspacePath?: string;
   executionWorkspace?: ExecutionWorkspace;
   subject?: ChatSubject | null;
+  creationWorkflowVersion?: 1;
   profileIdentity?: string;
   chatId: string;
   clientThreadId: string;
@@ -191,6 +192,7 @@ export function normalizeChatBinding(value: unknown, defaultIdentityHash: string
     subject: row.subject && (row.subject.taskType === "self" || row.subject.taskType === "agent_creation")
       ? { taskType: row.subject.taskType, subjectId: /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(String(row.subject.subjectId || "")) ? String(row.subject.subjectId) : null }
       : null,
+    creationWorkflowVersion: row.creationWorkflowVersion === 1 ? 1 : undefined,
     profileIdentity: typeof row.profileIdentity === "string" ? row.profileIdentity : undefined,
     providerState: safeProviderState(row.providerState),
     modelId,

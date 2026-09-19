@@ -22,6 +22,14 @@ import { reserveTaskChatAgentTarget, taskChatAgentCreationNotice } from "../../.
 // @ts-expect-error plain ESM helper; types live next to the module for Node tests
 import { resolveTaskChatPhase, taskChatPhasePreamble, taskChatTimeoutCheckpoint, taskChatTurnTimeoutMs } from "../../../../../scripts/neuraldeep/task-chat-phases.mjs";
 import { privateUserContextFor } from "@/lib/private-user-context";
+import { AgentCreationStore, AgentCreationError, creationBudgetBlocker, creationPhase } from "../../../../../scripts/neuraldeep/agent-creation-store.mjs";
+import { creationRuntimeReceipt } from "../../../../../scripts/neuraldeep/creation-runtime-receipt.mjs";
+import { reviseCreationProposal, creationRevisionPending } from "../../../../../scripts/neuraldeep/creation-revision.mjs";
+import { preflightAgentCreation } from "../../../../../scripts/neuraldeep/creation-preflight.mjs";
+export { AgentCreationError };
+import { runCreationDelivery as deliverCreation, readCreationDelivery } from "../../../../../scripts/neuraldeep/creation-delivery.mjs";
+import { creationDraftRoot, creationReleaseIdentity, reconcileCreationArtifacts, creationJobView, approveCreationDocument, creationPrompt, creationHostStep, type CreationRequest } from "../../../../../scripts/neuraldeep/agent-creation.mjs";
+import { captureTargetFileManifest, diffTargetFileManifests, type TargetFileManifest } from "../../../../../scripts/neuraldeep/target-file-manifest.mjs";
 import { getPrithaRuntimeSettings } from "@/lib/realtime/pritha-runtime";
 import { getCodexModelCatalog } from "@/lib/settings/codex-model-catalog-server";
 import {
@@ -79,6 +87,8 @@ type CreateThreadWithFirstTurnInput = CreateThreadInput & {
 };
 
 type ActiveAttempt = {
+  creationManifest?: TargetFileManifest;
+  creationStartedAt?: number;
   intent?: ExecutionIntent;
   resumePausedKey?: boolean;
   turnId: string;
@@ -188,6 +198,7 @@ function retryDelay(probe: ProviderProbe) {
 function usageFromEvent(value: unknown): TurnView["usage"] {
   if (!value || typeof value !== "object") return null;
   const usage = value as Record<string, unknown>;
+  if (![usage.input_tokens,usage.output_tokens].every(value=>typeof value==='number' && Number.isSafeInteger(value) && value>=0))return null;
   return {
     inputTokens: Math.max(0, Number(usage.input_tokens) || 0),
     cachedInputTokens: Math.max(0, Number(usage.cached_input_tokens) || 0),
@@ -240,6 +251,230 @@ export class CodexChatGateway {
   private eventSequence = 0;
   private recoveryComplete = false;
   private recoveryPromise: Promise<void> | null = null;
+  private readonly creationAdvances = new Set<string>();
+  private readonly creationDeliveries = new Map<string,AbortController>();
+
+  private withCreationStore<T>(work:(store:AgentCreationStore)=>T):T {
+    const coordination = new NeuralDeepCoordinationStore(neuralDeepCoordinationPaths(this.store.stateRoot,this.root));
+    try { return work(new AgentCreationStore(coordination)); } finally { coordination.close(); }
+  }
+
+  private ensureCreationJob(binding:ChatBinding) {
+    if(binding.creationWorkflowVersion!==1)return null;
+    return this.withCreationStore(store=>{
+      const existing=store.get(binding.chatId);if(existing)return existing;
+      const versions=creationReleaseIdentity(this.root);
+      if(versions.sourceDirty || !versions.source || versions.source!==versions.runtime)throw new AgentCreationError('creation_release_mismatch');
+      const instanceId=this.store.stateIdentityHash;
+      return store.create({chatId:binding.chatId,instanceId,agentId:binding.subject!.subjectId,releaseSha:versions.source,
+        target:path.join(resolvePrithaAgentParent(this.root),binding.subject!.subjectId!),draftRoot:creationDraftRoot(this.store.stateRoot,instanceId,binding.chatId)});
+    });
+  }
+
+  async creationStatus(chatId:string) {
+    await this.ensureRecoveredAfterRestart();
+    const binding=await this.requireBinding(chatId);
+    if(binding.creationWorkflowVersion!==1)return {job:null,legacy:binding.subject?.taskType==='agent_creation'};
+    await this.reconcileCreationExecution(chatId,binding);
+    const job=this.withCreationStore(store=>store.get(chatId));
+    return {job:job ? creationJobView(job,{root:this.root,stateRoot:this.store.stateRoot,executionSha:binding.executionWorkspace?.baseCommit}) : null,
+      legacy:binding.subject?.taskType==='agent_creation' && binding.creationWorkflowVersion!==1};
+  }
+
+  async creationAction(chatId:string,request:CreationRequest) {
+    await this.ensureRecoveredAfterRestart();
+    const binding=await this.requireBinding(chatId);
+    await this.reconcileCreationExecution(chatId,binding);
+    if(binding.archived || binding.creationWorkflowVersion!==1)throw new AgentCreationError('creation_task_unavailable');
+    const receipt=this.withCreationStore(store=>store.beginAction(chatId,request));
+    if(receipt.replayed) {
+      if(receipt.status!=='completed')return this.recoverCreationAction(chatId,request);
+      if(receipt.result?.error)throw new AgentCreationError(receipt.result.error.code,receipt.result.error.message);
+      return {...await this.creationStatus(chatId),replayed:true};
+    }
+    try {
+      if(!['pause','cancel'].includes(request.action) && (this.activeTurns.has(chatId) || this.creationAdvances.has(chatId)))throw new AgentCreationError('creation_step_active','Дождитесь завершения текущего шага.');
+      let job=this.withCreationStore(store=>store.get(chatId));
+      const view=creationJobView(job,{root:this.root,stateRoot:this.store.stateRoot});
+      if(!view.actions[request.action])throw new AgentCreationError('creation_action_unavailable','Это действие сейчас недоступно.');
+      if(request.action==='approve_contract' || request.action==='approve_outcome') {
+        const kind=request.action==='approve_contract'?'contract':'outcome';
+        if(kind==='contract') {
+          const reservation=this.withCreationStore(store=>store.store.db.prepare('SELECT owner,path,state FROM execution_agent_targets WHERE path=?').get(job.target));
+          const preflight=await preflightAgentCreation({job,root:this.root,stateRoot:this.store.stateRoot,agentParent:resolvePrithaAgentParent(this.root),
+            reservation:reservation?{ownerId:reservation.owner,path:reservation.path,state:reservation.state}:null,expectedOwnerId:binding.voiceTopicId || chatId,
+            providerStatus:null,checkProvider:false});
+          const blockers=[...preflight.blockers.filter(item=>!/^creation_(provider_|runtime_unavailable|model_unavailable)/.test(item.code)),...(preflight.warnings || [])];
+          if(blockers.length)throw new AgentCreationError(blockers[0].code,blockers[0].message);
+        }
+        job=approveCreationDocument(job,kind,request,{root:this.root,stateRoot:this.store.stateRoot});
+        this.withCreationStore(store=>store.update(chatId,()=>job,request.expectedRevision));
+      } else if(request.action==='revise_proposal') {
+        this.withCreationStore(store=>{
+          const next=reviseCreationProposal(job,request,{root:this.root,stateRoot:this.store.stateRoot,coordination:store.store});
+          return store.update(chatId,()=>next,job.revision);
+        });
+      } else {
+        const blocker=request.action==='continue' ? creationBudgetBlocker(job) : null;
+        if(blocker)throw new AgentCreationError(blocker.code,blocker.message);
+        if(request.action==='continue' && job.activeTurnId)throw new AgentCreationError('creation_execution_unconfirmed','Предыдущее исполнение ещё не завершено или его завершение не подтверждено.');
+        this.withCreationStore(store=>store.update(chatId,current=>({...current,
+          status:request.action==='cancel'?'cancelled':request.action==='pause'?'paused':'pending',
+          autoContinue:request.action==='continue',blocker:null,lastAction:request.requestId}),request.expectedRevision));
+        if(['pause','cancel'].includes(request.action) && this.activeTurns.has(chatId))await this.interruptTurn(chatId);
+        if(['pause','cancel'].includes(request.action))this.creationDeliveries.get(chatId)?.abort();
+      }
+      this.withCreationStore(store=>store.finishAction(chatId,request.requestId,{ok:true}));
+      if(!['pause','cancel'].includes(request.action))void this.advanceCreation(chatId);
+      return {...await this.creationStatus(chatId),replayed:false};
+    } catch(error) {
+      if(request.action==='revise_proposal') {
+        const current=this.withCreationStore(store=>store.get(chatId));
+        if(creationRevisionPending(current,{stateRoot:this.store.stateRoot}) || current.revisionRequestId===request.requestId) {
+          throw new CodexChatGatewayError('creation_action_unconfirmed','Пересмотр предложения сохранён. Повторите это же действие для безопасного завершения.',503,true);
+        }
+      }
+      if(request.action.startsWith('approve_')) {
+        const current=this.withCreationStore(store=>store.get(chatId));
+        const recovered=reconcileCreationArtifacts(current,{root:this.root,stateRoot:this.store.stateRoot});
+        const kind=request.action==='approve_contract'?'contract':'outcome';
+        if(recovered.blocker?.code==='creation_approval_incomplete' || recovered.approvals[kind]?.requestId===request.requestId) {
+          throw new CodexChatGatewayError('creation_action_unconfirmed','Подтверждение сохранено. Повторите это же действие, чтобы завершить восстановление.',503,true);
+        }
+      }
+      const code=error instanceof AgentCreationError?error.code:'creation_action_failed';
+      const message=error instanceof Error?error.message:'Не удалось подтвердить действие.';
+      this.withCreationStore(store=>store.finishAction(chatId,request.requestId,{error:{code,message}}));
+      throw error;
+    }
+  }
+
+  private async recoverCreationAction(chatId:string,request:CreationRequest) {
+    if(this.activeTurns.has(chatId) || this.creationAdvances.has(chatId))throw new CodexChatGatewayError('creation_action_unconfirmed','Текущий шаг ещё выполняется. Повтор использует тот же запрос.',503,true);
+    const job=this.withCreationStore(store=>store.get(chatId));
+    if(request.action==='approve_contract' || request.action==='approve_outcome') {
+      const kind=request.action==='approve_contract'?'contract':'outcome';
+      const restored=approveCreationDocument(job,kind,request,{root:this.root,stateRoot:this.store.stateRoot});
+      this.withCreationStore(store=>store.update(chatId,()=>restored,job.revision));
+    } else if(request.action==='revise_proposal') {
+      this.withCreationStore(store=>{
+        const next=reviseCreationProposal(job,request,{root:this.root,stateRoot:this.store.stateRoot,coordination:store.store});
+        return store.update(chatId,()=>next,job.revision);
+      });
+    } else if(job.lastAction!==request.requestId) {
+      if(job.revision!==request.expectedRevision)throw new CodexChatGatewayError('creation_action_unconfirmed','Состояние изменилось до завершения действия. Нужна проверка сохранённой операции.',503,true);
+      if(request.action==='continue') {
+        const blocker=creationBudgetBlocker(job);
+        if(blocker || job.activeTurnId)throw new AgentCreationError(blocker?.code || 'creation_execution_unconfirmed',blocker?.message);
+      }
+      this.withCreationStore(store=>store.update(chatId,current=>({...current,status:request.action==='cancel'?'cancelled':request.action==='pause'?'paused':'pending',
+        autoContinue:request.action==='continue',lastAction:request.requestId,blocker:null}),request.expectedRevision));
+    }
+    this.withCreationStore(store=>store.finishAction(chatId,request.requestId,{ok:true}));
+    if(!['pause','cancel'].includes(request.action))void this.advanceCreation(chatId);
+    return {...await this.creationStatus(chatId),replayed:true};
+  }
+
+  private async reconcileCreationExecution(chatId:string,binding:ChatBinding) {
+    if(this.activeTurns.has(chatId) || this.creationAdvances.has(chatId) || this.creationDeliveries.has(chatId))return;
+    let job=this.withCreationStore(store=>store.get(chatId));
+    if(!job)return;
+    job=this.withCreationStore(store=>store.update(chatId,current=>reconcileCreationArtifacts(current,{root:this.root,stateRoot:this.store.stateRoot})));
+    if(job.activeTurnId) {
+      const turn=await this.store.getTurn(chatId,job.activeTurnId);
+      const receipt=this.withCreationStore(store=>creationRuntimeReceipt(store.store,job.activeTurnId,{dispatched:turn?.executionIntent?.dispatchState!=='accepted'}));
+      if(!receipt.processExited) {
+        this.withCreationStore(store=>store.update(chatId,current=>({...current,
+          status:['paused','cancelled'].includes(current.status)?current.status:'blocked',
+          blocker:{code:'creation_execution_unconfirmed',message:'Хост проверяет завершение предыдущего процесса. Повторный запуск пока недоступен.'}})));
+        return;
+      }
+      try {this.admission.reconcileWorkload(job.activeTurnId,'cancelled');}
+      catch {return;}
+      const before=job.stepManifest as TargetFileManifest|undefined;
+      const after=before ? captureTargetFileManifest(before.targetRoot,{allowedParent:path.dirname(before.targetRoot)}) : null;
+      const activeMs=job.stepStartedAt ? Math.max(0,Date.now()-Date.parse(job.stepStartedAt)) : 0;
+      this.withCreationStore(store=>{
+        store.recordTurn(chatId,{turnId:job.activeTurnId,tokens:receipt.tokens,activeMs,dispatched:turn?.executionIntent?.dispatchState==='dispatched',
+          ok:turn?.status==='completed',code:'creation_recovered',message:'Сохранённый шаг восстановлен. Проверьте checkpoint и продолжите эту задачу.',
+          checkpoint:{...creationCheckpointEvidence(job,turn),turnId:job.activeTurnId,phase:job.phase,files:before&&after?diffTargetFileManifests(before,after):null,at:new Date().toISOString(),recovered:true}});
+        store.update(chatId,current=>reconcileCreationArtifacts({...current,activeTurnId:null,autoContinue:false,
+          status:['cancelled','paused'].includes(current.status)?current.status:'paused'}, {root:this.root,stateRoot:this.store.stateRoot}));
+      });
+      if(turn && !['completed','failed','interrupted'].includes(turn.status))await this.updateTurn(chatId,turn.turnId,current=>({...current,status:'interrupted',completedAt:new Date().toISOString(),
+        error:{code:'creation_recovered',message:'Процесс остановлен; checkpoint сохранён в этой задаче.'}}));
+      job=this.withCreationStore(store=>store.get(chatId));
+    }
+    for(const turnId of job.budget.unknownAttempts as string[]) {
+      if(!job.budget.turns[turnId])continue;
+      const receipt=this.withCreationStore(store=>creationRuntimeReceipt(store.store,turnId));
+      if(receipt.processExited && receipt.tokens!==null && receipt.receiptId)this.withCreationStore(store=>store.reconcileTurnUsage(chatId,
+        {receiptId:receipt.receiptId!,source:'neuraldeep-runtime',chatId,turnId,tokens:receipt.tokens!,processExited:true}));
+    }
+    if(job.deliveryRunId && binding.nativeThreadId) {
+      const result=readCreationDelivery(job,{root:this.root,stateRoot:this.store.stateRoot,task:{chatId,nativeThreadId:binding.nativeThreadId,providerId:'neuraldeep_cli',stateIdentityHash:binding.stateIdentityHash}});
+      if(result)this.withCreationStore(store=>store.update(chatId,current=>({...current,delivery:result,
+        status:['cancelled','paused'].includes(current.status)?current.status:result.adopted?'ready':current.status==='running'?'paused':current.status,
+        autoContinue:false,blocker:result.blocker?{code:result.blocker.code,message:result.blocker.message||result.blocker.summary}:current.blocker,
+        budget:{...current.budget,tokensUsed:result.usage.knownTotalTokens,activeMs:result.usage.activeMs,
+          unknownAttempts:result.usage.coverage==='complete'?current.budget.unknownAttempts.filter((id:string)=>id!==result.runId):[...new Set([...current.budget.unknownAttempts,result.runId])]}})));
+    }
+  }
+
+  private async advanceCreation(chatId:string) {
+    if(this.creationAdvances.has(chatId) || this.activeTurns.has(chatId))return;
+    this.creationAdvances.add(chatId);
+    try {
+      let job=this.withCreationStore(store=>store.get(chatId));
+      if(!job || !job.autoContinue || job.status!=='pending')return;
+      job=this.withCreationStore(store=>store.update(chatId,current=>reconcileCreationArtifacts(current,{root:this.root,stateRoot:this.store.stateRoot})));
+      if(job.status!=='pending')return;
+      const blocker=creationBudgetBlocker(job);
+      if(blocker) {this.withCreationStore(store=>store.update(chatId,current=>({...current,status:'blocked',blocker})));return;}
+      const binding=await this.requireBinding(chatId),phase=creationPhase(job);
+      if(phase==='research' && job.researchAttemptCompleted) {
+        this.withCreationStore(store=>store.update(chatId,current=>({...current,status:'running',phase:'scaffold'})));
+        job=await creationHostStep(job,{root:this.root,stateRoot:this.store.stateRoot,sourceRoot:binding.executionWorkspace?.cwd || binding.workspacePath || this.root,
+          sourceRevision:binding.executionWorkspace?.baseCommit,model:binding.modelId,effort:binding.effortId});
+        job=this.withCreationStore(store=>store.update(chatId,current=>({...current,
+          researchReady:job.researchReady,scaffoldReady:job.scaffoldReady,scaffoldReceipt:job.scaffoldReceipt,phase:job.phase,
+          status:['paused','cancelled'].includes(current.status)?current.status:job.status,
+          blocker:['paused','cancelled'].includes(current.status)?current.blocker:job.blocker})));
+      }
+      if(!job.autoContinue || ['paused','cancelled'].includes(job.status))return;
+      if(job.scaffoldReady) {
+        await this.runCreationDelivery(chatId,binding);
+        return;
+      }
+      // One native chat, bounded internal turns. No free-form phase commands.
+      await this.startTurn(chatId,{clientMessageId:`creation_${job.jobId.slice(-24)}_${job.revision}`,input:[{type:'text',text:'Продолжи создание агента по согласованному заданию и сохранённому состоянию.'}]});
+    } catch(error) {
+      const code=error && typeof error==='object' && 'code' in error ? String(error.code) : 'creation_step_failed';
+      this.withCreationStore(store=>store.update(chatId,current=>({...current,status:['paused','cancelled'].includes(current.status)?current.status:'blocked',
+        ...(code==='creation_research_gate_blocked'?{researchAttemptCompleted:false,researchReady:false}:{}),
+        blocker:{code,message:error instanceof Error?error.message:'Не удалось завершить шаг.'}})));
+    } finally {this.creationAdvances.delete(chatId);await this.emitThreadUpdated(chatId);}
+  }
+
+  private async runCreationDelivery(chatId:string,binding:ChatBinding) {
+    const job=this.withCreationStore(store=>store.get(chatId));
+    if(!job || !job.autoContinue || ['paused','cancelled'].includes(job.status))return;
+    if(!binding.nativeThreadId)throw new AgentCreationError('creation_session_missing');
+    const controller=new AbortController();this.creationDeliveries.set(chatId,controller);
+    this.withCreationStore(store=>store.update(chatId,current=>({...current,status:'running',phase:'implement'})));
+    try {
+      const result=await deliverCreation(job,{root:this.root,stateRoot:this.store.stateRoot,agentParent:resolvePrithaAgentParent(this.root),model:binding.modelId,effort:binding.effortId || undefined,
+        task:{chatId,nativeThreadId:binding.nativeThreadId,providerId:'neuraldeep_cli',stateIdentityHash:binding.stateIdentityHash},signal:controller.signal,
+        shouldContinue:()=>this.withCreationStore(store=>{const current=store.get(chatId);return current?.autoContinue && !['paused','cancelled'].includes(current.status);}),
+        onRunId:runId=>{this.withCreationStore(store=>store.update(chatId,current=>({...current,deliveryRunId:runId})));}});
+      this.withCreationStore(store=>store.update(chatId,current=>({...current,
+        status:['paused','cancelled'].includes(current.status)?current.status:result.adopted?'ready':'blocked',
+        phase:result.adopted?'finish':'verify',deliveryRunId:result.runId,delivery:result,blocker:result.blocker,
+        budget:{...current.budget,tokensUsed:result.usage.knownTotalTokens,activeMs:result.usage.activeMs,
+          unknownAttempts:result.usage.coverage==='complete' ? current.budget.unknownAttempts.filter((id:string)=>id!==result.runId)
+            : [...new Set([...current.budget.unknownAttempts,result.runId])]}})));
+    } finally {this.creationDeliveries.delete(chatId);}
+  }
 
   async runtimeStatus() {
     await this.ensureRecoveredAfterRestart();
@@ -287,6 +522,7 @@ export class CodexChatGateway {
     if (!result.created && result.binding.createHash !== proposed.binding.createHash) {
       throw new CodexChatGatewayError("idempotency_conflict", "This clientThreadId was already used with different values.", 409);
     }
+    this.ensureCreationJob(result.binding);
     const detail = await this.threadDetail(result.binding.chatId);
     if (result.created) this.emit(result.binding.chatId, "thread.updated", { thread: detail.thread });
     return { detail, replayed: !result.created };
@@ -316,6 +552,7 @@ export class CodexChatGateway {
     if (binding.createHash !== proposed.binding.createHash) {
       throw new CodexChatGatewayError("idempotency_conflict", "This clientThreadId was already used with different values.", 409);
     }
+    this.ensureCreationJob(binding);
     if (!result.created) {
       const storedReceipt = await this.store.receipt(binding.chatId, input.initialTurn.clientMessageId);
       const receipt = storedReceipt?.kind === "message" ? storedReceipt.value : null;
@@ -368,6 +605,11 @@ export class CodexChatGateway {
     if (subject !== null && (typeof subject !== "object" || !["self","agent_creation"].includes(String(subject.taskType)) || (subject.subjectId != null && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(String(subject.subjectId))))) {
       throw new CodexChatGatewayError("invalid_request", "subject.taskType must be self|agent_creation and subject.subjectId a slug or null.", 400);
     }
+    if(subject?.taskType==='agent_creation') {
+      if(!subject.subjectId)throw new AgentCreationError('creation_name_required','Укажите имя нового агента.',400);
+      const release=creationReleaseIdentity(this.root);
+      if(release.sourceDirty || !release.source || release.source!==release.runtime)throw new AgentCreationError('creation_release_mismatch','Для нового агента нужен чистый проверенный выпуск: исходники и работающая Pritha должны совпадать.');
+    }
     for (const key of ["modelId", "effortId", "serviceTierId"] as const) {
       const threadValue = input.settings?.[key];
       const turnValue = initialTurn?.settings?.[key];
@@ -405,6 +647,7 @@ export class CodexChatGateway {
       profileIdentity: neuralDeepRuntimeIdentity(this.store.stateRoot).profileIdentity,
       workspacePath: this.root,
       subject: subject ? { taskType: subject.taskType, subjectId: subject.subjectId ?? null } : null,
+      creationWorkflowVersion: subject?.taskType === 'agent_creation' ? 1 : undefined,
       identityStatus: "recorded",
       group: "my_chats",
       origin: "chat",
@@ -440,7 +683,7 @@ export class CodexChatGateway {
   }
 
   private executionIntent(binding: ChatBinding, turnId: string, settings = getPrithaRuntimeSettings()): ExecutionIntent {
-    const sandbox = settings.codexSandbox === "auto" ? "workspace-write" : settings.codexSandbox || "read-only";
+    const sandbox = binding.creationWorkflowVersion===1 ? 'workspace-write' : settings.codexSandbox === "auto" ? "workspace-write" : settings.codexSandbox || "read-only";
     return { version: 1, attemptId: `attempt_${turnId}_${randomUUID().replace(/-/g, "")}`,
       modelId: binding.modelId, effortId: binding.effortId, cwd: binding.workspacePath || this.root,
       profileIdentity: binding.profileIdentity || neuralDeepRuntimeIdentity(this.store.stateRoot).profileIdentity,
@@ -744,7 +987,9 @@ export class CodexChatGateway {
         if (this.activeTurns.has(chatId)) throw new CodexChatGatewayError("turn_active", "This chat already has an active turn.", 409);
         if (request?.expectedAttemptId && request.expectedAttemptId !== turn.executionIntent?.attemptId) throw new CodexChatGatewayError("turn_changed", "A newer attempt already replaced this recovery request.", 409);
         if (!isRecoverableTurn(turn)) throw new CodexChatGatewayError("turn_recovery_unavailable", "This turn no longer needs recovery.", 409);
-        if ((action === "resume" || action === "retry") && turn.error?.code === "turn_step_timeout") throw new CodexChatGatewayError("recovery_not_allowed", "This child-agent step timed out. Open a New chat with the same Subject and paste the checkpoint; Resume and Retry are disabled for step timeouts.", 409);
+        if ((action === "resume" || action === "retry") && turn.error?.code === "turn_step_timeout") throw new CodexChatGatewayError("recovery_not_allowed", binding.creationWorkflowVersion === 1
+          ? "The checkpoint is saved. Use Continue in the creation card; the host verifies the previous execution and resumes this task."
+          : "This legacy child-agent step timed out. Its checkpoint is preserved; review the recorded execution before continuing.", 409);
         const identity = neuralDeepRuntimeIdentity(this.store.stateRoot);
         if (action !== "cancel" && (binding.archived || binding.providerId !== "neuraldeep_cli" || binding.identityStatus === "unverified"
           || binding.stateIdentityHash !== identity.stateIdentityHash || (binding.profileIdentity && binding.profileIdentity !== identity.profileIdentity))) throw new RuntimeIdentityMismatchError();
@@ -968,6 +1213,22 @@ export class CodexChatGateway {
     if(!active.intent)throw new RuntimeIdentityMismatchError();
     const journal=new NeuralDeepCoordinationStore(neuralDeepCoordinationPaths(this.store.stateRoot,this.root));
     try {
+      const initial=await this.requireBinding(chatId);
+      const creations=initial.creationWorkflowVersion===1 ? new AgentCreationStore(journal) : null;
+      let creation=creations?.get(chatId);
+      if(initial.creationWorkflowVersion===1 && !creation) {
+        const versions=creationReleaseIdentity(this.root);
+        if(versions.sourceDirty || !versions.source || versions.source!==versions.runtime)throw new AgentCreationError('creation_release_mismatch');
+        const instanceId=this.store.stateIdentityHash;
+        creation=creations!.create({chatId,instanceId,agentId:initial.subject!.subjectId,releaseSha:versions.source,
+          target:path.join(resolvePrithaAgentParent(this.root),initial.subject!.subjectId!),draftRoot:creationDraftRoot(this.store.stateRoot,instanceId,chatId)});
+      }
+      if(creation) {
+        const blocker=creationBudgetBlocker(creation);
+        if(blocker)throw new AgentCreationError(blocker.code,blocker.message);
+        if(['cancelled','ready'].includes(creation.status))throw new AgentCreationError('creation_terminal','Эта задача создания завершена.');
+        if(creation.approvals.outcome && !['research'].includes(creationPhase(creation)))throw new AgentCreationError('creation_host_owned_phase','Следующий шаг выполняется координатором создания.');
+      }
       const workspaces=new NeuralDeepExecutionWorkspaces(journal,{stateRoot:this.store.stateRoot});
       let workspace;
       while(!workspace) {
@@ -975,7 +1236,8 @@ export class CodexChatGateway {
         const binding=await this.requireBinding(chatId);
         try {workspace=await workspaces.prepare({ownerId:binding.voiceTopicId || chatId,sourcePath:binding.executionWorkspace?.source || this.root,
           mutating:active.intent.sandbox!=="read-only",nativeSession:Boolean(binding.nativeThreadId),
-          existingCwd:binding.nativeThreadId || binding.executionWorkspace ? binding.workspacePath || this.root : null});}
+          ...(creation ? {expectedCommit:creation.releaseSha,requireClean:true} : {}),
+          existingCwd:creation ? binding.executionWorkspace?.cwd || null : binding.nativeThreadId || binding.executionWorkspace ? binding.workspacePath || this.root : null});}
         catch(error) {
           if(error instanceof ExecutionWorkspaceError && ["workspace_preparing","workspace_git_admin_busy"].includes(error.code)) {
             await new Promise(resolve=>setTimeout(resolve,100));continue;
@@ -994,18 +1256,33 @@ export class CodexChatGateway {
         task:owner.subject ? { taskType:owner.subject.taskType, subjectId:owner.subject.subjectId } : null,
         stateRoot:this.store.stateRoot,
         root:this.root,
+        authoringRoot:creation?.draftRoot,
+        writableTarget:!creation,
       });
+      if(creation) {
+        const reservation=journal.db.prepare('SELECT owner,path,state FROM execution_agent_targets WHERE path=?').get(reserved.agentTarget!) as {owner:string;path:string;state:string}|undefined;
+        const preflight=await preflightAgentCreation({job:creation,root:this.root,stateRoot:this.store.stateRoot,agentParent:resolvePrithaAgentParent(this.root),
+          reservation:reservation?{ownerId:reservation.owner,path:reservation.path,state:reservation.state}:null,expectedOwnerId:owner.voiceTopicId || chatId,
+          providerStatus:await this.runtime.status({model:owner.modelId,effort:owner.effortId})});
+        if(!preflight.ok)throw new AgentCreationError(preflight.blockers[0].code,preflight.blockers[0].message);
+        active.creationManifest=captureTargetFileManifest(creation.draftRoot,{allowedParent:path.dirname(creation.draftRoot)});
+        creations!.update(chatId,current=>({...current,status:'running',phase:creationPhase(current),activeTurnId:active.turnId,blocker:null,
+          preflightWarnings:preflight.warnings || [],stepManifest:active.creationManifest,stepStartedAt:null}));
+      } else if(reserved.agentTarget) {
+        active.creationManifest=captureTargetFileManifest(reserved.agentTarget,{allowedParent:resolvePrithaAgentParent(this.root)});
+      }
       const database=await this.store.historyStore();
+      const executionCwd=creation ? creation.draftRoot : workspace.cwd;
       database.transaction(()=>{
         const saved=database.turn(chatId,active.turnId);
         if(active.interrupted || saved?.executionIntent?.attemptId!==active.intent!.attemptId || saved.executionIntent.dispatchState!=="accepted")throw new AdmissionCancelledError();
-        if(saved.executionIntent.workspacePrepared && saved.executionIntent.cwd!==workspace.cwd)throw new RuntimeIdentityMismatchError();
-        const next={...saved.executionIntent,cwd:workspace.cwd,workspacePrepared:true,
+        if(saved.executionIntent.workspacePrepared && saved.executionIntent.cwd!==executionCwd)throw new RuntimeIdentityMismatchError();
+        const next={...saved.executionIntent,cwd:executionCwd,workspacePrepared:true,
           executionCodeRoot:workspace.source===realpathSync(this.root) && workspace.mode==="worktree" ? workspace.cwd : this.root,
           additionalWritableDirs:reserved.additionalWritableDirs,
           executionAgentTarget:reserved.agentTarget,
-          agentCreationRequested:reserved.requested};
-        database.mutate(chatId,current=>({...current,workspacePath:workspace.cwd,executionWorkspace:workspace}));
+          agentCreationRequested:reserved.requested,...(creation?{creationGeneration:creation.generation || 1}:{})};
+        database.mutate(chatId,current=>({...current,workspacePath:executionCwd,executionWorkspace:workspace}));
         database.mutateTurn(chatId,active.turnId,current=>({...current,executionIntent:next}));
         active.intent=next;
       });
@@ -1031,12 +1308,17 @@ export class CodexChatGateway {
       });
       await this.store.patch(chatId, { providerState: "available", lastStatus: "active", updatedAt: new Date().toISOString() });
       const attachmentDispatch = await this.attachmentDispatch(binding, active.turnId);
+      const creation=binding.creationWorkflowVersion===1 ? this.withCreationStore(store=>store.get(chatId)) : null;
       if (this.activeTurns.get(chatId) !== active || active.interrupted) return;
       await this.updateTurn(chatId,active.turnId,turn=>{
         if (turn.executionIntent?.attemptId !== intent.attemptId || turn.executionIntent.dispatchState !== "accepted") throw new AdmissionCancelledError();
         return {...turn,executionIntent:{...turn.executionIntent,dispatchState:"dispatched",queueRevision:(turn.executionIntent.queueRevision || 1)+1}};
       });
       if (this.activeTurns.get(chatId) !== active || active.interrupted) return;
+      if(creation) {
+        active.creationStartedAt=Date.now();
+        this.withCreationStore(store=>store.update(chatId,current=>({...current,stepStartedAt:new Date(active.creationStartedAt!).toISOString()})));
+      }
       const run = await this.runner.start({
         admission: active.admissionLease?.launcherReceipt,
         model: intent.modelId,
@@ -1044,18 +1326,19 @@ export class CodexChatGateway {
         sandbox: intent.sandbox,
         cwd: intent.cwd,
         executionCodeRoot: intent.executionCodeRoot,
+        creationAuthoringRoot:creation?.draftRoot,
         additionalWritableDirs: intent.additionalWritableDirs,
         searchUserText:active.userText,
         searchOwner:chatId,
         searchTurn:active.turnId,
         images: attachmentDispatch.images,
         attachmentManifest: attachmentDispatch.attachmentManifest,
-        prompt: [active.userText, taskChatAgentCreationNotice({
+        prompt: [active.userText, creation ? creationPrompt({...creation,executionCodeRoot:intent.executionCodeRoot}) : taskChatAgentCreationNotice({
           agentTarget: intent.executionAgentTarget,
           agentMemoryRoot: resolvePrithaAgentMemoryRoot(this.root),
           requested: Boolean(intent.agentCreationRequested),
           writableDirs: intent.additionalWritableDirs || [],
-        }), taskChatPhasePreamble({
+        }), creation ? '' : taskChatPhasePreamble({
           phase: resolveTaskChatPhase({ subject: binding.subject ?? null, text: active.userText }),
           timeoutMs: intent.timeoutMs,
         }), attachmentDispatch.prompt, privateUserContextFor(active.userText)].filter(Boolean).join("\n\n"),
@@ -1063,7 +1346,7 @@ export class CodexChatGateway {
         network: intent.network,
         usageSource: "codex-chat",
         workloadId: active.turnId,
-        timeoutMs: intent.timeoutMs,
+        timeoutMs: creation ? Math.max(1,Math.min(intent.timeoutMs,creation.budget.maxActiveMs-creation.budget.activeMs)) : intent.timeoutMs,
         stdoutLogPath: path.join(this.store.root, "turns", active.turnId, "stdout.jsonl"),
         stderrLogPath: path.join(this.store.root, "turns", active.turnId, "stderr.log"),
         onRawLine: async line => { (await this.store.historyStore()).sourceRaw(chatId, active.turnId, line); },
@@ -1212,12 +1495,14 @@ export class CodexChatGateway {
       const timeoutBinding = await this.requireBinding(chatId);
       if (timeoutBinding.subject?.taskType === "agent_creation") {
         const savedTurn = (await this.store.historyStore()).turn(chatId, active.turnId);
+        const afterManifest=active.creationManifest ? captureTargetFileManifest(active.creationManifest.targetRoot,{allowedParent:path.dirname(active.creationManifest.targetRoot)}) : null;
         await this.finishAttempt(chatId, "failed", {
           code: "turn_step_timeout",
           message: taskChatTimeoutCheckpoint({
             items: savedTurn?.items || [],
             phase: resolveTaskChatPhase({ subject: timeoutBinding.subject, text: active.userText }),
             timeoutMs: active.intent?.timeoutMs ?? null,
+            fileDiff:active.creationManifest && afterManifest ? diffTargetFileManifests(active.creationManifest,afterManifest) : null,
           }),
         });
         return;
@@ -1267,6 +1552,7 @@ export class CodexChatGateway {
     }, retryDelay(probe));
     active.retryTimer.unref();
     await this.emitThreadUpdated(chatId, active.turnId);
+
   }
 
   private async retryWaitingAttempt(chatId: string, active: ActiveAttempt) {
@@ -1319,6 +1605,29 @@ export class CodexChatGateway {
       this.emit(chatId, event, status === "failed" ? { turn, retryMode: "review" } : { turn }, { turnId: turn.turnId });
     }
     await this.emitThreadUpdated(chatId, active.turnId);
+    const creation=(await this.requireBinding(chatId)).creationWorkflowVersion===1 ? this.withCreationStore(store=>store.get(chatId)) : null;
+    if(creation) {
+      const after=active.creationManifest ? captureTargetFileManifest(active.creationManifest.targetRoot,{allowedParent:path.dirname(active.creationManifest.targetRoot)}) : null;
+      const checkpoint={...creationCheckpointEvidence(creation,turn),phase:creation.phase,turnId:active.turnId,
+        files:active.creationManifest && after ? diffTargetFileManifests(active.creationManifest,after) : null,
+        error,at:new Date().toISOString()};
+      this.withCreationStore(store=>{
+        const receipt=creationRuntimeReceipt(store.store,active.turnId,{dispatched:turn?.executionIntent?.dispatchState==='dispatched'});
+        store.recordTurn(chatId,{turnId:active.turnId,tokens:receipt.tokens,
+          activeMs:active.creationStartedAt ? Date.now()-active.creationStartedAt : 0,
+          dispatched:turn?.executionIntent?.dispatchState==='dispatched',ok:status==='completed',code:error?.code,message:error?.message,checkpoint});
+        return store.update(chatId,current=>{
+          const next=reconcileCreationArtifacts(current,{root:this.root,stateRoot:this.store.stateRoot});
+          if(!receipt.processExited) return {...next,activeTurnId:active.turnId,autoContinue:false,
+            status:['paused','cancelled'].includes(next.status)?next.status:'blocked',
+            blocker:{code:'creation_execution_unconfirmed',message:'Хост проверяет завершение предыдущего процесса. Повторный запуск пока недоступен.'}};
+          if(status==='completed' && creation.phase==='research')next.researchAttemptCompleted=true;
+          if(status==='completed' && !next.contract && next.status==='pending')next.status='waiting_input';
+          return next;
+        });
+      });
+      if(status==='completed')void this.advanceCreation(chatId);
+    }
   }
 
   private async findTurn(chatId: string, turnId: string) { return this.store.getTurn(chatId, turnId); }
@@ -1474,6 +1783,19 @@ export class CodexChatGateway {
     for (const subscriber of this.subscribers.get(chatId) || []) subscriber.send(record);
     return record;
   }
+}
+
+function creationCheckpointEvidence(job: {releaseSha?: string; revision?: number; contract?: {path: string; hash: string}; outcome?: {path: string; hash: string}}, turn: TurnView | null | undefined) {
+  const commands = (turn?.items || []).filter((item): item is Extract<ChatItemView, {kind: "command"}> => item.kind === "command");
+  return {
+    releaseSha: job.releaseSha || null,
+    jobRevision: job.revision ?? null,
+    documents: {contract: job.contract ? {path: job.contract.path, hash: job.contract.hash} : null,
+      outcome: job.outcome ? {path: job.outcome.path, hash: job.outcome.hash} : null},
+    commands: commands.slice(-30).map(item => ({itemId: item.id, command: item.commandPreview.slice(0, 500), exitCode: item.exitCode, status: item.status})),
+    commandHistoryTruncated: commands.length > 30,
+    historyTurnId: turn?.turnId || null,
+  };
 }
 
 declare global {

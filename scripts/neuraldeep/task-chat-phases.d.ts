@@ -25,6 +25,7 @@ export type TaskChatPhasePreambleOptions = {
 };
 
 export type TaskChatTimeoutCheckpointOptions = {
+  fileDiff?: {added:string[];modified:string[];deleted:string[];complete:boolean}|null;
   items?: TaskChatItem[];
   phase?: string | null;
   timeoutMs?: number | null;

@@ -1,0 +1,144 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { controlCenterRequest, ControlCenterRequestError, deliveryMayBeUnknown } from "@/lib/control-center-request";
+import type { CreationAction, CreationJobView, CreationRequest } from "@/lib/codex-chat/creation-types";
+import { CodexMarkdown } from "./CodexMarkdown";
+import { creationPendingKey, creationRequestForAction, readCreationPending, creationPhaseLabel, creationStatusLabel, creationShouldPoll, creationResultPresentation } from "./creation-client-state";
+
+const labels: Record<CreationAction, string> = { approve_contract: "Подтвердить контракт", approve_outcome: "Подтвердить Outcome Spec", continue: "Продолжить создание", pause: "Приостановить", cancel: "Отменить создание", revise_proposal: "Пересмотреть предложение" };
+const shortSha = (value: string | null | undefined) => value ? value.slice(0, 12) : "неизвестна";
+
+export function AgentCreationProgress({ chatId, refreshKey }: { chatId: string; refreshKey?: string | number }) {
+  const [job, setJob] = useState<CreationJobView | null>(null);
+  const [legacy, setLegacy] = useState(false);
+  const [pending, setPending] = useState<CreationRequest | null>(null);
+  const [actor, setActor] = useState<CreationRequest["actor"]>("user");
+  const [basis, setBasis] = useState("");
+  const [revisionReason, setRevisionReason] = useState("");
+  const [reviewed, setReviewed] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false), [message, setMessage] = useState(""), [pollingExpired, setPollingExpired] = useState(false);
+  const [pollEpoch, setPollEpoch] = useState(0);
+  const mounted = useRef(false), busyRef = useRef(false);
+  const endpoint = `/api/codex-chat/v1/threads/${encodeURIComponent(chatId)}/creation`;
+  const key = creationPendingKey(chatId);
+
+  useEffect(() => {
+    mounted.current = true;
+    try { setPending(readCreationPending(sessionStorage.getItem(key))); } catch { /* Browser storage may be unavailable. */ }
+    return () => { mounted.current = false; };
+  }, [key]);
+
+  const refresh = useCallback(async (signal?: AbortSignal) => {
+    const { data } = await controlCenterRequest<{ job: CreationJobView | null; legacy?: boolean }>(endpoint, { signal }, { timeoutMs: 15_000 });
+    if (mounted.current && !signal?.aborted) {
+      setJob(previous => previous && data.job && previous.jobId === data.job.jobId && previous.revision > data.job.revision ? previous : data.job);
+      setLegacy(data.legacy === true);
+    }
+    return data.job;
+  }, [endpoint]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let polls = 0;
+    setPollingExpired(false);
+    async function poll() {
+      try {
+        const value = await refresh(controller.signal);
+        if (controller.signal.aborted || !value || !creationShouldPoll(value.status)) return;
+        if (++polls >= 360) { setPollingExpired(true); return; }
+        timer = setTimeout(() => void poll(), document.hidden ? 15_000 : 5000);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        if (error instanceof ControlCenterRequestError && error.httpStatus === 404) return;
+        setMessage("Состояние создания пока недоступно. Обновите его перед следующим действием.");
+      }
+    }
+    void poll();
+    return () => { controller.abort(); if (timer) clearTimeout(timer); };
+  }, [refresh, refreshKey, pollEpoch]);
+
+  function persist(request: CreationRequest | null) {
+    setPending(request);
+    try { if (request) sessionStorage.setItem(key, JSON.stringify(request)); else sessionStorage.removeItem(key); }
+    catch { /* Ref/state still retain the idempotency key until this page is closed. */ }
+  }
+
+  function refreshManually() {
+    setMessage("");
+    setPollEpoch(previous => previous + 1);
+  }
+
+  async function act(action: CreationAction) {
+    if (!job || busyRef.current) return;
+    if (!pending && (!job.actions[action] || (actor === "codex-operator" && !basis.trim()))) return;
+    if (!pending && action === "revise_proposal" && !revisionReason.trim()) return;
+    const request = creationRequestForAction(pending, action, job.revision, actor, basis, crypto.randomUUID(), revisionReason);
+    busyRef.current = true; setBusy(true); persist(request); setMessage("");
+    try {
+      const { data } = await controlCenterRequest<{ job: CreationJobView }>(endpoint, {
+        method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": request.requestId }, body: JSON.stringify(request),
+      }, { timeoutMs: 30_000 });
+      if (!mounted.current) return;
+      setJob(data.job); persist(null); setMessage("Действие сохранено."); setPollEpoch(previous => previous + 1);
+    } catch (error) {
+      if (!mounted.current) return;
+      if (!deliveryMayBeUnknown(error)) persist(null);
+      setMessage(deliveryMayBeUnknown(error)
+        ? "Ответ не подтверждён. Проверьте сохранённое действие: повтор использует тот же запрос и не создаёт новую задачу."
+        : error instanceof ControlCenterRequestError ? error.message : "Действие не выполнено.");
+      try { await refresh(); } catch { /* Keep the original action and its error visible. */ }
+    } finally { busyRef.current = false; if (mounted.current) setBusy(false); }
+  }
+
+  if (!job && legacy) return <p className="codex-inline-notice" role="status">Историческая задача; автоматическое подключение отсутствует. Переписка доступна для чтения.</p>;
+  if (!job && !pending) return message ? <p className="codex-inline-notice" role="status">{message} <button type="button" className="outline-button compact" onClick={refreshManually}>Повторить обновление</button></p> : null;
+  if (!job) return <p role="status">Сохранён неподтверждённый запрос создания. <button type="button" className="outline-button compact" onClick={refreshManually}>Получить состояние</button></p>;
+  const locked = busy || Boolean(pending);
+  const delegatedMissing = actor === "codex-operator" && !basis.trim();
+  const result = creationResultPresentation(job);
+  const versionsDiffer = Boolean(job.versions.sourceDirty || (job.versions.runtime && job.versions.execution && job.versions.runtime !== job.versions.execution) || (job.versions.source && job.versions.execution && job.versions.source !== job.versions.execution));
+  return <section className="codex-operation-card" aria-label="Создание агента" style={{ marginBottom: 16, padding: 16 }}>
+    <h2>Создание агента · {creationPhaseLabel(job.phase)}</h2>
+    <p role="status">{creationStatusLabel(job.status)}. Агент {job.agentId}.</p>
+    {result.verified ? <p role="status">{result.message} {result.href ? <a className="outline-button compact" href={result.href}>Открыть карточку агента</a> : <a href="/agents">Открыть список агентов</a>}</p> : null}
+    <p>Расход: {job.budget.tokensUsed.toLocaleString("ru-RU")} / {job.budget.maxTokens.toLocaleString("ru-RU")} токенов; {Math.ceil(job.budget.activeMs / 60_000)} / {Math.ceil(job.budget.maxActiveMs / 60_000)} минут активной работы.</p>
+    {job.budget.unknownAttempts.length > 0 ? <p className="codex-inline-notice" role="alert">Есть исполнения с неподтверждённым расходом: {job.budget.unknownAttempts.length}. Продолжение доступно после сверки.</p> : null}
+    {job.blocker ? <p className="codex-inline-notice" role="alert">{job.blocker.message}</p> : null}
+    {pending ? <p role="status">Ожидает подтверждения: «{labels[pending.action]}». Оператор: {pending.actor === "codex-operator" ? "Codex по поручению пользователя" : "пользователь"}. Повтор сохранит исходную ревизию и основание поручения.</p> : null}
+    {versionsDiffer ? <p className="codex-inline-notice" role="status">Версии исходников, работающей Pritha и исполнения различаются. Создание закреплено за выпуском {shortSha(job.releaseSha)}.</p> : null}
+    <details><summary>Версии и восстановление</summary>
+      <p>Исходники: {shortSha(job.versions.source)}{job.versions.sourceDirty ? " · есть незакоммиченные изменения" : ""}. Control Center: {shortSha(job.versions.runtime)}. Исполнение: {shortSha(job.versions.execution)}.</p>
+      {job.checkpoint ? <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{typeof job.checkpoint === "string" ? job.checkpoint : JSON.stringify(job.checkpoint, null, 2)}</pre> : <p>Checkpoint пока отсутствует.</p>}
+    </details>
+    {([ ["contract", "Архитектурный контракт", "approve_contract"], ["outcome", "Outcome Spec — конечный результат", "approve_outcome"] ] as const).map(([kind, title, action]) => {
+      const document = job[kind];
+      if (!document) return null;
+      const approval = job.approvals[kind];
+      const approved = approval?.hash === document.hash;
+      return <div key={kind} style={{ marginTop: 12 }}>
+        <details><summary>{title}</summary><div style={{ maxHeight: 420, overflow: "auto" }}><CodexMarkdown markdown={document.text} /></div></details>
+        {approved ? <p>Эта ревизия подтверждена: {approval.actor === "codex-operator" ? "Codex по поручению пользователя" : "пользователь"}. {approval.authorizationBasis && approval.actor === "codex-operator" ? `Основание: ${approval.authorizationBasis}` : ""}</p> : approval ? <p role="alert">Подтверждение относится к другой ревизии документа.</p> : null}
+        {document.issues.length ? <ul>{document.issues.map((issue, index) => <li key={index}>{issue}</li>)}</ul> : null}
+        {job.actions[action] ? <><label style={{ display: "block", margin: "8px 0" }}><input type="checkbox" disabled={locked} checked={reviewed[kind] === document.hash} onChange={event => setReviewed(previous => ({ ...previous, [kind]: event.target.checked ? document.hash : "" }))} /> Проверена эта ревизия документа</label>
+          <button type="button" className="outline-button compact" disabled={locked || delegatedMissing || reviewed[kind] !== document.hash || document.issues.length > 0} onClick={() => void act(action)}>{labels[action]}</button></> : null}
+      </div>;
+    })}
+    <p>Проверка документа не является согласием. Контракт и Outcome Spec подтверждаются отдельно; готовый результат принимает пользователь.</p>
+    <label>Кто выполняет действие <select value={actor} disabled={locked} onChange={event => setActor(event.target.value as CreationRequest["actor"])}><option value="user">Пользователь</option><option value="codex-operator">Codex по поручению пользователя</option></select></label>
+    {actor === "codex-operator" ? <label style={{ display: "block", marginTop: 8 }}>Основание поручения <textarea value={basis} disabled={locked} maxLength={2000} rows={2} onChange={event => setBasis(event.target.value)} placeholder="Какое поручение пользователя разрешает этот контрольный прогон" style={{ width: "100%" }} /></label> : null}
+    {job.actions.revise_proposal ? <details style={{marginTop:12}}><summary>Пересмотреть предложение до создания проекта</summary>
+      <p>Предыдущие согласования сохранятся в истории. Новые контракт и Outcome Spec потребуют отдельных подтверждений.</p>
+      <label>Что нужно изменить <textarea value={revisionReason} disabled={locked} maxLength={2000} rows={3} onChange={event => setRevisionReason(event.target.value)} style={{width:"100%"}} /></label>
+      <button type="button" className="outline-button compact" disabled={locked || delegatedMissing || !revisionReason.trim()} onClick={() => void act("revise_proposal")}>{labels.revise_proposal}</button>
+    </details> : job.deliveryRunId ? <p>Проект уже создан. Изменение согласованного задания требует новой задачи и отдельного каталога.</p> : null}
+    <div className="codex-goal-fields" style={{ marginTop: 12, flexWrap: "wrap" }}>
+      {(["continue", "pause", "cancel"] as const).filter(action => job.actions[action]).map(action => <button key={action} type="button" className="outline-button compact" disabled={locked || delegatedMissing} onClick={() => void act(action)}>{labels[action]}</button>)}
+      {pending ? <button type="button" className="outline-button compact" disabled={busy} onClick={() => void act(pending.action)}>Проверить сохранённое действие</button> : null}
+      <button type="button" className="outline-button compact" disabled={busy} onClick={refreshManually}>Обновить состояние</button>
+    </div>
+    {pollingExpired ? <p role="status">Автоматическое обновление приостановлено. Можно обновить состояние вручную; работа Pritha продолжается.</p> : null}
+    {message ? <p role="status">{message}</p> : null}
+  </section>;
+}

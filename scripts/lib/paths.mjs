@@ -69,6 +69,14 @@ export function resolvePrithaAgentParent(options = {}) {
 export function resolvePrithaAgentMemoryRoot(options = {}) {
   const root = options.root ? path.resolve(options.root) : resolveTechscopeRoot(options);
   const stateRoot = resolvePrithaStateRoot({ ...options, root });
+  // Only the execution host sets this job-local authoring destination. It grants
+  // no approval rights: canonical contracts and host audit remain outside it.
+  if (process.env.PRITHA_AGENT_AUTHORING_ROOT && !options.canonical) {
+    const draft = path.resolve(process.env.PRITHA_AGENT_AUTHORING_ROOT);
+    const parent = path.join(stateRoot, 'creation-drafts');
+    if (path.dirname(draft) !== parent || !/^creation_[a-f0-9]{24}$/.test(path.basename(draft))) throw new Error('creation_authoring_root_invalid');
+    return draft;
+  }
   if (stateRoot !== root) return path.join(stateRoot, PRITHA_STATE_LAYOUT.agents);
   return existsSync(path.join(root, ".git")) || existsSync(path.join(root, "distribution", "manifest.json"))
     ? path.join(root, LEGACY_STATE_LAYOUT.agents) : path.join(root, "11_agents");
@@ -87,6 +95,9 @@ export function resolvePrithaStatePathFrom(options, kind, ...segments) {
   }
   const root = options?.root ? path.resolve(options.root) : resolveTechscopeRoot(options);
   const stateRoot = resolvePrithaStateRoot({ ...options, root });
+  if (kind === 'agents' && process.env.PRITHA_AGENT_AUTHORING_ROOT && !options?.canonical) {
+    return path.join(resolvePrithaAgentMemoryRoot({ ...options, root, stateRoot }), ...segments);
+  }
   const directory = stateRoot === root ? LEGACY_STATE_LAYOUT[kind] : PRITHA_STATE_LAYOUT[kind];
   return path.join(stateRoot, directory, ...segments);
 }
