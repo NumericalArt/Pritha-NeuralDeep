@@ -153,7 +153,7 @@ export function isExternalResearchNotApplicable(contractData, gate) {
   return status === "not-applicable" && contractAllowsExternalResearchNotApplicable(contractData);
 }
 
-export function researchGateDecisionForReport(contractData, reportText) {
+export function researchGateDecisionForReport(contractData, reportText, options = {}) {
   const gate = researchGateStatusForReport(reportText);
   const reference = reportReferencesContract(reportText, contractData);
   const reasons = [...gate.reasons, ...reference.reasons];
@@ -192,13 +192,18 @@ export function researchGateDecisionForReport(contractData, reportText) {
       reasons.push("pattern_pack_root_unavailable");
     } else {
       const fullPath = path.resolve(root, patternPackReference);
-      const allowedRoots = [path.resolve(root), path.resolve(resolvePrithaAgentMemoryRoot({ root }))];
+      // A creation host may verify an isolated authoring root before promoting
+      // its evidence. Documents themselves cannot grant this extra read scope.
+      const allowedRoots = [path.resolve(root), path.resolve(resolvePrithaAgentMemoryRoot({ root, stateRoot: options.stateRoot, canonical: options.canonical === true })),
+        ...(options.artifactRoots || []).map(value => path.resolve(value))];
       const allowed = allowedRoots.some((allowedRoot) => fullPath === allowedRoot || fullPath.startsWith(`${allowedRoot}${path.sep}`));
       if (!allowed) {
         reasons.push("pattern_pack_path_outside_allowed_roots");
       } else {
         try {
-          const text = readBoundedRegularFile(fullPath, { maxBytes: 1_000_000, allowedRoots }).text;
+          const text = options.patternPackSnapshot?.path === fullPath
+            ? options.patternPackSnapshot.text
+            : readBoundedRegularFile(fullPath, { maxBytes: 1_000_000, allowedRoots }).text;
           const integrity = verifyPatternPackIntegrity(text, expectedFingerprint);
           if (!integrity.ok) reasons.push(...integrity.reasons);
           if (integrity.lock !== reportedPatternLock) reasons.push("pattern_pack_report_lock_mismatch");
@@ -212,12 +217,13 @@ export function researchGateDecisionForReport(contractData, reportText) {
   }
 
   const externalNotApplicable = gate.fields.externalResearch === "not-applicable";
-  if (externalNotApplicable && !contractAllowsExternalResearchNotApplicable(contractData)) {
+  const waivedExternalResearch = contractAllowsExternalResearchNotApplicable(contractData);
+  if (externalNotApplicable && !waivedExternalResearch) {
     reasons.push("external_research_not_applicable_without_contract_reason");
   }
 
   const researchGateNotApplicable = gate.fields.researchGate === "not-applicable";
-  if (researchGateNotApplicable && !contractAllowsExternalResearchNotApplicable(contractData)) {
+  if (researchGateNotApplicable && !waivedExternalResearch) {
     reasons.push("research_gate_not_applicable_without_contract_reason");
   }
 

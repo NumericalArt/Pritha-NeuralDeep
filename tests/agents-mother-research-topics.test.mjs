@@ -142,3 +142,51 @@ test("pattern pack seeds derive additional current-source research topics", () =
   assert.ok(topics.some((topic) => topic.id === "pattern-mcp-connector-permissions"));
   assert.ok(!topics.some((topic) => topic.id === "pattern-generic-agent-workflow"));
 });
+
+test("API process still derives Node HTTP topics when GitHub research is required", () => {
+  const topics = ids({
+    runtimeFamily: "api",
+    primaryInterface: "web",
+    serviceMode: "process",
+    autostart: "optional",
+    proactiveMode: "none",
+    repositoryResearchPolicy: "auto",
+    repositoryAdoptionMode: "none",
+  });
+  assert.ok(topics.includes("node-http-runtime"));
+  assert.ok(topics.includes("interface-runtime-security"));
+});
+
+test("GitHub not-applicable preserves API runtime and selected pattern topics", () => {
+  const topics = deriveExternalResearchTopics(
+    {
+      runtimeFamily: "api",
+      primaryInterface: "web",
+      serviceMode: "process",
+      autostart: "optional",
+      proactiveMode: "none",
+      repositoryResearchPolicy: "not-applicable",
+      repositoryAdoptionMode: "none",
+      dependencies: "none",
+    },
+    {
+      patternPack: {
+        externalResearchSeeds: ["sqlite", "Telegram Bot API", "launchd cron", "voice speech"],
+      },
+    },
+  );
+  assert.ok(topics.some(topic => topic.id === "node-http-runtime"));
+  assert.ok(topics.some(topic => topic.id === "interface-runtime-security"));
+  assert.ok(topics.some(topic => topic.id === "pattern-telegram-bot-api"));
+});
+
+ test("repository discovery waiver never removes a selected Telegram API check", () => {
+  const topics = ids({ runtimeFamily: "codex-native", primaryInterface: "telegram", telegramMode: "primary-chat", repositoryResearchPolicy: "not-applicable", repositoryAdoptionMode: "none" });
+  assert.ok(topics.includes("telegram-bot-api"));
+});
+
+test("LLM process preset requires model API evidence even without repository discovery", () => {
+  const topics = ids({ runtimeFamily: "api", serviceMode: "process", fm: { interview_preset: "llm-app" }, repositoryResearchPolicy: "not-applicable", repositoryAdoptionMode: "none" });
+  assert.ok(topics.includes("node-http-runtime"));
+  assert.ok(topics.includes("neuraldeep-model-api"));
+});

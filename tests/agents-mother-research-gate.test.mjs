@@ -144,6 +144,27 @@ test("pending external research blocks scaffold readiness", () => {
   assert.ok(decision.reasons.includes("externalResearch_pending"));
 });
 
+test("GitHub not-applicable with none adoption does not waive external research", () => {
+  const githubNa = {
+    relPath: contract.relPath,
+    text: contract.text,
+    repositoryResearchPolicy: "not-applicable",
+    repositoryAdoptionMode: "none",
+  };
+  assert.equal(contractAllowsExternalResearchNotApplicable(githubNa), false);
+  assert.equal(contractAllowsExternalResearchNotApplicable(contract), false);
+
+  const decision = researchGateDecisionForReport(
+    githubNa,
+    reportFor(githubNa, {
+      external_research_status: "not-applicable",
+      synthesis_status: "not-applicable",
+    }),
+  );
+  assert.equal(decision.ok, false);
+  assert.ok(decision.reasons.includes("external_research_not_applicable_without_contract_reason"));
+});
+
 test("not-applicable external research requires a contract reason", () => {
   const normalDecision = researchGateDecisionForReport(
     contract,

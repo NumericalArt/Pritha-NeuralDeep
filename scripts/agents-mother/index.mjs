@@ -1633,7 +1633,7 @@ function findPatternPackReferencedByReport(data, report) {
 function readEvidenceInput(inputPath) {
   const fullPath = path.resolve(ROOT, inputPath);
   try {
-    return parseBoundedJson(readBoundedRegularFile(fullPath, { maxBytes: 1_000_000, allowedRoots: [ROOT] }).text, {
+    return parseBoundedJson(readBoundedRegularFile(fullPath, { maxBytes: 1_000_000, allowedRoots: [ROOT, AGENT_MEMORY_ROOT] }).text, {
       maxBytes: 1_000_000,
       maxDepth: 20,
       maxNodes: 20_000,

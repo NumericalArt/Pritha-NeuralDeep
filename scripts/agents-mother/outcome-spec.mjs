@@ -16,11 +16,14 @@ import { outcomeDocumentLock } from "./outcome-lock.mjs";
 import { automatedTrialWaiver, automatedTrialWaiverIssues, hasAutomatedTrialWaiver } from "./automated-trial-waiver.mjs";
 import { trialInputDeclarations, trialInputDeclarationIssues } from "./trial-input-declarations.mjs";
 import { inspectProtectedTrialInputs } from "./delivery-worktree.mjs";
+import { approvalEventMatchesSpec, OUTCOME_APPROVAL_SCHEMA } from "./outcome-approval-match.mjs";
+import { OUTCOME_VERIFIER_PRESETS, renderOutcomeVerifierPreset } from "./outcome-verifier-presets.mjs";
 export { outcomeDocumentLock, canonicalOutcomeDocument } from "./outcome-lock.mjs";
+export { approvalEventMatchesSpec } from "./outcome-approval-match.mjs";
 
 export const OUTCOME_SPEC_SCHEMA = "pritha-agent-outcome-spec-v1";
 export const TRIAL_PLAN_SCHEMA = "pritha-trial-plan-v1";
-export const OUTCOME_APPROVAL_SCHEMA = "pritha-outcome-approval-v1";
+export { OUTCOME_APPROVAL_SCHEMA } from "./outcome-approval-match.mjs";
 export const OUTCOME_STATUSES = new Set(["draft", "approved", "superseded"]);
 export const INTERACTION_MODES = new Set(["interface", "headless", "hybrid"]);
 export const TRIAL_KINDS = new Set(["automated", "operator-judged"]);
@@ -427,6 +430,19 @@ export function validateOutcomeSpecText(text, options = {}) {
   }
 
   const coverage = buildOutcomeCoverage(parsed, contract);
+  const preset = String(contract?.fm?.outcome_trial_preset || "none");
+  if (!["none", "generic"].includes(preset) && !OUTCOME_VERIFIER_PRESETS.has(preset)) {
+    issues.push(issue("OS024", "The contract selects an unsupported host verifier preset", "frontmatter.outcome_trial_preset"));
+  }
+  if (OUTCOME_VERIFIER_PRESETS.has(preset)) {
+    const presetTrial = parsed.trials.find(trial => trial.id === "preset-behavior");
+    const verifierPath = "tests/trials/pritha-outcome-verifier.mjs";
+    if (!presetTrial || presetTrial.kind !== "automated" || presetTrial.thenExitCode !== 0
+      || JSON.stringify(presetTrial.argv) !== JSON.stringify(["node", verifierPath, preset])
+      || !presetTrial.verifierInputs?.some(input => input.path === verifierPath && input.provenance === `host-template:${preset}`)) {
+      issues.push(issue("OS024", "The selected preset requires its independent protected behavior Trial", "Trials.preset-behavior"));
+    }
+  }
   if (coverage.some((entry) => !entry.covered)) {
     issues.push(issue("OS013", `uncovered required outcomes: ${coverage.filter((entry) => !entry.covered).map((entry) => entry.id).join(", ")}`, "Trials.Covers"));
   }
@@ -468,6 +484,17 @@ export function renderOutcomeSpecFromContract(data, options = {}) {
     "Working implementation of the approved V1 core functions",
     "Runnable project with a user guide and verification evidence",
   ];
+  const presetTrials = renderOutcomeVerifierPreset(String(data.fm?.outcome_trial_preset || "none"), deliverables.map((value, index) => coverageId("deliverable", value, index)));
+  const harnessTrial = presetTrials ? "" : `### Trial: harness-smoke
+
+- Statement: The generated project passes its deterministic smoke test.
+- Kind: automated
+- Covers: ${coverageId("deliverable", deliverables[1], 1)}
+- Isolation: none
+- When argv: ["node", "scripts/smoke-test.mjs"]
+- When cwd: .
+- Then exit code: 0
+- Timeout ms: 120000`;
   const coreTrials = effectiveCore.map((value, index) => {
     const covers = [coverageId("core", value, index)];
     if (index === 0) covers.push(coverageId("deliverable", deliverables[0], 0));
@@ -593,42 +620,9 @@ ${deliverables.map((value) => `- ${value}.`).join("\n")}
 - Verifier input: host-owned test script as \`relative/path :: sha256:<64 hex> :: host-reviewed:<id>\` or \`host-template:<id>\`; fill the hash after the file exists. Do not invent hashes.
 - Then artifact: output file asserted by exactly one trial.
 
-### Trial: harness-smoke
+${harnessTrial}
 
-- Statement: The generated project passes its deterministic smoke test.
-- Kind: automated
-- Covers: ${coverageId("deliverable", deliverables[1], 1)}
-- Isolation: none
-- When argv: ["node", "scripts/smoke-test.mjs"]
-- When cwd: .
-- Then exit code: 0
-- Timeout ms: 120000
-
-### Trial: data-shape
-
-- Statement: Stored output matches the documented JSON shape without calling a live upstream.
-- Kind: automated
-- Covers: ${coverageId("deliverable", deliverables[0], 0)}
-- Isolation: none
-- When argv: ["node", "scripts/smoke-test.mjs"]
-- When cwd: .
-- Product target: data/latest.json
-- Then stdout contains: Smoke test passed.
-- Then exit code: 0
-- Timeout ms: 120000
-
-### Trial: live-path
-
-- Statement: The product calls the configured upstream URL; a local mock records the request. Replace When argv with tests/trials/live-path.mjs after that verifier exists.
-- Kind: automated
-- Covers: ${coverageId("deliverable", deliverables[0], 0)}
-- Isolation: none
-- When argv: ["node", "scripts/smoke-test.mjs"]
-- When cwd: .
-- Product target: scripts/refresh.mjs
-- Then stdout contains: Smoke test passed.
-- Then exit code: 0
-- Timeout ms: 120000
+${presetTrials}
 
 ${coreTrials}
 
@@ -648,10 +642,20 @@ export function createOutcomeSpec(contractPath, options = {}) {
   const contractDir = path.join(resolvePrithaAgentMemoryRoot({ root, stateRoot: options.stateRoot }), "contracts");
   mkdirSync(contractDir, { recursive: true });
   const date = options.date || today();
-  return writeUniqueArtifact(
-    path.join(contractDir, `${date}-${slug(data.agentName, { fallback: "agent" })}-agent-outcome-spec.md`),
-    ({ artifactId }) => renderOutcomeSpecFromContract(data, { ...options, date, artifactId }),
-  );
+  const initIdentity = sha256(path.resolve(data.fullPath)).slice("sha256:".length);
+  return withFileLock(path.join(contractDir, `.outcome-init-${initIdentity}`), () => {
+    const existing = latestOutcomeSpecForContract(contractPath, { ...options, root });
+    if (existing && ["draft", "approved"].includes(String(existing.status || "").toLowerCase())) {
+      // Init is an identity lookup, never a regeneration of authored content.
+      // Accepted documents are changed only through reviseOutcomeSpec.
+      return { path: existing.path, artifactId: existing.id, unchanged: true,
+        status: existing.status, issues: existing.issues };
+    }
+    return writeUniqueArtifact(
+      path.join(contractDir, `${date}-${slug(data.agentName, { fallback: "agent" })}-agent-outcome-spec.md`),
+      ({ artifactId }) => renderOutcomeSpecFromContract(data, { ...options, date, artifactId }),
+    );
+  });
 }
 
 export function reviseOutcomeSpec(specPath, options = {}) {
@@ -715,10 +719,9 @@ export function outcomeSpecsForContract(contractPath, options = {}) {
         const text = readFileSync(filePath, "utf8");
         const parsed = parseOutcomeSpecText(text);
         if (parsed.frontmatter.type !== "agent-outcome-spec") return null;
-        const declaredPath = path.normalize(String(parsed.frontmatter.contract_path || ""));
-        const samePath = declaredPath === path.normalize(data.relPath) || declaredPath === path.normalize(data.fullPath);
-        const sameFingerprint = parsed.frontmatter.contract_fingerprint === data.fingerprint;
-        if (!samePath && !sameFingerprint) return null;
+        const declaredPath = String(parsed.frontmatter.contract_path || "");
+        // Equal fingerprints are content equality, not a contract identity.
+        if (!declaredPath || path.resolve(root, declaredPath) !== path.resolve(data.fullPath)) return null;
         const validation = validateOutcomeSpecText(text, { root, contract: data });
         return {
           path: filePath,
@@ -798,17 +801,16 @@ export function verifyOutcomeApproval(specPath, options = {}) {
   const fm = validation.parsed.frontmatter;
   const reasons = validation.issues.map((entry) => entry.code.toLowerCase());
   if (String(fm.status || "") !== "approved") reasons.push("spec_not_approved");
-  const relPath = path.relative(root, fullPath);
   const events = readApprovalEvents({ ...options, root });
-  const event = [...events].reverse().find((candidate) => (
-    candidate.schema === OUTCOME_APPROVAL_SCHEMA
-    && candidate.spec_path === relPath
-    && candidate.spec_id === fm.id
-    && candidate.contract_fingerprint === fm.contract_fingerprint
-    && candidate.semantic_lock === fm.outcome_semantic_lock
-    && candidate.document_lock === fm.outcome_document_lock
-    && candidate.approved_by === "user"
-  )) || null;
+  const event = [...events].reverse().find((candidate) => approvalEventMatchesSpec(candidate, {
+    specId: fm.id,
+    specPath: fullPath,
+    root,
+    sourceRoot: options.sourceRoot,
+    contractFingerprint: fm.contract_fingerprint,
+    semanticLock: fm.outcome_semantic_lock,
+    documentLock: fm.outcome_document_lock,
+  })) || null;
   if (!event) reasons.push("approval_evidence_missing_or_stale");
   return { ok: reasons.length === 0, reasons: [...new Set(reasons)], event, validation };
 }
@@ -817,6 +819,11 @@ export function approveOutcomeSpec(specPath, options = {}) {
   const root = options.root ? path.resolve(options.root) : resolveTechscopeRoot();
   const approvedBy = String(options.approvedBy || "").trim();
   if (approvedBy !== "user") throw new Error("Outcome approval requires explicit --approved-by user");
+  const actor = options.actor || "user";
+  if (!["user", "codex-operator"].includes(actor)) throw new Error("Outcome approval actor must be user or codex-operator");
+  if (actor === "codex-operator" && !String(options.authorizationBasis || "").trim()) {
+    throw new Error("Delegated Outcome approval requires an explicit authorization basis");
+  }
   const fullPath = path.resolve(root, specPath);
   const original = readFileSync(fullPath, "utf8");
   const current = parseOutcomeSpecText(original);
@@ -861,13 +868,17 @@ export function approveOutcomeSpec(specPath, options = {}) {
     schema: OUTCOME_APPROVAL_SCHEMA,
     approval_id: randomUUID(),
     spec_id: fm.id,
-    spec_path: path.relative(root, fullPath),
+    spec_path: fullPath,
     agent_slug: fm.agent_slug,
     contract_fingerprint: fm.contract_fingerprint,
     semantic_lock: semanticLock,
     document_lock: documentLock,
     approved_by: "user",
     approved_at: approvedAt,
+    actor,
+    ...(options.authorizationBasis ? { authorization_basis: redactSensitiveText(String(options.authorizationBasis)).slice(0, 2000) } : {}),
+    ...(options.requestId ? { request_id: String(options.requestId).slice(0, 256) } : {}),
+    ...(options.jobId ? { creation_job_id: String(options.jobId).slice(0, 256) } : {}),
   };
   const evidencePath = appendApprovalEvent(event, { ...options, root });
   return { path: fullPath, text: next, event, evidencePath, unchanged: false };

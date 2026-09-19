@@ -121,12 +121,12 @@ test("missing or replaced verifier stops before build probe and standalone Trial
 
 test("declarations reject unsafe paths, overlapping ownership and symlinked verifier ancestors before approval", t => {
   const f = fixture(t);
-  for (const changed of [
-    f.text.replace("- Product target: scripts/agent-cli.mjs", "- Product target: verification"),
-    f.text.replace("host-reviewed:synthetic-sum-v1", "unknown"),
-    f.text.replace("- Verifier input: verification/check-sum.mjs", "- Verifier input: ../outside"),
-    f.text.replace(f.inputs[0].hash, "sha256:bad"),
-  ]) assert.equal(validateOutcomeSpecText(changed, f.options).issues.some(issue => issue.code === "OS020"), true);
+  for (const [changed, expectedCode] of [
+    [f.text.replace("- Product target: scripts/agent-cli.mjs", "- Product target: verification"), "OS023"],
+    [f.text.replace("host-reviewed:synthetic-sum-v1", "unknown"), "OS020"],
+    [f.text.replace("- Verifier input: verification/check-sum.mjs", "- Verifier input: ../outside"), "OS020"],
+    [f.text.replace(f.inputs[0].hash, "sha256:bad"), "OS020"],
+  ]) assert.equal(validateOutcomeSpecText(changed, f.options).issues.some(issue => issue.code === expectedCode), true);
   renameSync(path.join(f.project, "verification"), path.join(f.parent, "outside"));
   symlinkSync(path.join(f.parent, "outside"), path.join(f.project, "verification"), "dir");
   assert.throws(f.approve, error => error.code === "trial_input_invalid");

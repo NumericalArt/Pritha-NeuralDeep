@@ -84,6 +84,12 @@ function addPatternDerivedTopics(topics, patternPack) {
   }
 }
 
+export const GENERIC_PROCESS_RESEARCH_TOPIC_IDS = [
+  "node-http-runtime",
+  "interface-runtime-security",
+  "operations-deployment",
+];
+
 export function deriveExternalResearchTopics(data = {}, options = {}) {
   const text = combinedContractText(data);
   const topics = [];
@@ -98,6 +104,12 @@ export function deriveExternalResearchTopics(data = {}, options = {}) {
     pushTopic(topics, "node-http-runtime", "Node.js HTTP process service and host APIs",
       "Node.js current HTTP server lifecycle os fs statfs child_process execFile documentation",
       "Explicit API process service requires HTTP/runtime evidence, without implying a model SDK.",
+      { preferredSources: ["official-docs", "changelog"] });
+  }
+  if (data.fm?.interview_preset === "llm-app" || /\bneuraldeep\b/.test(text)) {
+    pushTopic(topics, "neuraldeep-model-api", "NeuralDeep model API, limits and instance-bound credentials",
+      "NeuralDeep official API chat completions models errors rate limits credential isolation documentation",
+      "The application uses the instance-bound NeuralDeep provider; repository discovery policy does not waive API evidence.",
       { preferredSources: ["official-docs", "changelog"] });
   }
   if ((runtime === "api" && serviceMode !== "process") || /\bopenai agents sdk\b|\bagents sdk\b/.test(text)) {

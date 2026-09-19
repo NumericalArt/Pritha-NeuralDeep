@@ -79,15 +79,14 @@ test("Outcome Spec proposal covers V1 functions and deliverables", () => {
   const result = validateOutcomeSpecText(text, { root });
 
   assert.equal(result.ok, true, result.issues.map((entry) => `${entry.code}: ${entry.message}`).join("\n"));
-  assert.equal(result.parsed.trials.length, 5);
-  assert.equal(result.automatedTrials, 3);
+  assert.equal(result.parsed.trials.length, 3);
+  assert.equal(result.automatedTrials, 1);
   assert.equal(result.coverage.length, 4);
   assert.equal(result.coverage.every((entry) => entry.covered), true);
   assert.equal(text.includes("Trial field dictionary"), true);
-  assert.equal(text.includes("### Trial: data-shape"), true);
-  assert.equal(text.includes("### Trial: live-path"), true);
-  assert.equal(text.includes("Product target: data/latest.json"), true);
-  assert.equal(text.includes("Product target: scripts/refresh.mjs"), true);
+  assert.equal(text.includes("### Trial: data-shape"), false, "Generic contracts do not imply a JSON schema");
+  assert.equal(text.includes("### Trial: live-path"), false, "Generic contracts do not imply an upstream adapter");
+  assert.equal(result.parsed.trials.filter(trial => trial.kind === "operator-judged").length, 2);
 });
 
 test("semantic and document locks ignore approval metadata but not outcome meaning", () => {
@@ -156,7 +155,7 @@ test("compiled Trial plan is deterministic and contains no compilation timestamp
 
   assert.equal(first.text, second.text);
   assert.equal(first.text.includes("compiled_at"), false);
-  assert.equal(first.plan.counts.automated, 3);
+  assert.equal(first.plan.counts.automated, 1);
   assert.equal(first.plan.autonomous_verification_allowed, false);
   assert.deepEqual(first.plan.delivery_policy, {
     build_git_mode: "disposable-worktree",
@@ -312,4 +311,77 @@ test("product target colliding with a protected fixture fails validation", () =>
 
   assert.notEqual(conflict, undefined, "expected OS023 trial_input_protected_conflict issue");
   assert.equal(conflict.message.includes("trial_input_protected_conflict"), true, conflict.message);
+});
+
+test("approval evidence accepts host-known workspace roots, not matching basenames", () => {
+  const { root, stateRoot, specPath } = fixture();
+  approveOutcomeSpec(specPath, { root, stateRoot, approvedBy: "user", approvedAt: "2026-08-16T12:00:00.000Z" });
+  const evidencePath = path.join(stateRoot, "audit", "outcome-approvals.jsonl");
+  const event = JSON.parse(readFileSync(evidencePath, "utf8").trim());
+  const workspaceRoot = path.join(root, "workspaces", "task");
+  mkdirSync(workspaceRoot, { recursive: true });
+  event.spec_path = path.relative(workspaceRoot, specPath);
+  writeFileSync(evidencePath, `${JSON.stringify(event)}\n`);
+  assert.equal(verifyOutcomeApproval(specPath, { root, stateRoot }).ok, false);
+  const verification = verifyOutcomeApproval(specPath, { root, stateRoot, sourceRoot: workspaceRoot });
+  assert.equal(verification.ok, true, verification.reasons.join(", "));
+  event.spec_path = `unrelated/${path.basename(specPath)}`;
+  writeFileSync(evidencePath, `${JSON.stringify(event)}\n`);
+  assert.equal(verifyOutcomeApproval(specPath, { root, stateRoot, sourceRoot: workspaceRoot }).ok, false);
+});
+
+test("outcome init preserves authored draft bytes even when the contract changes", () => {
+  const f = fixture();
+  const authored = `${readFileSync(f.specPath, "utf8")}\n## Operator requirement\n\nPreserve the user's export naming requirement.\n`;
+  writeFileSync(f.specPath, authored);
+  writeFileSync(f.contractPath, readFileSync(f.contractPath, "utf8").replace("- Produce an evidence-linked report", "- Produce an evidence-linked report\n- Return a usage path"));
+  const existing = createOutcomeSpec(path.relative(f.root, f.contractPath), { root: f.root, date: "2026-08-17" });
+  assert.equal(existing.path, f.specPath);
+  assert.equal(existing.unchanged, true);
+  assert.equal(readFileSync(f.specPath, "utf8"), authored);
+  assert.ok(existing.issues.some(issue => issue.code === "OS003"), "changed contract requires explicit review");
+});
+
+test("outcome init preserves approval and returns the same artifact", () => {
+  const f = fixture();
+  approveOutcomeSpec(f.specPath, { ...f, approvedBy: "user" });
+  const approved = readFileSync(f.specPath, "utf8");
+  const existing = createOutcomeSpec(f.contractPath, { root: f.root, date: "2026-09-19" });
+  assert.equal(existing.path, f.specPath);
+  assert.equal(existing.unchanged, true);
+  assert.equal(readFileSync(f.specPath, "utf8"), approved);
+  assert.equal(verifyOutcomeApproval(f.specPath, f).ok, true);
+});
+
+test("equal contract contents in another path do not borrow outcome identity", () => {
+  const f = fixture();
+  const otherContract = path.join(path.dirname(f.contractPath), "other-contract.md");
+  writeFileSync(otherContract, readFileSync(f.contractPath, "utf8"));
+  assert.equal(latestOutcomeSpecForContract(otherContract, { root: f.root }), null);
+});
+
+test("delegated approval records the actual operator and scope without changing authority", () => {
+  const f = fixture();
+  assert.throws(() => approveOutcomeSpec(f.specPath, { ...f, approvedBy: "user", actor: "codex-operator" }), /authorization basis/);
+  const result = approveOutcomeSpec(f.specPath, { ...f, approvedBy: "user", actor: "codex-operator", authorizationBasis: "User delegated the local UI trial for this exact scope", requestId: "request-1", jobId: "creation-1" });
+  assert.equal(result.event.actor, "codex-operator");
+  assert.equal(result.event.approved_by, "user");
+  assert.equal(result.event.creation_job_id, "creation-1");
+  assert.equal(result.event.request_id, "request-1");
+  assert.equal(verifyOutcomeApproval(f.specPath, f).ok, true);
+});
+
+test("selected preset adds an independent locked verifier and approval blocks when it is missing", () => {
+  const f = fixture();
+  const presetContract = path.join(path.dirname(f.contractPath), "preset-contract.md");
+  writeFileSync(presetContract, readFileSync(f.contractPath, "utf8").replace("type: agent-contract", "type: agent-contract\noutcome_trial_preset: llm-http-app-v1"));
+  const spec = createOutcomeSpec(presetContract, { root: f.root });
+  const value = validateOutcomeSpecText(readFileSync(spec.path, "utf8"), { root: f.root });
+  assert.equal(value.ok, true, JSON.stringify(value.issues));
+  const trial = value.parsed.trials.find(entry => entry.id === "preset-behavior");
+  assert.match(trial.verifierInputs[0].hash, /^sha256:[a-f0-9]{64}$/);
+  assert.equal(trial.verifierInputs[0].provenance, "host-template:llm-http-app-v1");
+  assert.throws(() => approveOutcomeSpec(spec.path, { ...f, projectPath: f.root, approvedBy: "user" }), /missing/);
+  const weakened = readFileSync(spec.path, "utf8").replace('["node", "tests/trials/pritha-outcome-verifier.mjs", "llm-http-app-v1"]', '["node", "scripts/smoke-test.mjs"]');
+  assert.ok(validateOutcomeSpecText(weakened, { root: f.root }).issues.some(issue => issue.code === "OS024"));
 });

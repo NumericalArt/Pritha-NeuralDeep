@@ -63,6 +63,29 @@ export function verifyPatternPackIntegrity(text, expectedContractFingerprint = "
   return { ok: reasons.length === 0, reasons: [...new Set(reasons)], payload, lock };
 }
 
+/** Host relocation of an already verified pack; never repairs invalid evidence. */
+export function rebindPatternPackContract(text, expectedFingerprint, from, to) {
+  const integrity = verifyPatternPackIntegrity(text, expectedFingerprint);
+  if (!integrity.ok) throw new Error(`Cannot relocate invalid pattern pack: ${integrity.reasons.join(', ')}`);
+  if (!from || !to || from === to) return { text, lock: integrity.lock };
+  const frontmatter = parseFrontmatterData(text) || {};
+  if (![...(frontmatter.sources || []), ...(frontmatter.related?.agent_contracts || [])].includes(from)) {
+    throw new Error('Cannot relocate a pattern pack for another contract');
+  }
+  const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  let rebound = String(text).replace(new RegExp(`(?<![\\p{L}\\p{N}_./-])${escaped}(?![\\p{L}\\p{N}_./-])`, 'gu'), () => to);
+  const marker = new RegExp(`<!--\\s*${PATTERN_PACK_PAYLOAD_MARKER}\\s+([A-Za-z0-9_-]+)\\s*-->`);
+  const body = markdownBodyText(rebound).replace(marker, '').replace(/^\s+/, '');
+  const payload = { ...integrity.payload, body_sha256: `sha256:${createHash('sha256').update(body).digest('hex')}` };
+  const lock = patternPackLock(payload);
+  rebound = rebound.replace(marker, `<!-- ${PATTERN_PACK_PAYLOAD_MARKER} ${Buffer.from(JSON.stringify(canonicalize(payload))).toString('base64url')} -->`)
+    .replace(/^pattern_pack_lock:.*$/m, `pattern_pack_lock: ${lock}`);
+  rebound = rebound.replace(/^pattern_pack_document_lock:.*$/m, `pattern_pack_document_lock: ${markdownDocumentLock(rebound, 'pattern_pack_document_lock')}`);
+  const verified = verifyPatternPackIntegrity(rebound, expectedFingerprint);
+  if (!verified.ok) throw new Error(`Relocated pattern pack failed verification: ${verified.reasons.join(', ')}`);
+  return { text: rebound, lock };
+}
+
 const STOP_WORDS = new Set([
   "about",
   "after",
