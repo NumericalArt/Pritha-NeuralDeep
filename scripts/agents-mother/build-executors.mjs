@@ -10,6 +10,7 @@ import { ExecutionBackendError } from "./execution-backends.mjs";
 import { atomicWriteFile } from "../lib/atomic-file.mjs";
 import { NeuralDeepCoordinationStore, neuralDeepCoordinationPaths } from "../neuraldeep/coordination-store.mjs";
 import { recordNeuralDeepRun } from "../neuraldeep/usage-ledger.mjs";
+import { approvedBuildContext } from "./outcome-spec.mjs";
 
 export const BUILD_EXECUTOR_RESULT_SCHEMA = "pritha-build-executor-result-v1";
 const processReceiptFields = (runtime) => Object.fromEntries([
@@ -75,12 +76,14 @@ function buildPrompt(input) {
     iteration: input.iteration,
     remaining_iterations: input.remainingIterations,
     approved_outcome: outcomeProjection(input.plan),
+    ...(input.plan.approval_id ? { approved_artifacts: approvedBuildContext(input.plan, { root: input.root, stateRoot: input.stateRoot }) } : {}),
     latest_trial_failures: input.failures || [],
     protected_trial_inputs: protectedPaths,
   };
   return [
     "You are the bounded implementation executor for a Pritha agent-delivery run.",
     "Work only inside the supplied worktree. Implement the approved outcome and repair the listed Trial failures.",
+    "The approved artifacts contain the full product requirements. Preserve their sources, constraints, permissions, success criteria and user journey; passing Trials alone is not the complete product brief.",
     "The approved outcome, Trial definitions, approval evidence, budgets, ledger and verifier are host-owned and immutable.",
     "Do not edit protected Trial input files. Do not weaken, delete, skip or replace tests to obtain a green result.",
     "Do not push, merge, deploy, enable services, provision secrets, change Git remotes or bypass hooks.",

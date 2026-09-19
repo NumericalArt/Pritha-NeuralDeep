@@ -760,6 +760,9 @@ async function runDeliveryLoopLocked(input = {}) {
         beforeDispatch: async () => {
           if (input.signal?.aborted || input.shouldContinue && !await input.shouldContinue()) throw new DeliveryLoopError("creation_paused", "The owning creation task paused further model dispatch.");
           await input.beforeDispatch?.();
+          // Re-read approved artifacts before probes, implementation and summary
+          // dispatches. A frozen plan must not authorize changed source meaning.
+          if (plan.approval_id) approvedPlanBinding(plan, input);
           const preflight = deliveryTokenPreflight(readDeliveryLedger(runRoot).budget);
           if (preflight.available === null) throw new DeliveryLoopError("goal_usage_unavailable", "Resolve the saved attempt before a new model call.");
           if (preflight.available < 1) throw new DeliveryLoopError("token_budget_exhausted", "Continue this same run with an explicitly extended budget.");
@@ -836,6 +839,8 @@ async function runDeliveryLoopLocked(input = {}) {
           "token_budget_exhausted",
           "creation_paused",
           "build_executor_aborted",
+          "outcome_approval_stale",
+          "trial_plan_changed",
         ].includes(error?.code)) {
           return blockDelivery(runRoot, plan, worktree, blockerForError(error), input);
         }

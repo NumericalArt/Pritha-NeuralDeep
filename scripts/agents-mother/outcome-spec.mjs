@@ -973,6 +973,26 @@ export function verifyCompiledTrialPlan(plan, options = {}) {
   } catch { return false; }
 }
 
+// Build context is derived from the approved authored artifacts, not added to
+// the immutable v1 Trial plan. Trials are a verifier projection and cannot
+// replace product sources, constraints, permissions or the authored journey.
+export function approvedBuildContext(plan, options = {}) {
+  const stale = () => Object.assign(new Error("Build context requires the unchanged approved Outcome and accepted contract"), { code: "outcome_approval_stale" });
+  if (!plan?.approval_id || !verifyCompiledTrialPlan(plan, { ...options, allowDraft: false })) throw stale();
+  const approval = verifyOutcomeApproval(plan.spec_path, options);
+  const { parsed, contract } = approval.validation || {};
+  if (!approval.ok || approval.event?.approval_id !== plan.approval_id
+    || approval.event?.semantic_lock !== plan.semantic_lock
+    || approval.event?.document_lock !== plan.document_lock
+    || contract?.fingerprint !== plan.contract_fingerprint
+    || contract?.fm.status !== "accepted") throw stale();
+  return {
+    approval_id: plan.approval_id,
+    contract: { id: contract.fm.id, fingerprint: contract.fingerprint, markdown: contract.text },
+    outcome: { id: plan.spec_id, semantic_lock: plan.semantic_lock, document_lock: plan.document_lock, markdown: parsed.text },
+  };
+}
+
 export function compileOutcomeSpec(specPath, options = {}) {
   const root = options.root ? path.resolve(options.root) : resolveTechscopeRoot();
   const plan = approvedTrialPlan(specPath, options);

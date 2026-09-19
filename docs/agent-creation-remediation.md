@@ -72,7 +72,7 @@ Machine verification is not personal acceptance of the product.
 | E — repeated Outcome init loses authored text | Init returns the existing document without rewriting it. An explicit pre-scaffold proposal revision preserves accepted documents and receipts, then requires two new approvals. Contract lookup uses exact identity rather than equal content or basename. | `agents-mother-outcome-spec.test.mjs`, `creation-revision.test.mjs` | Confirm the user-facing document review and revision path in the staged UI. |
 | F — repository waiver suppresses unrelated research | A repository policy only controls repository discovery. API, runtime, provider, and external-source topics remain required. Host promotion verifies the original complete gate before rebinding paths and locks. | Research topic/gate tests and `agent-creation-scaffold.test.mjs` | Obtain current authoritative evidence for the actual chosen sources/provider during creation. |
 | G — executor self-approval instruction | Preparation prompts stop at validation. Host approvals bind exact reviewed bytes to separate requests; delegated operator metadata is preserved. Canonical documents and audit are outside authoring writable roots. | `agent-creation-artifacts.test.mjs`, `agent-creation-gateway.test.mjs`, `creation-execution-root.test.mjs` | Record the two explicit UI approvals and retain personal acceptance as a later event. |
-| H — fragile brief/defaults/health behavior | Typed brief parsing preserves product decisions, canonical `--brief` supports the compatibility alias, and explicit presets choose checks. Health reads `/health`; refresh is a separate action. Draft adapter/port problems become actionable warnings so the model can correct them; approved configuration stays gated. | Contract/interview tests, `scaffold-api-process.test.mjs`, `creation-preflight.test.mjs` | Prove a medium-complexity natural-language request reaches valid proposals without technical operator repair. |
+| H — fragile brief/defaults/health behavior | Typed brief parsing preserves product decisions, canonical `--brief` supports the compatibility alias, and explicit presets choose checks. The implementation prompt includes both immutable approved documents, preserving requirements outside Trials. Health reads `/health`; refresh is a separate action. Draft adapter/port problems become actionable warnings so the model can correct them; approved configuration stays gated. | Contract/interview and build-executor tests, `scaffold-api-process.test.mjs`, `creation-preflight.test.mjs` | Prove a medium-complexity natural-language request reaches valid proposals without technical operator repair. |
 | I — mismatched registry/report/result identities | Approval identity rejects basename substitution. Explicit migration tooling requires instance, contract, and artifact evidence. Availability, verification, and acceptance are distinct concepts. | `agent-identity-migration.test.mjs`, approval identity and result-readiness tests | Apply and review instance-specific migration maps; verify historical reports and missing-project presentation on both installations. |
 | J — recovery mistakes absent workers for settled usage | Worker exit, descendant exit, adapter closure, and usage evidence are separate. Unknown usage blocks another paid dispatch. Receipt accounting is idempotent; verified delivery is adopted only into the unchanged clean scaffold baseline. | Runner configuration/recovery tests, delivery attempt tests, `neuraldeep-creation-delivery.test.mjs` | Validate rollout recovery and preserve abandoned history; do not infer production crash recovery from fixture tests alone. |
 
@@ -119,6 +119,19 @@ Release display reads sealed build metadata and matches the running process's
 full commit and BUILD_ID when present; replaced on-disk build metadata cannot
 claim to be the loaded process.
 
+The final integration review found that the build prompt projected Trials and
+demo steps but omitted requirements authored only in the accepted contract or
+other Outcome sections. Sources, storage choice, language and selection limits
+could therefore disappear between proposal and implementation. The host now
+includes the exact accepted contract and approved Outcome in the build prompt,
+after checking their saved approval, document and semantic locks and contract
+fingerprint. Every paid delivery dispatch rechecks the binding. The immutable
+v1 Trial-plan format is unchanged, so valid earlier plans need no replacement
+approval. A typed-brief regression carries both feed URLs, SQLite, Russian
+output, a twenty-item limit, permissions and success criteria into the captured
+build prompt without duplicating them in Trials; changed approved artifacts
+block the model call.
+
 ## Functional verifier boundary
 
 `public-json-feed-v1` tests the explicit JSON-feed protocol. It is not silently
@@ -154,6 +167,20 @@ and must not be added together as a full-suite total:
 - 6 transport and host-scaffold tests after the execution-root review.
 - Earlier delivery integration runs exercised the existing ledger, task
   binding, cancellation, canonical adoption, and receipt accounting.
+- The final context-preservation regression run passed all 40 build-executor,
+  Outcome and delivery-loop tests, including a changed artifact after the
+  dispatch hook blocking before any paid probe.
+
+The audit's eleven original test failures have two causes. One contract-init
+failure came from an invalid repository-topic default; normalized brief and
+repository-policy defaults repair it. Ten result-readiness cases were blocked
+by fabricated data-shape/live-path Trials expecting a scaffold smoke message.
+Removing those unsupported generic coverage claims and adding explicit host
+functional verifier presets repairs the cause. The result-readiness fixture
+still prints its original synthetic result; neither its output nor its checks
+were weakened. All eleven cases passed in the pre-final-context-change full
+suite (1,183 tests). The additional context-preservation change requires a new
+final candidate validation; that earlier suite is not evidence for later code.
 
 The final release still needs the full suite, TypeScript, production build,
 desktop/mobile UI checks, distribution/privacy checks, clean installation,

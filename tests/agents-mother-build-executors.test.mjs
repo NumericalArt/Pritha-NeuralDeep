@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -11,6 +11,8 @@ import {
   createBuildExecutor,
   reliableBuildSummary,
 } from "../scripts/agents-mother/build-executors.mjs";
+import { approvedBuildContext, approveOutcomeSpec, compileOutcomeSpec, createOutcomeSpec, verifyCompiledTrialPlan } from "../scripts/agents-mother/outcome-spec.mjs";
+import { runDeliveryLoop } from "../scripts/agents-mother/delivery-loop.mjs";
 
 function plan() {
   return {
@@ -148,4 +150,95 @@ test("function executor provides the same bounded result contract", async () => 
 
 test("manual build policy returns a typed implementation boundary", async () => {
   await assert.rejects(new ManualBuildExecutor().execute({}), (error) => error.code === "manual_build_required");
+});
+
+function approvedBriefFixture(t, preset = "llm-app") {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "pritha-build-brief-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const root = path.join(directory, "mother"), stateRoot = path.join(directory, "state"), agentParent = path.join(directory, "children");
+  mkdirSync(root, { recursive: true });
+  const brief = {
+    schemaVersion: 1, identity: { name: "Signal Desk ND", slug: "signal-desk-nd" },
+    goal: "Create a saved digest of selected articles", user: "One local operator",
+    successCriteria: ["Export a saved Markdown digest", "Keep history between restarts"],
+    coreFunctions: ["Collect articles", "Generate and save a digest"],
+    sources: ["https://github.blog/changelog/feed/", "https://blog.python.org/feeds/posts/default?alt=rss"],
+    constraints: ["Store history in SQLite", "Русский дайджест со ссылками", "At most 20 materials per generation"],
+    nonGoals: ["No automatic external publishing"],
+    permissions: { network: ["Only the configured public feeds and instance provider"], filesystem: ["Only the child project"], authorization: "Local operator actions" },
+    technical: { preset, sourceFormat: "rss" },
+  };
+  const briefPath = path.join(directory, "brief.json");
+  writeFileSync(briefPath, JSON.stringify(brief));
+  const init = spawnSync(process.execPath, ["scripts/pritha.mjs", "init", "--no-input", "--contract-only", "--brief", briefPath], {
+    cwd: path.resolve("."), encoding: "utf8",
+    env: { ...process.env, TECHSCOPE_ROOT: root, PRITHA_STATE_ROOT: stateRoot, PRITHA_AGENT_PARENT: agentParent, PRITHA_AGENT_AUTHORING_ROOT: "" },
+  });
+  assert.equal(init.status, 0, init.stderr || init.stdout);
+  const contracts = path.join(stateRoot, "agents", "contracts");
+  const contractPath = path.join(contracts, readdirSync(contracts).find(name => name.endsWith("-agent-contract.md")));
+  writeFileSync(contractPath, readFileSync(contractPath, "utf8").replace(/^status: draft$/m, "status: accepted"));
+  const options = { root, stateRoot };
+  const specPath = createOutcomeSpec(contractPath, options).path;
+  writeFileSync(specPath, readFileSync(specPath, "utf8").replace(/^- Done when:.*$/m, "- Done when: The operator downloads the saved selection after a restart"));
+  approveOutcomeSpec(specPath, { ...options, approvedBy: "user" });
+  const compiled = compileOutcomeSpec(specPath, { ...options, runId: "approved-build-context" });
+  return { ...options, ...compiled, brief, contractPath, specPath };
+}
+
+test("typed brief requirements reach the build prompt through unchanged approved v1 artifacts", async t => {
+  const fixture = approvedBriefFixture(t);
+  const savedPlan = readFileSync(fixture.planPath, "utf8");
+  // None of these requirements is redundantly encoded in the Trial projection.
+  for (const requirement of [...fixture.brief.sources, ...fixture.brief.constraints]) assert.equal(JSON.stringify(fixture.plan).includes(requirement), false);
+  const executor = new FakeCodexCliBuildExecutor();
+  const worktree = gitFixture();
+  t.after(() => rmSync(worktree, { recursive: true, force: true }));
+  await executor.execute({ ...fixture, worktree, runId: "context-run", iteration: 1, remainingIterations: 5, tokenBudget: 1_000,
+    approvedArtifacts: { contract: "unapproved input must not replace host artifacts" } });
+  const payload = JSON.parse(executor.calls[0].prompt.split("Delivery payload:\n")[1]);
+  const context = payload.approved_artifacts;
+  for (const requirement of [...fixture.brief.sources, ...fixture.brief.constraints, ...fixture.brief.successCriteria,
+    ...fixture.brief.permissions.filesystem, ...fixture.brief.permissions.network, ...fixture.brief.nonGoals]) {
+    assert.ok(context.contract.markdown.includes(requirement), requirement);
+  }
+  assert.match(context.outcome.markdown, /Done when: The operator downloads the saved selection after a restart/);
+  assert.equal(context.contract.markdown, readFileSync(fixture.contractPath, "utf8"));
+  assert.equal(context.outcome.markdown, readFileSync(fixture.specPath, "utf8"));
+  assert.equal(context.approval_id, fixture.plan.approval_id);
+  assert.equal(context.contract.fingerprint, fixture.plan.contract_fingerprint);
+  assert.equal(verifyCompiledTrialPlan(fixture.plan, fixture), true, "Existing wire-format plans still verify without migration or replacement approval");
+  assert.equal(readFileSync(fixture.planPath, "utf8"), savedPlan);
+  assert.equal(Object.hasOwn(fixture.plan, "approved_artifacts"), false);
+});
+
+for (const artifact of ["contract", "outcome"]) test(`changed approved ${artifact} blocks build before any model call`, async t => {
+  const fixture = approvedBriefFixture(t);
+  const file = artifact === "contract" ? fixture.contractPath : fixture.specPath;
+  writeFileSync(file, `${readFileSync(file, "utf8")}\nUnreviewed product change.\n`);
+  const executor = new FakeCodexCliBuildExecutor();
+  const worktree = gitFixture();
+  t.after(() => rmSync(worktree, { recursive: true, force: true }));
+  await assert.rejects(executor.execute({ ...fixture, worktree, runId: "stale-context", iteration: 1, tokenBudget: 1_000 }), error => error.code === "outcome_approval_stale");
+  assert.equal(executor.calls.length, 0);
+  assert.throws(() => approvedBuildContext({ ...fixture.plan, approval_id: null }, fixture), error => error.code === "outcome_approval_stale");
+});
+
+test("delivery rechecks frozen requirements after dispatch hooks and blocks before a paid probe", async t => {
+  const fixture = approvedBriefFixture(t, "generic");
+  const project = gitFixture();
+  t.after(() => rmSync(project, { recursive: true, force: true }));
+  mkdirSync(path.join(project, "scripts"));
+  writeFileSync(path.join(project, "scripts/smoke-test.mjs"), "process.exit(1);\n");
+  execFileSync("git", ["add", "."], { cwd: project });
+  execFileSync("git", ["commit", "-qm", "unimplemented product"], { cwd: project });
+  let calls = 0;
+  const result = await runDeliveryLoop({ ...fixture, projectPath: project, trialBackend: "local", reportDir: false,
+    beforeDispatch: () => writeFileSync(fixture.contractPath, `${readFileSync(fixture.contractPath, "utf8")}\nUnreviewed change at dispatch boundary.\n`),
+    buildExecutor: { name: "must-not-dispatch", async probe() { calls += 1; throw new Error("unexpected probe"); }, async execute() { calls += 1; throw new Error("unexpected build"); } },
+  });
+  assert.equal(calls, 0);
+  assert.equal(result.state.status, "blocked");
+  assert.equal(result.state.blockers[0].code, "outcome_approval_stale");
+  assert.equal(result.state.iteration, 1, "Changed approval is a direct blocker, not three artificial implementation failures");
 });
