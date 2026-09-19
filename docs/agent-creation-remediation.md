@@ -78,6 +78,18 @@ Machine verification is not personal acceptance of the product.
 
 ## Integration corrections found during implementation
 
+The first production release attempt stopped before the build swap because
+the isolation guard compared SQLite storage bytes, including changing SHM/WAL
+files, and Finder view metadata. Read-only history access or a checkpoint can
+change these bytes while preserving every application row. Protected SQLite
+files now use a transactional digest of schema, metadata and ordered rows,
+including committed data still in WAL. Auxiliary files are omitted only when
+their adjacent base file is a regular, verified SQLite database; orphan files,
+non-SQLite lookalikes and symlink targets remain protected. Finder's regular
+`.DS_Store` files do not represent application state. Corrupt or unreadable
+databases fail the release check. Regression controls cover checkpoint churn,
+uncheckpointed user edits, schema changes, corruption and ordinary files.
+
 Research created under an execution worktree contains references relative to
 that worktree. Copying its bytes to the primary instance changes how those
 references resolve. Promotion now checks the original complete gate and frozen

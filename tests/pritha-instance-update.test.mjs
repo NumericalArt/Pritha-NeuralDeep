@@ -123,6 +123,7 @@ if (action === "start") {
   copyFileSync(path.join(sourceRoot, "scripts", "lib", "env.mjs"), path.join(lib, "env.mjs"));
   copyFileSync(path.join(sourceRoot, "scripts", "lib", "sync-probe.mjs"), path.join(lib, "sync-probe.mjs"));
   copyFileSync(path.join(sourceRoot, "scripts", "lib", "release-artifact.mjs"), path.join(lib, "release-artifact.mjs"));
+  copyFileSync(path.join(sourceRoot, "scripts", "lib", "instance-isolation.mjs"), path.join(lib, "instance-isolation.mjs"));
   copyFileSync(path.join(sourceRoot, "scripts", "lib", "cli-args.mjs"), path.join(lib, "cli-args.mjs"));
   copyFileSync(path.join(sourceRoot, "scripts", "lib", "paths.mjs"), path.join(lib, "paths.mjs"));
   writeFileSync(path.join(checkout, "interfaces", "control-center", ".next", "version"), "good\n");

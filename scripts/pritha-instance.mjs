@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { runSyncProbe } from "./lib/sync-probe.mjs";
+import { directoryFingerprint } from "./lib/instance-isolation.mjs";
 
 import { createHash } from "node:crypto";
 
@@ -7,11 +8,9 @@ import {
   chmodSync,
   copyFileSync,
   cpSync,
-  createReadStream,
   existsSync,
   lstatSync,
   mkdirSync,
-  readlinkSync,
   readFileSync,
   realpathSync,
   readdirSync,
@@ -136,53 +135,6 @@ function canonicalExistingPath(value) {
   try { return realpathSync(resolved); } catch { return resolved; }
 }
 
-async function fileDigest(filePath) {
-  const hash = createHash("sha256");
-  await new Promise((resolve, reject) => {
-    const stream = createReadStream(filePath);
-    stream.on("data", (chunk) => hash.update(chunk));
-    stream.on("error", reject);
-    stream.on("end", resolve);
-  });
-  return hash.digest("hex");
-}
-
-async function directoryFingerprint(directory, excludedDirectories = new Set()) {
-  const root = path.resolve(directory);
-  const entries = [];
-  const excluded = new Set();
-  async function visit(current, relative = "") {
-    if (!existsSync(current)) return;
-    const stat = lstatSync(current);
-    if (stat.isSymbolicLink()) {
-      entries.push({ path: relative || ".", type: "symlink", target: readlinkSync(current) });
-      return;
-    }
-    if (stat.isFile()) {
-      entries.push({ path: relative || ".", type: "file", bytes: stat.size, sha256: await fileDigest(current) });
-      return;
-    }
-    if (!stat.isDirectory()) return;
-    for (const name of readdirSync(current).sort((a, b) => a.localeCompare(b))) {
-      const childRelative = relative ? `${relative}/${name}` : name;
-      const child = path.join(current, name);
-      const childStat = lstatSync(child);
-      if (childStat.isDirectory() && !childStat.isSymbolicLink() && excludedDirectories.has(name)) {
-        excluded.add(childRelative);
-        continue;
-      }
-      await visit(child, childRelative);
-    }
-  }
-  await visit(root);
-  const payload = entries.map((entry) => JSON.stringify(entry)).join("\n");
-  return {
-    sha256: createHash("sha256").update(payload).digest("hex"),
-    entries: entries.length,
-    excluded: [...excluded].sort((a, b) => a.localeCompare(b)),
-  };
-}
-
 async function isolationSnapshot() {
   const stateAgents = path.join(config.stateRoot, "agents");
   const registryPath = path.join(stateAgents, "registry.md");
@@ -198,7 +150,7 @@ async function isolationSnapshot() {
     schema: "pritha-instance-isolation-snapshot-v1",
     state_root: canonicalExistingPath(config.stateRoot),
     agent_parent: canonicalExistingPath(config.agentParent),
-    protected_state: await directoryFingerprint(config.stateRoot, PROTECTED_STATE_EXCLUDED_DIRECTORIES),
+    protected_state: await directoryFingerprint(config.stateRoot, PROTECTED_STATE_EXCLUDED_DIRECTORIES, { sqliteContents: true }),
     agent_state: await directoryFingerprint(stateAgents),
     registry_sha256: existsSync(registryPath) ? sha256(registryPath) : null,
     child_agent_folders: folders,
