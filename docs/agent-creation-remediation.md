@@ -92,6 +92,15 @@ non-SQLite lookalikes and symlink targets remain protected. Finder's regular
 databases fail the release check. Regression controls cover checkpoint churn,
 uncheckpointed user edits, schema changes, corruption and ordinary files.
 
+Finder can also modify view metadata in a prepared rollback copy. New rollback
+receipts use a versioned digest that excludes only regular `.DS_Store` files
+with the Finder binary header; these files are omitted when copying the build.
+Text lookalikes, symlinks and directories with that name are still checked,
+as are all chunks, manifests and build identity.
+Existing receipts retain their original byte-level digest; they are never
+reinterpreted under the new rule. Regression controls cover metadata churn,
+changed executable bytes, symlink substitution and unknown digest versions.
+
 A subsequent release attempt reached the manager stop but retained the old
 build: a terminal-started manager used a relative script path, while the stop
 check searched for an absolute path. Stop now verifies the process working
