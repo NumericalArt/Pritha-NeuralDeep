@@ -3,10 +3,11 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
 
-// The same scenarios cover both runtime projections. All chat traffic is synthetic.
+// Match this distribution's runtime regardless of the checkout directory name.
+// All chat traffic is synthetic; no provider request is dispatched.
 async function fixture(page: Page, history = false, options: { body?: boolean; older?: boolean } = {}) {
   const now = '2026-09-10T12:00:00Z';
-  const providerId = process.cwd().includes('Pritha-NeuralDeep') ? 'neuraldeep_cli' : 'desktop_bundled';
+  const providerId = 'neuraldeep_cli' as const;
   const stateIdentityHash = 'c'.repeat(24);
   const message = (id: string, text: string) => ({ id, kind: 'assistant_message', status: 'in_progress', message: { id, role: 'assistant', markdown: text, status: 'streaming', createdAt: now } });
   const row: any = { turnId: 'turn_scroll', status: 'in_progress', userMessage: { id: 'user', markdown: Array.from({ length: 35 }, (_, n) => `Context paragraph ${n}. A stable place to read while the assistant works.`).join('\n\n') }, items: [message('answer', 'The response begins here.')], pendingRequestIds: [], startedAt: now, error: null };
