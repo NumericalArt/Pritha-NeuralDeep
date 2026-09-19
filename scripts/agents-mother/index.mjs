@@ -9,12 +9,12 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSy
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseFrontmatterData, yamlList } from "../lib/frontmatter.mjs";
-import { atomicCompareAndSwapFile } from "../lib/atomic-file.mjs";
+import { atomicCompareAndSwapFile, withFileLock } from "../lib/atomic-file.mjs";
 import { parseBoundedJson } from "../lib/bounded-json.mjs";
 import { markdownDocumentLock } from "../lib/markdown-content-lock.mjs";
 import { redactSensitiveText, redactStructuredText } from "../lib/redaction.mjs";
 import { readBoundedRegularFile } from "../lib/safe-file-read.mjs";
-import { resolvePrithaAgentMemoryRoot, resolvePrithaStatePath, resolveTechscopeRoot } from "../lib/paths.mjs";
+import { resolvePrithaAgentMemoryRoot, resolvePrithaAgentParent, resolvePrithaStatePath, resolveTechscopeRoot } from "../lib/paths.mjs";
 import { requirePrithaInstanceEnv } from "../lib/env.mjs";
 import { slug as makeSlug } from "../lib/slug.mjs";
 import { today } from "../lib/date.mjs";
@@ -85,6 +85,7 @@ import { runTrialPlan } from "./trial-runner.mjs";
 import { deliveryUsageStatus, deliveryTokenPreflight } from "./delivery-ledger.mjs";
 import { readDeliveryUsage } from "./phase-usage.mjs";
 import { readTaskDelivery } from "./task-delivery.mjs";
+import { INTERVIEW_PRESETS, interviewBriefOptions, parseInterviewBrief } from "./interview-brief.mjs";
 
 const ROOT = resolveTechscopeRoot();
 const AGENT_MEMORY_ROOT = resolvePrithaAgentMemoryRoot({ root: ROOT });
@@ -103,7 +104,7 @@ function usage() {
   ${CLI_COMMAND} help
   ${CLI_COMMAND} questions
   ${CLI_COMMAND} interview [--name <name>] [--mission <text>] [--build-token-budget 1000000] [--runtime codex-native] [--runtime-placement frontier-first] [--interface "Codex project"] [--telegram none] [--service none] [--autostart disabled]
-  ${CLI_COMMAND} init --name <name> --mission <text> [--build-token-budget <positive-int> --token-budget-confirmed-by user] [--runtime codex-native] [--runtime-placement frontier-first] [--interface "Codex project"] [--telegram none] [--service none] [--autostart disabled]
+  ${CLI_COMMAND} init --name <name> --mission <text> [--brief <path> | --from-brief <path>] [--preset generic|local-feed|llm-app] [--contract-only] [--build-token-budget <positive-int> --token-budget-confirmed-by user] [--runtime codex-native] [--runtime-placement frontier-first] [--interface "Codex project"] [--telegram none] [--service none] [--autostart disabled]
   ${CLI_COMMAND} outcome init <contract-path> [--interaction-mode interface|headless|hybrid]
   ${CLI_COMMAND} outcome validate <outcome-spec-path>
   ${CLI_COMMAND} outcome status <outcome-spec-path>
@@ -377,6 +378,7 @@ function normalizeRuntimePlacementProfile(value, runtimeFamily = "codex-native")
   if (!text) {
     if (runtimeFamily === "local-model") return "local-first";
     if (runtimeFamily === "hybrid") return "hybrid";
+    if (runtimeFamily === "api") return "deterministic-first";
     return "frontier-first";
   }
   if (text.includes("determin")) return "deterministic-first";
@@ -440,7 +442,7 @@ function ftsQuery(text) {
 
 function contractMarkdown(data) {
   const date = data.date || today();
-  const agentSlug = slug(data.agentName);
+  const agentSlug = data.technicalSlug || slug(data.agentName);
   const runtimeFamily = scalar(data.runtimeFamily, "codex-native");
   const telegramMode = scalar(data.telegramMode, "none");
   const primaryInterface = scalar(data.primaryInterface, "Codex project");
@@ -462,13 +464,18 @@ function contractMarkdown(data) {
   const tools = ["Codex", "AGENTS.md"];
   if (telegramMode !== "none" || primaryInterface.toLowerCase().includes("telegram")) tools.push("Telegram");
   if (runtimeFamily === "cli") tools.push("CLI");
-  if (runtimeFamily === "api") tools.push("OpenAI Agents SDK");
+  if (runtimeFamily === "api" && serviceMode === "process") tools.push("Node.js HTTP");
+  else if (runtimeFamily === "api") tools.push("OpenAI Agents SDK");
   if (serviceMode === "launchd") tools.push("launchd");
 
   const report = `---
 id: ${data.artifactId || `${date}-${agentSlug}-agent-contract`}
 type: agent-contract
 contract_schema_version: ${CONTRACT_SCHEMA_VERSION}
+interview_brief_schema_version: 1
+interview_preset: ${data.interviewPreset || "generic"}
+outcome_trial_preset: ${data.interviewPreset === "llm-app" ? "llm-http-app-v1" : data.interviewPreset === "local-feed" && data.sourceFormat === "json" ? "public-json-feed-v1" : "none"}
+init_request_fingerprint: ${data.initRequestFingerprint || "legacy"}
 agent_kind: ${agentKind}
 agent_id: agent-${createHash("sha256").update(data.artifactId || `${date}-${agentSlug}-agent-contract`).digest("hex").slice(0, 24)}
 status: draft
@@ -528,11 +535,12 @@ Status: draft
 ## Purpose
 
 - Agent name: ${scalar(data.agentName)}
-- Technical slug: ${slug(data.agentName)}
+- Technical slug: ${agentSlug}
 - Primary mission: ${scalar(data.primaryMission)}
 - Target user: ${scalar(data.targetUser)}
 - Success criteria: ${scalar(data.successCriteria)}
 - Out of scope: ${scalar(data.outOfScope)}
+- Product constraints: ${scalar((data.constraints || []).join("; "), "none specified")}
 
 ## Functional scope
 
@@ -666,6 +674,9 @@ Discovery produces advisory candidates only. It never authorizes cloning, instal
 - Indexing/search needs: ${scalar(data.indexingSearchNeeds, "none for v1 unless contract is updated")}
 - External verification needs: ${scalar(data.externalVerificationNeeds, "Pritha memory plus current official docs before scaffold")}
 - Source freshness requirements: ${scalar(data.sourceFreshnessRequirements, "verify volatile platform/API choices before scaffold")}
+- Product data sources: ${scalar((data.sources || []).join("; "), "none specified")}
+- Source format: ${scalar(data.sourceFormat, "contract-selected")}
+- Provider binding: ${scalar(data.providerBinding, "not-applicable")}
 
 ## Tools and integrations
 
@@ -731,7 +742,83 @@ async function ask(rl, question, defaultValue = "") {
   return answer || defaultValue;
 }
 
-function applyInterviewTechnicalProposal(data, options = {}) {
+export function parseInterviewBriefDecisions(text) {
+  const brief = parseInterviewBrief(text);
+  const cliOptions = interviewBriefOptions(brief);
+  return {
+    brief, cliOptions,
+    data: {
+      agentName: brief.identity.name, technicalSlug: brief.identity.slug,
+      primaryMission: brief.goal, targetUser: brief.user,
+      successCriteria: brief.successCriteria.join("; "), outOfScope: brief.nonGoals.join("; "),
+      coreFunctions: brief.coreFunctions, criticalWorkflows: brief.workflows,
+      sources: brief.sources, constraints: brief.constraints,
+      allowedNetworkAccess: brief.permissions.network.join("; "),
+      allowedFilesystemAccess: brief.permissions.filesystem.join("; "),
+      userAuthorizationModel: brief.permissions.authorization,
+      ...brief.technical,
+    },
+  };
+}
+
+function resolveInterviewBriefPath(data, options = {}) {
+  if (options.brief && options["from-brief"] && path.resolve(String(options.brief)) !== path.resolve(String(options["from-brief"]))) {
+    throw new Error("--brief and --from-brief refer to different files");
+  }
+  const explicit = options.brief || options["from-brief"];
+  if (explicit) {
+    const resolved = path.resolve(String(explicit));
+    if (!existsSync(resolved)) throw new Error("Interview brief file not found");
+    return resolved;
+  }
+  const slugName = options.slug || slug(data.agentName || options.name);
+  if (!slugName || slugName === "new-agent") return null;
+  const parent = resolvePrithaAgentParent({ root: ROOT });
+  const candidate = path.join(parent, slugName, "interview-brief.md");
+  return existsSync(candidate) ? candidate : null;
+}
+
+function interviewPresetOptions(options = {}) {
+  const preset = options.preset || "generic";
+  if (!INTERVIEW_PRESETS.has(preset)) throw new Error("Invalid interview preset; use generic, local-feed, or llm-app");
+  if (options["source-format"] && !["json", "rss", "atom", "mixed"].includes(options["source-format"])) throw new Error("Invalid source format; use json, rss, atom, or mixed");
+  if (preset === "generic") return options;
+  if ((options.runtime && options.runtime !== "api") || (options.service && options.service !== "process") || (options.interface && !/^(?:web|api)$/i.test(options.interface))) {
+    throw new Error("The selected interview preset requires api runtime, process service, and web/API interface; use generic for another architecture");
+  }
+  const base = { runtime: "api", service: "process", interface: "web", "runtime-placement": preset === "local-feed" ? "deterministic-first" : "hybrid" };
+  if (preset === "local-feed") Object.assign(base, {
+    "repository-policy": "not-applicable", "repository-topics": "none",
+    "repository-waiver": "Explicit local-feed preset uses standard local HTTP and feed processing; repository discovery is unnecessary. Runtime, source API, and operations evidence remain required.",
+  });
+  if (preset === "llm-app") Object.assign(base, {
+    "repository-policy": "auto", tools: "local HTTP endpoints plus instance-bound NeuralDeep provider adapter",
+    "provider-binding": "instance-bound NeuralDeep provider; secrets stay with the provider host; validate provider readiness before paid execution",
+  });
+  return { ...base, ...options };
+}
+
+function applyApiProcessContractDefaults(data, options = {}) {
+  if (data.runtimeFamily !== "api" || data.serviceMode !== "process") return;
+  if (!options["runtime-placement"] && !options.placement) data.runtimePlacementProfile = "deterministic-first";
+  if (!options.start) data.startCommand = "node scripts/service-control.mjs start";
+  if (!options.stop) data.stopCommand = "node scripts/service-control.mjs stop";
+  if (!options.healthcheck) data.healthcheckCommand = "node scripts/healthcheck.mjs";
+  if (!options.tests) data.testsHealthchecks = "Independent Outcome Trials; read-only GET /health for process health; refresh is a separate mutating action";
+}
+
+export function applyInterviewTechnicalProposal(data, options = {}) {
+  options = interviewPresetOptions(options);
+  data.interviewPreset = options.preset || "generic";
+  data.sourceFormat = options["source-format"] || "";
+  data.technicalSlug = options.slug || data.technicalSlug || slug(data.agentName);
+  if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(data.technicalSlug)) throw new Error("Invalid technical slug");
+  data.sources = options.sources && options.sources !== data.sources?.join("; ") ? listFromText(options.sources) : data.sources || [];
+  data.constraints = options.constraints && options.constraints !== data.constraints?.join("; ") ? listFromText(options.constraints) : data.constraints || [];
+  data.allowedNetworkAccess = options["allowed-network"] || data.allowedNetworkAccess;
+  data.allowedFilesystemAccess = options["allowed-filesystem"] || data.allowedFilesystemAccess;
+  data.userAuthorizationModel = options.authorization || data.userAuthorizationModel;
+  data.providerBinding = options["provider-binding"] || data.providerBinding;
   data.coreFunctions = Array.isArray(data.coreFunctions) && data.coreFunctions.length
     ? data.coreFunctions
     : listFromText(options.core, [data.primaryMission || "TBD"]);
@@ -744,7 +831,7 @@ function applyInterviewTechnicalProposal(data, options = {}) {
   data.runtimeFamily = options.runtime && RUNTIME_FAMILIES.has(options.runtime) ? options.runtime : "codex-native";
   data.runtimeCoercedFrom = options.runtime && !RUNTIME_FAMILIES.has(options.runtime) ? options.runtime : undefined;
   data.agentKind = options["agent-kind"];
-  data.primaryInterface = data.primaryInterface || options.interface || "Codex project";
+  data.primaryInterface = options.interface || data.primaryInterface || "Codex project";
   data.secondaryInterfaces = options.secondary || "none";
   data.telegramMode = options.telegram || (String(data.primaryInterface).toLowerCase().includes("telegram") ? "primary-chat" : "none");
   data.expectedHosting = options.hosting || "local Mac";
@@ -776,8 +863,10 @@ function applyInterviewTechnicalProposal(data, options = {}) {
   data.skillMutationPolicy = options["skill-mutation"] || "read-only";
   data.installedSkills = options["installed-skills"] || "none";
   data.repositoryResearchPolicy = options["repository-policy"] || "auto";
-  data.repositoryResearchTopics = options["repository-topics"] || "auto from contract and pattern pack";
-  data.repositoryResearchWaiverReason = options["repository-waiver"] || (data.repositoryResearchPolicy === "not-applicable" ? "TBD" : "not-applicable");
+  data.repositoryResearchTopics = options["repository-topics"] || (data.repositoryResearchPolicy === "not-applicable" ? "none" : "auto from contract and pattern pack");
+  data.repositoryResearchWaiverReason = options["repository-waiver"] || (data.repositoryResearchPolicy === "not-applicable"
+    ? "TBD"
+    : "not-applicable");
   data.selectedGitHubRepositories = options["github-repositories"] || "none";
   data.repositoryAdoptionMode = options["repository-adoption"] || "none";
   data.selectedRepositoryModule = options["repository-module"] || "not-applicable";
@@ -795,7 +884,7 @@ function applyInterviewTechnicalProposal(data, options = {}) {
   data.executionOrchestration = options.orchestration || "outcome-driven build, independent Trials and typed blockers";
   data.testsHealthchecks = options.tests || "Outcome Trials plus structure validation and smoke test";
   data.userTrainingGuide = options.training || "first exercise demonstrating and accepting the main V1 outcome";
-  data.targetFolder = options["target-folder"] || "sibling of Pritha";
+  data.targetFolder = options["target-folder"] ? path.resolve(String(options["target-folder"])) : path.join(resolvePrithaAgentParent({ root: ROOT }), data.technicalSlug);
   data.buildGitMode = options["build-git-mode"] || "disposable-worktree";
   data.buildExecutor = ["codex-app-server", "app-server"].includes(options["build-executor"])
     ? "codex-cli"
@@ -814,13 +903,64 @@ function applyInterviewTechnicalProposal(data, options = {}) {
       : "pending"
   );
   data.repeatedFailureThreshold = options["repeated-failure-threshold"] || "3";
+  applyApiProcessContractDefaults(data, options);
   return data;
+}
+
+function stableJson(value) {
+  if (Array.isArray(value)) return value.map(stableJson);
+  if (value && typeof value === "object") return Object.fromEntries(Object.keys(value).sort().filter((key) => value[key] !== undefined).map((key) => [key, stableJson(value[key])]));
+  return value;
+}
+
+/** One canonical pair per instance and target. Retry never rewrites authored artifacts. */
+export function createInterviewArtifacts(data, options = {}) {
+  const root = options.root || ROOT;
+  const contractDir = options.contractDir || CONTRACT_DIR;
+  mkdirSync(contractDir, { recursive: true });
+  const agentSlug = data.technicalSlug || slug(data.agentName);
+  if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(agentSlug)) throw new Error("Invalid technical slug");
+  const fingerprint = `sha256:${createHash("sha256").update(JSON.stringify(stableJson(data))).digest("hex")}`;
+  return withFileLock(path.join(contractDir, ".init"), () => {
+    const existing = readdirSync(contractDir)
+      .filter((name) => /-agent-contract(?:-\d+)?\.md$/.test(name))
+      .map((name) => contractData(path.join(contractDir, name), { root }))
+      .filter((entry) => entry.fm.status !== "superseded" && (
+        (entry.technicalSlug || slug(entry.agentName)) === agentSlug
+        || (entry.targetFolder && data.targetFolder && !/^sibling of Pritha$/i.test(entry.targetFolder) && path.resolve(entry.targetFolder) === path.resolve(data.targetFolder))
+      ));
+    if (existing.length > 1) throw new Error("Multiple active contracts exist for this agent; resolve their identities before retrying init");
+    let contractPath;
+    const reused = existing.length === 1;
+    if (reused) {
+      const previous = existing[0];
+      if (previous.fm.init_request_fingerprint && previous.fm.init_request_fingerprint !== "legacy") {
+        if (previous.fm.init_request_fingerprint !== fingerprint) throw new Error("Init request differs from the existing agent contract; revise the existing design explicitly");
+      } else if (previous.primaryMission !== data.primaryMission || previous.targetUser !== data.targetUser || previous.successCriteria !== data.successCriteria || (previous.targetFolder && !/^sibling of Pritha$/i.test(previous.targetFolder) && path.resolve(previous.targetFolder) !== path.resolve(data.targetFolder))) {
+        throw new Error("Existing legacy contract needs explicit review before reusing this target");
+      }
+      contractPath = previous.fullPath;
+    } else {
+      const date = options.date || today();
+      contractPath = writeUniqueArtifact(
+        path.join(contractDir, `${date}-${agentSlug}-agent-contract.md`),
+        ({ artifactId }) => contractMarkdown({ ...data, technicalSlug: agentSlug, date, artifactId, initRequestFingerprint: fingerprint }),
+      ).path;
+    }
+    const outcome = options.contractOnly ? null : createOutcomeSpec(contractPath, { root, date: options.date || today() });
+    return { contractPath, outcomePath: outcome?.path || null, reused, agentSlug, targetFolder: data.targetFolder };
+  });
 }
 
 async function interview(options) {
   ensureDirs();
   const interactive = Boolean(process.stdin.isTTY && !options["no-input"]);
-  const data = {};
+  const briefPath = resolveInterviewBriefPath({ agentName: options.name }, options);
+  const brief = briefPath
+    ? parseInterviewBriefDecisions(readBoundedRegularFile(briefPath, { maxBytes: 128_000, encoding: "utf8" }).text)
+    : { cliOptions: {}, data: {} };
+  options = interviewPresetOptions({ ...brief.cliOptions, ...options });
+  const data = { ...brief.data };
 
   if (interactive) {
     const rl = createInterface({ input, output });
@@ -841,28 +981,23 @@ async function interview(options) {
       rl.close();
     }
   } else {
-    data.agentName = options.name || "new-agent";
-    data.primaryMission = options.mission || "TBD";
-    data.targetUser = options.user || "single operator";
-    data.successCriteria = options.success || "TBD";
-    data.outOfScope = options["out-of-scope"] || "TBD";
-    data.coreFunctions = listFromText(options.core, ["TBD"]);
-    data.criticalWorkflows = listFromText(options.workflows, ["Request the outcome, review evidence, then correct or accept the result"]);
-    data.primaryInterface = options.interface || "Codex project";
-    data.sensitiveData = options.sensitive || "unknown; resolve before production use";
-    applyInterviewTechnicalProposal(data, options);
+    const merged = options;
+    data.agentName = merged.name || brief.data.agentName || "new-agent";
+    data.primaryMission = merged.mission || brief.data.primaryMission || "TBD";
+    data.targetUser = merged.user || brief.data.targetUser || "single operator";
+    data.successCriteria = merged.success || brief.data.successCriteria || "TBD";
+    data.outOfScope = merged["out-of-scope"] || brief.data.outOfScope || "TBD";
+    data.coreFunctions = listFromText(merged.core, brief.data.coreFunctions || [data.primaryMission]);
+    data.criticalWorkflows = listFromText(merged.workflows, brief.data.criticalWorkflows?.length ? brief.data.criticalWorkflows : ["Request the outcome, review evidence, then correct or accept the result"]);
+    data.primaryInterface = merged.interface || brief.data.primaryInterface || "Codex project";
+    data.sensitiveData = merged.sensitive || "unknown; resolve before production use";
+    applyInterviewTechnicalProposal(data, merged);
   }
 
-  const date = today();
-  const writtenContract = writeUniqueArtifact(
-    path.join(CONTRACT_DIR, `${date}-${slug(data.agentName)}-agent-contract.md`),
-    ({ artifactId }) => contractMarkdown({ ...data, date, artifactId }),
-  );
-  const outPath = writtenContract.path;
-  console.log(`Created: ${path.relative(ROOT, outPath)}`);
-
-  const writtenOutcome = createOutcomeSpec(outPath, { root: ROOT, date });
-  console.log(`Proposed Outcome Spec: ${path.relative(ROOT, writtenOutcome.path)}`);
+  const artifacts = createInterviewArtifacts(data, { contractOnly: Boolean(options["contract-only"]) });
+  const outPath = artifacts.contractPath;
+  console.log(`${artifacts.reused ? "Reused" : "Created"}: ${path.relative(ROOT, outPath)}`);
+  if (artifacts.outcomePath) console.log(`Proposed Outcome Spec: ${path.relative(ROOT, artifacts.outcomePath)}`);
 
   const issues = validateContract(outPath, { print: false });
   if (issues.length > 0) {
@@ -995,7 +1130,7 @@ function externalChecksFor(data) {
     checks.push("Verify current Telegram Bot API behavior for updates, long polling/webhooks, file downloads and message size limits.");
     checks.push("Verify token handling and one-user allowlist pattern before creating the Telegram adapter.");
   }
-  if (data.runtimeFamily === "api") {
+  if (data.runtimeFamily === "api" && data.serviceMode !== "process") {
     checks.push("Verify current OpenAI Agents SDK docs for agents, tools, handoffs, guardrails, tracing and state before API scaffold.");
   }
   if (data.runtimeFamily === "local-model") {
@@ -1031,8 +1166,13 @@ export function formatMemoryRows(rows) {
 `).join("\n");
 }
 
+function blockingExternalResearchTopics(data, topics) {
+  // Repository discovery waivers never waive API/runtime/source verification.
+  return topics;
+}
+
 function externalResearchGateState(data, topics, repositoryResearch = null) {
-  const notApplicable = topics.length === 0 && contractAllowsExternalResearchNotApplicable(data);
+  const notApplicable = blockingExternalResearchTopics(data, topics).length === 0 && contractAllowsExternalResearchNotApplicable(data);
   const repositoryStatus = repositoryResearch?.status || "not-applicable";
   const repositoryPassing = ["complete", "not-applicable"].includes(repositoryStatus);
   return {
@@ -1070,7 +1210,8 @@ export function researchMarkdown(data, memoryResults, domainResults, knownDocs, 
   const date = today();
   const agentSlug = slug(data.agentName);
   const title = `${data.agentName || agentSlug} agent architecture research`;
-  const externalResearchTopics = options.externalResearchTopics || deriveExternalResearchTopics(data);
+  const derivedExternalResearchTopics = options.externalResearchTopics || deriveExternalResearchTopics(data, { patternPack: options.patternPack });
+  const externalResearchTopics = blockingExternalResearchTopics(data, derivedExternalResearchTopics);
   const patternPack = options.patternPack || null;
   const repositoryResearch = options.repositoryResearch || null;
   const gate = externalResearchGateState(data, externalResearchTopics, repositoryResearch);

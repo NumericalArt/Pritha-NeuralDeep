@@ -151,7 +151,7 @@ test("generated contracts keep sources and related as separate frontmatter field
     assert.ok(frontmatter.sources.includes("07_workflows/agents-mother.md"));
     assert.equal(typeof frontmatter.related, "object");
     assert.ok(Array.isArray(frontmatter.related.standards));
-    assert.match(contractText, /^- Target folder: sibling of Pritha$/m);
+    assert.equal(contractData(contractPath).targetFolder, path.join(path.dirname(root), "frontmatter-agent"));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
