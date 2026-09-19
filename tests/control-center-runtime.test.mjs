@@ -215,6 +215,10 @@ test("one state-root lock cannot be shared by two runtime wrappers", async () =>
   const item = fixture();
   let running = null;
   try {
+    // A restricted or locale-escaped process listing cannot establish that a
+    // live owner is stale. The original defect stole this lock and hung here.
+    executable(path.join(item.fakeBin, "ps"), "#!/bin/sh\nexit 1\n");
+    item.env.LC_ALL = "C";
     writeFileSync(item.nextBinary, "setInterval(() => undefined, 1000);\n");
     running = spawn(process.execPath, [
       runtimeScript,
@@ -233,9 +237,12 @@ test("one state-root lock cannot be shared by two runtime wrappers", async () =>
     assert.equal(existsSync(lockPath), true, "first wrapper should acquire the state-root lock");
 
     const contender = { ...item, port: item.port + 1, env: { ...item.env, PRITHA_CONTROL_CENTER_PORT: String(item.port + 1) } };
+    const originalLock = readFileSync(lockPath, "utf8");
     const rejected = invoke(contender, "run");
+    assert.equal(rejected.error, undefined, "lock contention must finish without the subprocess timeout");
     assert.equal(rejected.status, 1, rejected.stderr || rejected.stdout);
     assert.equal(JSON.parse(rejected.stdout).code, "runtime_already_running");
+    assert.equal(readFileSync(lockPath, "utf8"), originalLock, "the live owner's lock must remain intact");
   } finally {
     if (running && running.exitCode == null) {
       running.kill("SIGTERM");
@@ -243,4 +250,40 @@ test("one state-root lock cannot be shared by two runtime wrappers", async () =>
     }
     rmSync(item.directory, { recursive: true, force: true });
   }
+});
+
+test("an incomplete runtime lock is preserved until ownership can be reconciled", () => {
+  const item = fixture();
+  try {
+    const lockPath = path.join(item.stateRoot, "setup", "control-center-runtime", "runtime.lock.json");
+    mkdirSync(path.dirname(lockPath), { recursive: true });
+    writeFileSync(lockPath, '{"schema":');
+    const rejected = invoke(item, "run");
+    assert.equal(rejected.error, undefined);
+    assert.equal(rejected.status, 1, rejected.stderr || rejected.stdout);
+    assert.equal(JSON.parse(rejected.stdout).code, "runtime_lock_unconfirmed");
+    assert.equal(readFileSync(lockPath, "utf8"), '{"schema":');
+    assert.equal(existsSync(path.join(path.dirname(lockPath), "state.json")), false);
+  } finally { rmSync(item.directory, { recursive: true, force: true }); }
+});
+
+test("Darwin runtime process inspection preserves non-ASCII paths independently of the caller locale", async () => {
+  if (process.platform !== "darwin") return;
+  const item = fixture();
+  const capture = path.join(item.directory, "process-inspection.json");
+  try {
+    // Stop's fallback verifies the live wrapper before signalling it. A failing
+    // ps probe is safe here, and lets this test inspect the exact query config.
+    executable(path.join(item.fakeBin, "ps"), `#!${process.execPath}\nrequire('node:fs').writeFileSync(process.env.PRITHA_TEST_PS_CAPTURE, JSON.stringify({ args: process.argv.slice(2), locale: process.env.LC_ALL }));process.exit(1);\n`);
+    item.env.LC_ALL = "C"; item.env.PRITHA_TEST_PS_CAPTURE = capture;
+    const statePath = path.join(item.stateRoot, "setup", "control-center-runtime", "state.json");
+    mkdirSync(path.dirname(statePath), { recursive: true });
+    writeFileSync(statePath, JSON.stringify({ schema: "pritha-control-center-runtime-state-v1", instanceId: item.instanceId, codeRoot: item.checkout,
+      stateRoot: item.stateRoot, port: item.port, label: `com.numericalart.pritha.control-center.${item.instanceId}`, wrapperPid: process.pid }));
+    const result = invoke(item, "stop", ["--yes"]);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const inspected = JSON.parse(readFileSync(capture, "utf8"));
+    assert.equal(inspected.locale, "en_US.UTF-8");
+    assert.ok(inspected.args.includes("-ww"));
+  } finally { rmSync(item.directory, { recursive: true, force: true }); }
 });

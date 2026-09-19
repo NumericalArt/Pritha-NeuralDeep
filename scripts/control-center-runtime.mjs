@@ -202,7 +202,7 @@ function runtimeExecutablePath() {
 
 function processExists(pid) {
   if (!Number.isSafeInteger(pid) || pid <= 1) return false;
-  try { process.kill(pid, 0); return true; } catch { return false; }
+  try { process.kill(pid, 0); return true; } catch (error) { return error?.code === "EPERM"; }
 }
 
 function decodeLsofPath(value) {
@@ -214,7 +214,11 @@ function decodeLsofPath(value) {
 
 function processInfo(pid) {
   if (!processExists(pid)) return null;
-  const ps = run("ps", ["-o", "pid=,ppid=,pgid=,command=", "-p", String(pid)]);
+  // Darwin's C locale renders UTF-8 argv as M-PM-... escapes. Ownership checks
+  // need the complete literal path, including when the checkout name is Cyrillic.
+  const ps = run("ps", ["-ww", "-o", "pid=,ppid=,pgid=,command=", "-p", String(pid)], {
+    env: process.platform === "darwin" ? { LC_ALL: "en_US.UTF-8" } : {},
+  });
   if (!ps.ok || !ps.stdout) return null;
   const match = ps.stdout.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+([\s\S]+)$/);
   if (!match) return null;
@@ -390,7 +394,13 @@ function acquireLock() {
   assertResolvedInsideState(lockPath);
   if (existsSync(lockPath)) {
     const existing = readJson(lockPath);
-    if (existing?.pid && processExists(existing.pid) && runtimeProcessMatches(existing.pid)) {
+    // A command inspection failure cannot prove the owner has exited. Refuse
+    // even a reused live PID; uncertain ownership needs operator reconciliation.
+    if (!existing || existing.schema !== "pritha-control-center-runtime-lock-v1"
+      || !Number.isSafeInteger(existing.pid) || existing.pid <= 1 || !existing.token) {
+      throw new Error("runtime_lock_unconfirmed");
+    }
+    if (processExists(existing.pid)) {
       throw new Error("runtime_already_running");
     }
     rmSync(lockPath, { force: true });
