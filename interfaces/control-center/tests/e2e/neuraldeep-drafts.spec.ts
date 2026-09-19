@@ -644,6 +644,56 @@ for (const width of [1280, 390]) for (const history of [false, true]) test(`resp
   await expect(copy).toHaveCount(0);
 });
 
+test("history pagination survives a pending tail refresh and later turn updates", async ({ page }) => {
+  await page.setViewportSize({width:390,height:850});
+  const f=await fixture(page),chatId="chat_activity_priority";
+  f.threads.set(chatId,detail(chatId,"Activity request priority"));
+  const actions=Array.from({length:12},(_,i)=>({id:`action_${i+1}`,kind:"command",status:"completed",commandPreview:`Action ${i+1}`,outputPreview:null,exitCode:0}));
+  const row={turnId:"turn_priority",status:"completed",userMessage:{id:"user",markdown:"Read the earlier actions",role:"user",status:"completed"},items:[],pendingRequestIds:[],startedAt:now,history:{itemsCursor:"recent_actions",itemsState:"not_loaded",sourceMode:"native"}};
+  let holdTail=false,holdOlder=true,historyReads=0;
+  const tailRoutes:Route[]=[],olderRoutes:Route[]=[],reads:string[]=[];
+  const reply=(route:Route,cursor:string)=>{
+    const end=cursor==="recent_actions"?12:Number(cursor.slice(6)),start=Math.max(0,end-5);
+    return route.fulfill({json:envelope({data:actions.slice(start,end).reverse(),nextCursor:start?`older_${start}`:null})});
+  };
+  await page.route(`**/threads/${chatId}/history**`,route=>{
+    const url=new URL(route.request().url());
+    if(!url.pathname.endsWith("/items")){historyReads++;return route.fulfill({json:envelope({data:[row],olderCursor:null})});}
+    const cursor=url.searchParams.get("cursor")!;reads.push(cursor);
+    if(cursor==="recent_actions"&&holdTail){tailRoutes.push(route);return;}
+    if(cursor==="older_7"&&holdOlder){olderRoutes.push(route);return;}
+    return reply(route,cursor);
+  });
+  const refresh=()=>page.evaluate(chatId=>{
+    const source=(window as any).__ndEventSources.find((s:any)=>s.url==="/api/codex-chat/v1/events"&&s.readyState===1);
+    if(!source)throw new Error("summary stream missing");
+    source.dispatchEvent(new MessageEvent("summary.changed",{data:JSON.stringify({changed:[chatId],groups:{},reset:false})}));
+  },chatId);
+  await page.goto(`/task-chat?group=my_chats&chat=${chatId}`);
+  const feed=page.getByRole("region",{name:"Activity",exact:true}),earlier=feed.getByRole("button",{name:/Show earlier actions/});
+  await expect(feed.locator('[data-activity-id="action_12"]')).toBeVisible();
+  holdTail=true;await refresh();await expect.poll(()=>tailRoutes.length).toBe(1);
+  // A background read must not disable the user's navigation, even if it stalls.
+  await expect(earlier).toBeEnabled();await earlier.click();
+  await expect.poll(()=>olderRoutes.length).toBe(1);
+  const tailReads=reads.filter(cursor=>cursor==="recent_actions").length;
+  const beforeRefresh=historyReads;await refresh();await expect.poll(()=>historyReads).toBeGreaterThan(beforeRefresh);
+  // Completing the old tail and refreshing the turn must not cancel this page.
+  await reply(tailRoutes.shift()!,"recent_actions");
+  holdTail=false;holdOlder=false;await reply(olderRoutes.shift()!,"older_7");
+  await expect(feed.locator('[data-activity-id="action_3"]')).toBeAttached();
+  await expect.poll(()=>reads.filter(cursor=>cursor==="recent_actions").length).toBeGreaterThan(tailReads);
+  await expect(earlier).toBeEnabled();await earlier.click();
+  await expect(feed.locator('[data-activity-id="action_1"]')).toBeAttached();
+  await expect(earlier).toHaveCount(0);
+  const completedTailReads=reads.filter(cursor=>cursor==="recent_actions").length;
+  await refresh();await expect.poll(()=>reads.filter(cursor=>cursor==="recent_actions").length).toBeGreaterThan(completedTailReads);
+  await expect(feed.locator('[data-activity-id="action_1"]')).toBeAttached();
+  await expect(earlier).toHaveCount(0);
+  expect(reads.filter(cursor=>cursor==="older_7")).toHaveLength(1);
+  expect(reads.filter(cursor=>cursor==="older_2")).toHaveLength(1);
+});
+
 test("Agents refreshes server addresses on first opening without a focus event", async ({ page }) => {
   const health=await(await page.request.get("/api/health")).json();
   expect(health.instance.role).toBe("development");

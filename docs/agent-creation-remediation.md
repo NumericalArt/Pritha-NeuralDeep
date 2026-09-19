@@ -113,6 +113,16 @@ Only previously observed, recognized read-only probes are also cleaned up;
 unrelated child-agent services remain outside that authority. Regression
 fixtures cover orphan recovery, SIGTERM-resistant children and foreign locks.
 
+The mobile browser run exposed a history-navigation race: refreshing a turn's
+activity tail disabled the earlier-actions button and could cancel an explicit
+page request. Tail refreshes now coalesce behind active reads, while explicit
+pagination can supersede a background read. Loaded earlier actions and their
+pagination position survive subsequent turn updates. A controlled browser
+regression reproduces the disabled navigation on the original build and checks
+overlapping reads, older-page preservation and exhaustion of the cursor after
+the fix. It and the existing response/recovery scenarios passed three runs on
+desktop and mobile viewports (18 cases), without changing their assertions.
+
 Research created under an execution worktree contains references relative to
 that worktree. Copying its bytes to the primary instance changes how those
 references resolve. Promotion now checks the original complete gate and frozen
