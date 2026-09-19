@@ -519,6 +519,7 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
     status: outcome === "cancelled" ? "interrupted" : outcome,
     startedAt, finishedAt: new Date().toISOString(), providerRequests,
     usage: accountedUsage, usageKnown: accountedKnown, cumulative: !useRequestUsage, billing: await billingPromise,
+    ...(useRequestUsage ? { accountingBasis: "provider-requests", cumulativeAnchor: latestUsage } : {}),
     providerError: providerError ? { class: providerError.class, code: providerError.code } : null,
   };
   journal.updateRuntimeRun(runId, { status: processExited ? usageEvent.status : "resume_confirmation_required", session_id: sessionId,

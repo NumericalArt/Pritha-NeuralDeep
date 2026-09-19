@@ -230,7 +230,11 @@ export function recordNeuralDeepRun(options) {
         price ? JSON.stringify(price) : null, estimatedCostRub, costStatus,
         safeToken(options.providerError?.class, null, 48), safeToken(options.providerError?.code, null, 96),
       );
-    if (cumulative && observationKnown) {
+    const requestBasis = options.accountingBasis === "provider-requests" && Boolean(sessionId);
+    const requestAnchor = requestBasis && observationKnown && neuralDeepUsageKnown(options.cumulativeAnchor)
+      ? normalizeNeuralDeepUsage(options.cumulativeAnchor) : null;
+    const baseline = requestBasis ? requestAnchor : cumulative && observationKnown ? current : null;
+    if (baseline) {
       db.prepare(`INSERT INTO profile_session_totals (
         profile_identity, session_id, model, input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, total_tokens, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -241,7 +245,15 @@ export function recordNeuralDeepRun(options) {
         reasoning_tokens=excluded.reasoning_tokens,
         total_tokens=excluded.total_tokens,
         updated_at=excluded.updated_at`)
-        .run(profile, sessionId, model, current.inputTokens, current.cachedInputTokens, current.outputTokens, current.reasoningTokens, current.totalTokens, finishedAt);
+        .run(profile, sessionId, model, baseline.inputTokens, baseline.cachedInputTokens, baseline.outputTokens, baseline.reasoningTokens, baseline.totalTokens, finishedAt);
+    } else if (requestBasis) {
+      // A request delta cannot stand in for a whole native session counter.
+      // Keep old readers fail-closed after rollback: their existing legacy
+      // transition establishes an anchor without charging past requests again.
+      db.prepare("DELETE FROM profile_session_totals WHERE profile_identity=? AND session_id=? AND model=?")
+        .run(profile, sessionId, model);
+      db.prepare("INSERT OR IGNORE INTO session_totals VALUES(?,?,?,?,?,?,?,?)")
+        .run(sessionId, model, 0, 0, 0, 0, 0, finishedAt);
     }
     db.prepare("UPDATE runs SET profile_identity=? WHERE run_id=?").run(profile, runId);
     db.exec("COMMIT");

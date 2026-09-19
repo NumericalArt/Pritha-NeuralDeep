@@ -18,6 +18,21 @@ import {
 
 const execFileAsync = promisify(execFile);
 
+test('request deltas retain a safe cumulative anchor when a session returns to an older launcher', t=>{
+  const stateRoot=mkdtempSync(path.join(os.tmpdir(),'nd-usage-rollback-'));
+  t.after(()=>rmSync(stateRoot,{recursive:true,force:true}));
+  const record=(runId,options)=>recordNeuralDeepRun({stateRoot,runId,model:'fixture',source:'codex-chat',sessionId:'same-session',...options});
+  record('legacy-first',{cumulative:true,usage:{input_tokens:100,output_tokens:20}});
+  record('request-delta',{accountingBasis:'provider-requests',cumulative:false,usage:{input_tokens:50,output_tokens:10},cumulativeAnchor:{input_tokens:150,output_tokens:30}});
+  const resumed=record('legacy-after-rollback',{cumulative:true,usage:{input_tokens:200,output_tokens:40}});
+  assert.equal(resumed.usage.totalTokens,60,'legacy cumulative reader must not charge the request delta twice');
+  assert.equal(summarizeNeuralDeepUsage({stateRoot}).totals.totalTokens,240);
+  record('request-without-final-turn',{accountingBasis:'provider-requests',cumulative:false,usage:{input_tokens:10,output_tokens:5}});
+  const noAnchor=record('legacy-after-interruption',{cumulative:true,usage:{input_tokens:250,output_tokens:60}});
+  assert.equal(noAnchor.usageKnown,false,'missing native cumulative anchor remains unknown for an older launcher');
+  assert.equal(record('legacy-after-anchor',{cumulative:true,usage:{input_tokens:260,output_tokens:65}}).usage.totalTokens,15);
+});
+
 test("home and provider identities separate cumulative sessions; parent usage reads one authoritative ledger", t => {
   const stateRoot = mkdtempSync(path.join(os.tmpdir(), "nd-profile-usage-"));
   t.after(() => rmSync(stateRoot, { recursive: true, force: true }));

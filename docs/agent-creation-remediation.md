@@ -209,6 +209,13 @@ without a final turn event, an incomplete response, a rejected next dispatch,
 and repeated sessions. The UI labels completed-step totals explicitly and does
 not present an unknown total as zero.
 
+Rollback compatibility preserves the native cumulative counter separately from
+per-request charges. When a final native counter exists, an older launcher can
+resume from that exact anchor without charging recent requests twice. Without
+one, it establishes an unknown transition before further accounting; a request
+delta is never guessed to be a whole-session counter. A regression first
+reproduced duplicate charging and now verifies both rollback paths.
+
 These corrections cannot reconstruct a missing historical provider receipt.
 The first trial's unknown remainder stays unknown pending provider evidence;
 its history and original release binding are retained. A fresh successful
