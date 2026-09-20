@@ -17,6 +17,7 @@ import * as handoffs from '../scripts/neuraldeep/handoff-barriers.mjs';
 import * as creationStore from '../scripts/neuraldeep/agent-creation-store.mjs';
 import * as creation from '../scripts/neuraldeep/agent-creation.mjs';
 import * as creationReceipts from '../scripts/neuraldeep/creation-runtime-receipt.mjs';
+import * as dispatchMessages from '../scripts/neuraldeep/dispatch-blocker-message.mjs';
 import * as creationDelivery from '../scripts/neuraldeep/creation-delivery.mjs';
 import * as targetManifest from '../scripts/neuraldeep/target-file-manifest.mjs';
 import * as taskPhases from '../scripts/neuraldeep/task-chat-phases.mjs';
@@ -63,6 +64,7 @@ async function fixture(t,{sourceProject=null}={}) {
     '../../../../../scripts/neuraldeep/agent-creation-store.mjs':creationStore,
     '../../../../../scripts/neuraldeep/agent-creation.mjs':creation,
     '../../../../../scripts/neuraldeep/creation-runtime-receipt.mjs':creationReceipts,
+    '../../../../../scripts/neuraldeep/dispatch-blocker-message.mjs':dispatchMessages,
     '../../../../../scripts/neuraldeep/creation-delivery.mjs':creationDelivery,
     '../../../../../scripts/neuraldeep/target-file-manifest.mjs':targetManifest,
     '../../../../../scripts/neuraldeep/task-chat-phases.mjs':taskPhases,

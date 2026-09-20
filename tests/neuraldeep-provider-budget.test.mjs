@@ -67,6 +67,28 @@ test('text reserve cannot authorize opaque media, server-side history or hosted 
   const result=prepareBudgetedRequest({input:'hello',max_output_tokens:8000},100_000);assert.equal(result.max_output_tokens,8000);
 });
 
+test('CLI tool schemas and namespaces remain bounded text, including media-shaped property names',()=>{
+  const payload={model:'fixture',input:[{type:'message',role:'user',content:[{type:'input_text',text:'Create a local app'}]},
+    {type:'function_call',name:'exec_command',arguments:'{"image_url":"a text value"}'},
+    {type:'function_call_output',call_id:'fixture',output:'{"conversation":"ordinary tool output"}'},
+    {type:'reasoning',summary:[{type:'summary_text',text:'A text plan'}]}],tools:[{type:'namespace',name:'fixture_tools',tools:[
+      {type:'function',name:'send_input',parameters:{type:'object',properties:{items:{type:'array',items:{type:'object',properties:{
+        type:{type:'string',enum:['text','image','file']},image_url:{type:'string'},file_id:{type:'string'},conversation:{type:'string'},
+      }}}}}},
+      {type:'custom',name:'apply_patch',format:{type:'text'}},
+    ]}]};
+  const bounded=prepareBudgetedRequest(payload,100_000);
+  assert.equal(bounded.max_output_tokens,16384);
+  assert.deepEqual(bounded.tools,payload.tools);assert.deepEqual(bounded.input,payload.input);
+  for (const input of [
+    [{type:'message',role:'user',content:[{type:'input_image',image_url:'https://example.invalid/image'}]}],
+    [{type:'function_call_output',output:[{type:'input_file',file_id:'opaque'}]}],
+    [{type:'item_reference',id:'opaque'}],
+    [{type:'reasoning',encrypted_content:'opaque',summary:[]}],
+  ]) assert.throws(()=>prepareBudgetedRequest({...payload,input},100_000),{code:'provider_budget_input_unbounded'});
+  assert.throws(()=>prepareBudgetedRequest({...payload,tools:[{type:'namespace',name:'hidden',tools:[{type:'web_search'}]}]},100_000),{code:'provider_budget_input_unbounded'});
+});
+
 test('shrinking the response cap cannot disguise an exact request replay',async t=>{
   const f=fixture(t);f.jobs.update(f.job.chatId,j=>({...j,budget:{...j.budget,maxTokens:31_200}}));
   let calls=0;

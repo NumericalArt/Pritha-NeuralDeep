@@ -24,6 +24,7 @@ import { resolveTaskChatPhase, taskChatPhasePreamble, taskChatTimeoutCheckpoint,
 import { privateUserContextFor } from "@/lib/private-user-context";
 import { AgentCreationStore, AgentCreationError, creationBudgetBlocker, creationPhase } from "../../../../../scripts/neuraldeep/agent-creation-store.mjs";
 import { creationRuntimeReceipt, creationObservedUsage } from "../../../../../scripts/neuraldeep/creation-runtime-receipt.mjs";
+import { dispatchBlockerMessage } from "../../../../../scripts/neuraldeep/dispatch-blocker-message.mjs";
 import { reviseCreationProposal, creationRevisionPending } from "../../../../../scripts/neuraldeep/creation-revision.mjs";
 import { preflightAgentCreation } from "../../../../../scripts/neuraldeep/creation-preflight.mjs";
 export { AgentCreationError };
@@ -1428,7 +1429,7 @@ export class CodexChatGateway {
     active.toolStarted ||= result.toolActivity;
     const failure = classifyNeuralDeepRunnerFailure(result);
     if (failure.kind === "input_rejected") {
-      await this.finishAttempt(chatId, "failed", { code: failure.code || "attachment_input_rejected", message: "Attachment validation stopped this request. Check the model and original format before continuing. Originals and previous activity have been kept." });
+      await this.finishAttempt(chatId, "failed", { code: failure.code || "attachment_input_rejected", message: dispatchBlockerMessage(failure.code) });
       return;
     }
     if (active.interrupted || failure.kind === "interrupted") {

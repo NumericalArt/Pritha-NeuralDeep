@@ -40,6 +40,17 @@ confidence: medium
 
 # Agent creation remediation: engineering draft
 
+The budget-protected UI trial exposed a request-format regression before any
+upstream call: a recursive check interpreted tool JSON-schema properties as
+actual media inputs. Validation now follows Responses input/content boundaries
+and executable tool kinds. Local function namespaces remain supported; actual
+media, opaque history and provider-hosted tools still fail closed. Budgeted CLI
+runs disable native hosted search and independent delegation, retaining the
+existing Pritha Search tools. Format incompatibility, exhausted allocation and
+unconfirmed usage have distinct user-facing explanations. A local real-CLI
+round trip (request, command result, final answer) passed with a fake provider
+and zero external requests. This does not establish that Signal Desk is ready.
+
 This document records implementation and focused regression evidence. It is
 **not a release acceptance report**. The initial candidate passed 1205 self-test
 checks, 65 desktop/mobile browser cases and distribution checks, then reached

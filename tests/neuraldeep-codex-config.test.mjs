@@ -284,6 +284,7 @@ test('launcher enforces a token remainder inside a tool turn without dispatching
   const binary=path.join(stateRoot,'fake-codex'),statuses=path.join(stateRoot,'statuses.json');
   writeFileSync(binary,`#!${process.execPath}
 if(process.argv.includes('--version')){console.log('fixture-cli');process.exit(0);}
+if(!process.argv.includes('web_search="disabled"') || !process.argv.includes('features.multi_agent=false'))throw Error('Unbounded CLI tools remained enabled');
 const base=JSON.parse(process.argv.find(x=>x.startsWith('model_providers.neuraldeep.base_url=')).split('=').slice(1).join('='));
 process.stdin.resume();process.stdin.on('end',async()=>{
  const results=[];

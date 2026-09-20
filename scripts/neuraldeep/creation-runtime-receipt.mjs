@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { dispatchBlockerMessage } from './dispatch-blocker-message.mjs';
 
 /** Read the launcher's accounting deltas, never cumulative model stdout totals. */
 export function creationRuntimeReceipt(coordination,turnId,{dispatched=true}={}) {
@@ -8,7 +9,7 @@ export function creationRuntimeReceipt(coordination,turnId,{dispatched=true}={})
   const runs=[];
   for(const row of rows) {
     const receipt=JSON.parse(row.receipt),usage=receipt.usage_record;
-    if(receipt.budget_blocker)blocker={code:receipt.budget_blocker.code,message:'Шаг остановлен до следующего запроса: остатка бюджета недостаточно или учёт не подтверждён. Квитанции и документы сохранены.'};
+    if(receipt.budget_blocker)blocker={code:receipt.budget_blocker.code,message:dispatchBlockerMessage(receipt.budget_blocker.code)};
     const noDispatch=receipt.exit_evidence==='no_stock_dispatch' && receipt.dispatch_authorized===false;
     const exited=receipt.process_exited===true && receipt.process_tree_exited===true && receipt.adapter_closed===true;
     processExited &&= exited;

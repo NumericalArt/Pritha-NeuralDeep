@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {NeuralDeepCoordinationStore} from '../scripts/neuraldeep/coordination-store.mjs';
 import {creationRuntimeReceipt} from '../scripts/neuraldeep/creation-runtime-receipt.mjs';
+import {dispatchBlockerMessage} from '../scripts/neuraldeep/dispatch-blocker-message.mjs';
 test('creation accounting uses bound per-run delta and rejects missing coverage or live descendants',()=>{
   const store=new NeuralDeepCoordinationStore();
   const write=(id,value)=>{store.beginRuntimeRun({runId:id,requestHash:'a'.repeat(64),receipt:{workload_id:'turn_test'}});store.updateRuntimeRun(id,value);};
@@ -20,4 +21,21 @@ test('creation accounting uses bound per-run delta and rejects missing coverage 
     assert.equal(creationRuntimeReceipt(store,'turn_test').tokens,200);
     assert.equal(creationRuntimeReceipt(store,'other').tokens,null);
   } finally {store.close();}
+});
+
+test('budget format rejection is distinct from exhausted allocation and attachments',()=>{
+  const store=new NeuralDeepCoordinationStore();
+  try {
+    store.beginRuntimeRun({runId:'format',requestHash:'b'.repeat(64),receipt:{workload_id:'turn-format'}});
+    store.updateRuntimeRun('format',{process_exited:true,process_tree_exited:true,adapter_closed:true,
+      budget_blocker:{code:'provider_budget_input_unbounded',message:'private payload must not be shown'},
+      usage_record:{usageKnown:true,usage:{totalTokens:0}}});
+    const receipt=creationRuntimeReceipt(store,'turn-format');
+    assert.equal(receipt.tokens,0);assert.equal(receipt.processExited,true);
+    assert.match(receipt.blocker.message,/совместимости Pritha/);
+    assert.doesNotMatch(receipt.blocker.message,/Attachment|недостаточно|private payload/);
+    assert.match(dispatchBlockerMessage('provider_token_budget'),/остатка бюджета недостаточно/);
+    assert.match(dispatchBlockerMessage('provider_usage_unconfirmed'),/пока не подтверждён/);
+    assert.match(dispatchBlockerMessage('attachment_original_not_preserved'),/Attachment validation/);
+  }finally{store.close();}
 });
