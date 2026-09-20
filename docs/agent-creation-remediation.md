@@ -1,7 +1,7 @@
 ---
 id: 2026-09-19-agent-creation-remediation
 type: review
-status: draft
+status: processed
 created: 2026-09-19
 updated: 2026-09-21
 topics:
@@ -34,11 +34,18 @@ subject:
   id: agent-creation
 privacy: public
 retention: durable
-review_status: implementation-under-validation
+review_status: reviewed-incomplete
 confidence: medium
 ---
 
-# Agent creation remediation: engineering draft
+# Agent creation remediation: implementation and UI findings
+
+The bounded follow-up cycle ended without a Signal Desk application. Both
+installations reached the tested `8397be7` release, but two UI attempts used
+1,826,816 tokens and stopped during research. A repeated-display-name collision
+required the existing UI revision workflow; preparation cost remained too high.
+See the [final UI review](agent-creation-ui-review-2026-09-21.md) for request and
+token accounting, A–J evidence limits and the two remaining corrections.
 
 A bounded follow-up UI trial reached two separately approved documents in one
 task, retained them after reload, and entered research automatically. It still
