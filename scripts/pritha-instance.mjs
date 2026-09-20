@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { runSyncProbe } from "./lib/sync-probe.mjs";
+import { atomicWriteFile } from "./lib/atomic-file.mjs";
 import { directoryFingerprint } from "./lib/instance-isolation.mjs";
 
 import { createHash } from "node:crypto";
@@ -482,8 +483,7 @@ function restorePreviousNext(liveNext, displacedNext, previousNext, hadPreviousB
 
 function writePrivateJson(filePath, value) {
   mkdirSync(path.dirname(filePath), { recursive: true });
-  writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  chmodSync(filePath, 0o600);
+  atomicWriteFile(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 function commandEvidence(result) {
@@ -743,9 +743,25 @@ async function updateInstance() {
     writePrivateJson(manifest, { ...release, status: "final-git-invariant-failed-rolled-back", stopped, started, failed_stop: failedStop, failed_pid: pid, health, post_isolation: postIsolation, isolation_match: isolationMatch, final_head: finalHead, final_git_clean: finalGitClean, final_git_dirty: finalDirty.stdout.split(/\r?\n/).filter(Boolean), memory_documents: bootstrap.memory_documents, rollback_start: rollbackStart, rollback_pid: rollbackPid, rollback_health: rollbackHealth });
     return { ...plan, ok: false, applied: true, status: "final-git-invariant-failed-rolled-back", stopped, health, isolationMatch, postIsolation, finalHead, finalGitClean, memoryDocuments: bootstrap.memory_documents, rollbackPid, rollbackHealth, manifest };
   }
-  rmSync(displacedNext, { recursive: true, force: true });
-  writePrivateJson(manifest, { ...release, status: "deployed", stopped, started, pid, health, post_isolation: postIsolation, isolation_match: isolationMatch, final_head: finalHead, final_git_clean: finalGitClean, final_git_dirty: [], memory_documents: bootstrap.memory_documents });
-  return { ...plan, ok: true, applied: true, status: "deployed", stopped, pid, health, isolationMatch, postIsolation, finalHead, finalGitClean, memoryDocuments: bootstrap.memory_documents, manifest };
+  const deployed = { ...release, status: "deployed", stopped, started, pid, health, post_isolation: postIsolation, isolation_match: isolationMatch, final_head: finalHead, final_git_clean: finalGitClean, final_git_dirty: [], memory_documents: bootstrap.memory_documents };
+  let cleanup = { status: "pending", path: displacedNext };
+  // Persist the verified live release before optional retired-build cleanup.
+  // A crash or Finder race must leave a truthful deployment receipt.
+  writePrivateJson(manifest, { ...deployed, cleanup });
+  try {
+    rmSync(displacedNext, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    cleanup = { ...cleanup, status: "complete" };
+  } catch (error) {
+    cleanup = { ...cleanup, code: error?.code || "cleanup_failed", message: error instanceof Error ? error.message : String(error) };
+  }
+  let cleanupReceiptError = null;
+  try {
+    writePrivateJson(manifest, { ...deployed, cleanup });
+  } catch (error) {
+    // The first atomic receipt still records deployment and pending cleanup.
+    cleanupReceiptError = { code: error?.code || "receipt_update_failed", message: error instanceof Error ? error.message : String(error) };
+  }
+  return { ...plan, ok: true, applied: true, status: "deployed", stopped, pid, health, isolationMatch, postIsolation, finalHead, finalGitClean, memoryDocuments: bootstrap.memory_documents, cleanup, cleanupReceiptError, manifest };
 }
 
 async function adoptInstance() {
