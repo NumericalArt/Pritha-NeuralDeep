@@ -56,17 +56,36 @@ test('failed structured summary preserves build, exact phase charges and native 
     calls++;
     const saved=readDeliveryLedger(f.runRoot);
     assert.equal(saved.budget.unaccounted_attempts.length,1,'intent is durable before any runner');
+    assert.equal(options.tokenBudget,calls===1?200:80,'the summary receives only the unspent allocation');
     if(calls===1)writeFileSync(path.join(f.worktree,'result.txt'),'ready');
     return {code:calls===1?0:1,timedOut:false,durationMs:1,tokensUsed:calls===1?120:30,usageKnown:true,processExited:true,
       threadId:`session-${calls}`,agentText:'Implemented the durable fixture.',stderr:'synthetic summary failure'};
   };
-  const result=await executor.execute(context(f));
+  const result=await executor.execute({...context(f),tokenBudget:200});
   assert.equal(calls,2);assert.equal(result.status,'completed');assert.equal(result.turn_id,null);
   assert.deepEqual(result.changed_files,['result.txt']); assert.match(result.remaining_risks.join(' '),/summary unavailable/i);
   const state=readDeliveryLedger(f.runRoot);assert.equal(state.budget.tokens_used,150);assert.equal(state.budget.accounted_turns.length,2);
   assert.deepEqual(state.budget.accounted_turns.map(r=>r.phase),['build','summary']);
   assert.equal(new Set(state.budget.accounted_turns.map(r=>r.attempt_id)).size,2);
   accountDeliveryExecutorResult(f.runRoot,result,'executor/iteration-001.json');assert.equal(readDeliveryLedger(f.runRoot).budget.tokens_used,150);
+});
+
+test('exhausted allocation prevents a paid summary without losing implementation or measured usage',async t=>{
+  const f=fixture(t),executor=new CodexCliBuildExecutor();executor.runtimeVersion=()=> 'fixture';let calls=0;
+  executor.run=async options=>{
+    calls++;assert.equal(options.tokenBudget,100);
+    writeFileSync(path.join(f.worktree,'result.txt'),'ready');
+    return {code:0,timedOut:false,durationMs:1,tokensUsed:120,usageKnown:true,processExited:true,
+      threadId:'session-build',agentText:'Implemented the durable fixture.'};
+  };
+  const result=await executor.execute(context(f));
+  assert.equal(calls,1);assert.equal(result.status,'completed');
+  assert.deepEqual(result.changed_files,['result.txt']);assert.match(result.remaining_risks.join(' '),/summary unavailable/i);
+  const state=readDeliveryLedger(f.runRoot);
+  assert.equal(state.budget.tokens_used,120);assert.equal(state.budget.accounted_turns.length,1);
+  assert.equal(state.budget.accounted_turns[0].phase,'build');assert.equal(state.budget.unaccounted_attempts.length,0);
+  accountDeliveryExecutorResult(f.runRoot,result,'executor/iteration-001.json');
+  assert.equal(readDeliveryLedger(f.runRoot).budget.tokens_used,120);
 });
 
 test('unknown build usage prevents paid summary and preserves existing implementation',async t=>{
