@@ -306,11 +306,21 @@ test("one state-root lock cannot be shared by two runtime wrappers", async () =>
     ], { cwd: item.checkout, env: item.env, stdio: ["ignore", "pipe", "pipe"] });
     const lockPath = path.join(item.stateRoot, "setup", "control-center-runtime", "runtime.lock.json");
     const deadline = Date.now() + 3_000;
-    while (!existsSync(lockPath) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
-    assert.equal(existsSync(lockPath), true, "first wrapper should acquire the state-root lock");
+    let originalLock;
+    while (Date.now() < deadline) {
+      try {
+        const text = readFileSync(lockPath, "utf8"), record = JSON.parse(text);
+        if (record.pid === running.pid && record.token) { originalLock = text; break; }
+      } catch (error) {
+        // Exclusive creation precedes writing the owner. Do not mistake that
+        // short empty-file interval for a completed acquisition by this fixture.
+        if (error.code !== "ENOENT" && !(error instanceof SyntaxError)) throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(typeof originalLock, "string", "first wrapper should publish its state-root lock ownership");
 
     const contender = { ...item, port: item.port + 1, env: { ...item.env, PRITHA_CONTROL_CENTER_PORT: String(item.port + 1) } };
-    const originalLock = readFileSync(lockPath, "utf8");
     const rejected = invoke(contender, "run");
     assert.equal(rejected.error, undefined, "lock contention must finish without the subprocess timeout");
     assert.equal(rejected.status, 1, rejected.stderr || rejected.stdout);
