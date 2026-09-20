@@ -389,6 +389,42 @@ export class NeuralDeepChatHistoryStore {
     if (!body || body.bytes > maxBytes) throw new ChatHistoryError('history_request_unavailable','The original request cannot be dispatched within the current input limit.');
     return this.statement('SELECT text FROM text_parts WHERE hash=? ORDER BY part').all(row.user_body).map(part=>part.text).join('');
   }
+  /** A fresh internal creation step needs product dialogue, not old shell output.
+   * Read exact source bodies without rewriting, summarizing or truncating history. */
+  creationContext(chat, turnId, maxBytes = 64_000) {
+    requireId(chat); requireId(turnId);
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 64_000) throw new ChatHistoryError('creation_context_limit_invalid', 'Некорректная граница контекста.');
+    const binding = parse(this.statement('SELECT meta FROM chats WHERE id=?').get(chat)?.meta);
+    if (binding?.creationWorkflowVersion !== 1 || binding.historyCompleteness !== 'captured-from-creation') return { restart: false, text: null, hash: null };
+    const current = this.statement('SELECT sequence FROM turns WHERE chat=? AND id=?').get(chat, turnId);
+    if (!current) throw new ChatHistoryError('creation_context_missing', 'Исходное задание не найдено; история сохранена.');
+    const rows = this.statement('SELECT id,status,meta,user_body FROM turns WHERE chat=? AND sequence<=? ORDER BY sequence LIMIT 257').all(chat, current.sequence);
+    const oversized = () => { throw new ChatHistoryError('creation_context_too_large', 'Диалог превышает границу одного шага. История сохранена целиком; требуется проверка контекста.'); };
+    if (rows.length > 256) oversized();
+    if (rows.some(row => row.id !== turnId && !['completed','failed','interrupted'].includes(row.status))) throw new ChatHistoryError('creation_context_unsettled', 'Предыдущий шаг ещё не завершён.');
+    // Media/file history has a separate transport; never silently drop it.
+    if (rows.some(row => parse(row.meta).userMessage?.attachments?.length)) return { restart: false, text: null, hash: null };
+    let used = 0;
+    const body = id => {
+      const info = this.statement('SELECT bytes,parts FROM texts WHERE hash=?').get(id);
+      if (!info || info.bytes > maxBytes - used) oversized();
+      const parts = this.statement('SELECT text FROM text_parts WHERE hash=? ORDER BY part').all(id);
+      const value = parts.map(part => part.text).join('');
+      if (parts.length !== info.parts || Buffer.byteLength(value) !== info.bytes || hash(value) !== id) throw new ChatHistoryError('history_source_corrupt', 'Исходный текст не прошёл проверку целостности.');
+      used += info.bytes; return value;
+    };
+    const dialogue = [];
+    for (const row of rows) {
+      dialogue.push({ turnId: row.id, role: 'user', text: body(row.user_body) });
+      if (row.id === turnId) continue;
+      const answers = this.statement("SELECT body FROM items WHERE chat=? AND turn_id=? AND kind='assistant_message' AND coalesce(json_extract(meta,'$.message.phase'),'')!='commentary' ORDER BY sequence LIMIT 257").all(chat, row.id);
+      if (answers.length > 256) oversized();
+      for (const answer of answers) dialogue.push({ turnId: row.id, role: 'assistant', text: body(answer.body) });
+    }
+    const text = JSON.stringify(dialogue);
+    if (Buffer.byteLength(text) > maxBytes) oversized();
+    return { restart: true, text, hash: hash(text) };
+  }
   *activeTurns() {
     let after = 0;
     while (true) {

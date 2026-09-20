@@ -188,6 +188,7 @@ export type ExecutionIntent = {
   executionAgentTarget?: string | null;
   agentCreationRequested?: boolean;
   creationGeneration?: number;
+  creationSession?: { mode: 'checkpoint'; previousSessionId: string | null; contextHash: string };
   profileIdentity: string;
   sandbox: "read-only" | "workspace-write" | "danger-full-access";
   network: boolean;

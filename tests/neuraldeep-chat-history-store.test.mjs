@@ -31,6 +31,45 @@ function message(id, text) {
   return { id, kind: 'assistant_message', status: 'completed', startedAt: null, completedAt: null,
     message: { id, markdown: text, role: 'assistant', status: 'completed', createdAt: '2026-09-08T00:00:00.000Z' } };
 }
+
+test('creation context keeps exact operator dialogue without replaying command output or modifying history', t => {
+  const f = fixture(t);
+  f.store.put({ ...binding(), creationWorkflowVersion: 1 });
+  const original = 'Сохранить SQLite, два источника и русский дайджест. '.repeat(70);
+  const first = turn(1, [message('question', 'Разрешить другие публичные RSS?'), {
+    id: 'command', kind: 'command', status: 'completed', commandPreview: 'read contract',
+    outputPreview: 'UNRELATED_COMMAND_OUTPUT'.repeat(5000), exitCode: 0,
+  }]);
+  first.userMessage.markdown = original;
+  f.store.putTurn('chat_test', first);
+  const second = turn(2); second.status = 'queued'; second.userMessage.markdown = 'Да, добавленные через UI. Приватные сети запрещены.';
+  f.store.putTurn('chat_test', second);
+  f.store.put(binding('chat_other')); f.store.putTurn('chat_other', turn(1, [message('foreign', 'PRIVATE_OTHER_CHAT')]));
+  const before = f.store.verifySource();
+  const context = f.store.creationContext('chat_test', 'turn_2');
+  assert.equal(context.restart, true);
+  assert.ok(context.text.includes(original));
+  assert.match(context.text, /Разрешить другие публичные RSS/);
+  assert.match(context.text, /Приватные сети запрещены/);
+  assert.doesNotMatch(context.text, /UNRELATED_COMMAND_OUTPUT|PRIVATE_OTHER_CHAT/);
+  assert.deepEqual(f.store.verifySource(), before);
+  assert.deepEqual(f.reopen().creationContext('chat_test', 'turn_2'), context);
+  assert.throws(() => f.store.creationContext('chat_test', 'turn_2', 100), { code: 'creation_context_too_large' });
+  const latest = turn(3); latest.userMessage.markdown = 'A future instruction'; f.store.putTurn('chat_test', latest);
+  assert.deepEqual(f.store.creationContext('chat_test', 'turn_2'), context);
+});
+
+test('creation context retains native resume for attachments or legacy history and refuses unsettled predecessors', t => {
+  const f = fixture(t);
+  f.store.put({ ...binding(), creationWorkflowVersion: 1 }); f.store.putTurn('chat_test', turn(1)); f.store.putTurn('chat_test', turn(2));
+  f.store.mutateTurn('chat_test', 'turn_1', row => ({ ...row, status: 'in_progress' }));
+  assert.throws(() => f.store.creationContext('chat_test', 'turn_2'), { code: 'creation_context_unsettled' });
+  f.store.mutateTurn('chat_test', 'turn_1', row => ({ ...row, status: 'completed', userMessage: { ...row.userMessage,
+    attachments: [{ id: 'attachment', sha256: 'a'.repeat(64), mediaType: 'text/plain', size: 4, kind: 'file' }] } }));
+  assert.equal(f.store.creationContext('chat_test', 'turn_2').restart, false);
+  f.store.put(binding('chat_legacy'), { legacy: true }); f.store.putTurn('chat_legacy', turn(1));
+  assert.equal(f.store.creationContext('chat_legacy', 'turn_1').restart, false);
+});
 test('explicit commentary is visible in activity while final and unclassified answers retain their place', t => {
   const f = fixture(t), progress = message('progress', 'Checking the result for you.'), answer = message('answer', 'Done.');
   progress.message.phase = 'commentary'; answer.message.phase = 'final_answer';

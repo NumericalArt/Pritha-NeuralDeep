@@ -29,7 +29,8 @@ async function fixture(t, proposal = {}) {
   const options = { cwd: draftRoot, executionCodeRoot: workspace.cwd, model: 'fixture-model', effort: 'high', sandbox: 'workspace-write', workloadId: turnId, addDirs: [draftRoot] };
   const execution = { attemptId, cwd: draftRoot, executionCodeRoot: workspace.cwd, modelId: options.model, effortId: options.effort, sandbox: options.sandbox,
     additionalWritableDirs: options.addDirs, agentCreationRequested: true, executionAgentTarget: target,
-    ...(proposal.creationGeneration === undefined ? {} : { creationGeneration: proposal.creationGeneration }) };
+    ...(proposal.creationGeneration === undefined ? {} : { creationGeneration: proposal.creationGeneration }),
+    ...(proposal.creationSession === undefined ? {} : { creationSession: proposal.creationSession }) };
   store.enqueue({ attemptId, workloadId: turnId, surface: 'task_chat', coordinationKeyHash: 'a'.repeat(24), queuedAt: new Date().toISOString(),
     payload: { chatId, turnId, execution }, resources: executionResourceClaims({ cwd: draftRoot, sandbox: options.sandbox, additionalWritableDirs: [draftRoot] }) });
   const claim = store.claim(attemptId, 1);
@@ -47,6 +48,17 @@ test('a host-bound creation executes pinned code with only its draft cwd writabl
   const env = sanitizedCodexEnvironment(f.runtime, f.environment, f.options.executionCodeRoot);
   assert.equal(env.TECHSCOPE_ROOT, f.options.executionCodeRoot); assert.equal(env.PRITHA_AGENT_AUTHORING_ROOT, f.options.cwd);
   assert.equal(env.PRITHA_NEURALDEEP_ADMISSION_RECEIPT, undefined, 'model child cannot replay the launcher bearer');
+});
+
+test('checkpoint session admission rejects native resume and malformed context identity', async t => {
+  const creationSession = { mode: 'checkpoint', previousSessionId: 'prior-session', contextHash: 'b'.repeat(64) };
+  const f = await fixture(t, { creationSession });
+  await assertCreationExecutionRoot(f.store, f.runtime, f.options, f.environment);
+  await assert.rejects(assertCreationExecutionRoot(f.store, f.runtime, { ...f.options, resume: 'prior-session' }, f.environment), /execution_code_root_unverified/);
+  for (const changed of [{ ...creationSession, contextHash: '' }, { ...creationSession, mode: 'resume' }, { ...creationSession, previousSessionId: {} }]) {
+    const invalid = await fixture(t, { creationSession: changed });
+    await assert.rejects(assertCreationExecutionRoot(invalid.store, invalid.runtime, invalid.options, invalid.environment), /execution_code_root_unverified/);
+  }
 });
 
 test('host proof rejects spoofed leases, roots, writable scopes, models and lost authoring transport', async t => {

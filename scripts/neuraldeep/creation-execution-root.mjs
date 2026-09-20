@@ -43,6 +43,10 @@ export async function assertCreationExecutionRoot(store, runtime, options, envir
       || options.sandbox !== 'workspace-write' || intent.sandbox !== options.sandbox || options.model !== intent.modelId
       || String(options.effort || 'none') !== String(intent.effortId || 'none')) throw new Error();
     assertProposalGeneration(store, chatId, intent, job);
+    if (intent.creationSession && (intent.creationSession.mode !== 'checkpoint'
+      || !/^[a-f0-9]{64}$/.test(intent.creationSession.contextHash || '')
+      || (intent.creationSession.previousSessionId !== null && !/^[A-Za-z0-9._:-]{1,160}$/.test(intent.creationSession.previousSessionId || ''))
+      || options.resume)) throw new Error();
     const draft = directory(configured), code = directory(options.executionCodeRoot);
     const expectedDraft = path.join(directory(runtime.stateRoot), 'creation-drafts', job.jobId);
     if (draft !== expectedDraft || directory(job.draftRoot) !== draft || directory(options.cwd) !== draft || directory(intent.cwd) !== draft

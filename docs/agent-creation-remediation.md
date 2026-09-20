@@ -40,6 +40,22 @@ confidence: medium
 
 # Agent creation remediation: engineering draft
 
+A later preparation step exhausted its conservative request reservation while
+replaying the entire growing native conversation. Coordinated text-only creation
+now starts each internal step from exact saved product dialogue, current
+documents and a host checkpoint. Commands remain in the complete private history
+without being sent again. The saved execution intent binds the context hash and
+previous session; the host retains each turn's native identity and refuses a
+changed context or unexpected session replacement. Legacy history and attachment
+transport retain native resume. The request budget, unknown-usage block and two
+document approvals are unchanged.
+
+An isolated gateway scenario crosses fresh sessions, distinct approvals, real
+scaffold and verified delivery with additive receipts. The installed CLI is
+also exercised against a local fake provider, including a bounded fresh session,
+with zero paid requests. These checks establish the handoff mechanism; the real
+Signal Desk UI journey remains the product completion gate.
+
 A later UI attempt exposed a semantic preparation defect: the brief requested
 durable database storage and a single provider, while the generated proposal
 still contained generic Markdown storage, alternative-provider fallbacks and a

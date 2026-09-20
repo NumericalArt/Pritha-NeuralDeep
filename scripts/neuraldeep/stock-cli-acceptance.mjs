@@ -40,6 +40,7 @@ globalThis.fetch=async (url,init)=>{
  const payload=JSON.parse(Buffer.from(init.body||'{}').toString());
  if(new URL(url).pathname!=='/v1/responses')return Response.json({});
  calls++;bodies.push(payload);
+ if(calls===9){const input=JSON.stringify(payload.input);assert.ok(input.includes('CHECKPOINT_PRODUCT_REQUIREMENT'));assert.ok(!input.includes('BOUNDARY:['));assert.ok(payload.max_output_tokens>0 && payload.max_output_tokens<=16384);}
  if(calls===3 && !JSON.stringify(payload.input).includes('ND_SYNTHETIC_ORIGINAL_BYTES_3618')) throw new Error('fixture_file_not_read');
  if(calls===6||calls===8){const input=JSON.stringify(payload.input);assert.ok(input.includes('BOUNDARY:[true,true,false,false]'),'stock_workspace_boundary_failed');const name=[...input.matchAll(/:TEMP:([A-Za-z0-9._-]+)/g)].at(-1)?.[1];assert.ok(name);tempNames.push(name);}
  const response={id:`fixture-response-${calls}`,object:'response',created_at:Math.floor(Date.now()/1000),status:'completed',model:payload.model,output:[{id:`fixture-message-${calls}`,type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:'SYNTHETIC_OK',annotations:[]}]}],usage:{input_tokens:10,output_tokens:2,total_tokens:12,input_tokens_details:{cached_tokens:0},output_tokens_details:{reasoning_tokens:0}}};
@@ -58,15 +59,18 @@ const writeOptions={model:options.model,cwd,sandbox:'workspace-write',network:fa
 const writeInitial=await runCodexWithNeuralDeep(runtime,buildCodexExecArgs(writeOptions),writeOptions);
 const writeResumeOptions={...writeOptions,resume:writeInitial.sessionId,workloadId:'synthetic_write_resume'};
 const writeResumed=await runCodexWithNeuralDeep(runtime,buildCodexExecArgs(writeResumeOptions),writeResumeOptions);
-const all=[result,resumed,attached,writeInitial,writeResumed];
+const checkpointOptions={...writeOptions,workloadId:'synthetic_checkpoint',input:'CHECKPOINT_PRODUCT_REQUIREMENT: continue from the verified local artifact; old command output is retained in history.',tokenBudget:200000};
+const checkpoint=await runCodexWithNeuralDeep(runtime,buildCodexExecArgs(checkpointOptions),checkpointOptions);
+const all=[result,resumed,attached,writeInitial,writeResumed,checkpoint];
 assert.ok(all.every(run=>run.code===0 && !run.signal && run.processTreeExited));
 assert.ok(result.sessionId && [result,resumed,attached].every(run=>run.sessionId===result.sessionId));
 assert.ok(writeInitial.sessionId && writeInitial.sessionId===writeResumed.sessionId && writeInitial.sessionId!==result.sessionId);
+assert.ok(checkpoint.sessionId && checkpoint.sessionId!==writeInitial.sessionId && checkpoint.sessionId!==result.sessionId);
 assert.equal(new Set(tempNames).size,2);
 assert.ok(resumeEvents.some(event=>event.item?.type==='command_execution' && event.item.exit_code===0));
-assert.equal(calls,8);
+assert.equal(calls,9);
 const report={schema:1,status:'pass',provider:'synthetic-local-only',paidCalls:0,cliVersion:version.stdout.trim(),
-  initial:true,exactSessionResume:true,resumeOriginalImage:true,readOnlyFileTool:true,
+  initial:true,exactSessionResume:true,resumeOriginalImage:true,readOnlyFileTool:true,budgetedFreshCheckpointSession:true,
   workspaceAndAdditionalRootInitialResume:true,neighborAndSharedTmpWritesDenied:true,uniqueOwnedTemporaryDirectories:true,
   allProcessTreesExited:true,providerRequests:calls,verifiedAt:new Date().toISOString()};
 if(reportFile)writeFileSync(reportFile,JSON.stringify(report,null,2)+'\n',{mode:0o600});
