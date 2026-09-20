@@ -272,7 +272,10 @@ export class CodexCliBuildExecutor {
 
   async phase(input, phase, options) {
     if (input.signal?.aborted) throw new ExecutionBackendError("build_executor_aborted", "Build dispatch was cancelled before starting");
-    await input.beforeDispatch?.({ phase });
+    const dispatch = await input.beforeDispatch?.({ phase });
+    const tokenBudget = dispatch?.tokenBudget ?? input.tokenBudget;
+    if (tokenBudget !== undefined && (!Number.isSafeInteger(tokenBudget) || tokenBudget < 1))
+      throw new ExecutionBackendError('token_budget_exhausted', 'No measured budget remains for this phase');
     const attemptId = `nd_${randomUUID()}`;
     let receipt = {
       schema: BUILD_EXECUTOR_RESULT_SCHEMA, provider: "neuraldeep", executor: this.name,
@@ -281,7 +284,7 @@ export class CodexCliBuildExecutor {
       status: "dispatching", usage_status: "unknown", tokens_used: null,
       goal_enforcement: "not-applicable", usage_source: "neuraldeep-provider-ledger",
       model_requested: this.model, effort_requested: this.effort, runtime_version: this.runtimeVersion(),
-      token_budget: input.tokenBudget ?? null, started_at: new Date().toISOString(),
+      token_budget: tokenBudget ?? null, started_at: new Date().toISOString(),
     };
     const checkpoint = async () => {
       if (input.onCheckpoint) await input.onCheckpoint(receipt);
@@ -294,7 +297,7 @@ export class CodexCliBuildExecutor {
     // This checkpoint must finish before invoking a runner, including a capability probe.
     await checkpoint();
     try {
-      const result = await this.run({ ...options, runId: attemptId, signal: input.signal });
+      const result = await this.run({ ...options, tokenBudget, runId: attemptId, signal: input.signal });
       const measured = result.usageKnown !== false && Number.isSafeInteger(result.tokensUsed) && result.tokensUsed >= 0;
       receipt = { ...receipt, status: result.timedOut || result.aborted ? "interrupted" : result.code === 0 ? "completed" : "failed",
         thread_id: result.threadId || null, turn_id: null,
@@ -338,7 +341,7 @@ export class CodexCliBuildExecutor {
     } finally { store.close(); }
   }
 
-  run({ cwd, prompt, sandbox, timeoutMs, outputSchemaPath, outputPath, usageSource = "agent-mother", workloadId, runId, signal: abortSignal }) {
+  run({ cwd, prompt, sandbox, timeoutMs, outputSchemaPath, outputPath, usageSource = "agent-mother", workloadId, runId, tokenBudget, signal: abortSignal }) {
     if (abortSignal?.aborted) return Promise.reject(new ExecutionBackendError("build_executor_aborted", "Build dispatch was cancelled before starting"));
     const args = [
       this.runner,
@@ -352,6 +355,7 @@ export class CodexCliBuildExecutor {
       "--usage-source", usageSource,
       ...(runId ? ["--run-id", runId] : []),
       ...(workloadId ? ["--workload-id", String(workloadId)] : []),
+      ...(tokenBudget !== undefined ? ["--token-budget", String(tokenBudget)] : []),
       ...(outputSchemaPath ? ["--output-schema", outputSchemaPath] : []),
       ...(outputPath ? ["--output-last-message", outputPath] : []),
     ];
@@ -460,7 +464,7 @@ export class CodexCliBuildExecutor {
         && Number(event.item.exit_code) === 0
         && String(event.item.aggregated_output || "").includes("PRITHA_NEURALDEEP_TOOL_OK")
       ));
-      const schemaResult = await this.phase(options, "probe-schema", {
+      const schemaResult = await this.phase({...options,...(options.tokenBudget === undefined ? {} : {tokenBudget:Number.isSafeInteger(toolResult.tokensUsed) ? options.tokenBudget-toolResult.tokensUsed : 0})}, "probe-schema", {
         cwd,
         sandbox: "read-only",
         timeoutMs,
@@ -545,7 +549,7 @@ export class CodexCliBuildExecutor {
       }
       const observedChangedFiles = gitChangedFiles(cwd);
       let summaryResult;
-      try { summaryResult = await this.phase(input, "summary", {
+      try { summaryResult = await this.phase({...input,tokenBudget:Number.isSafeInteger(result.tokensUsed) ? tokenBudget-result.tokensUsed : 0}, "summary", {
         cwd,
         prompt: structuredSummaryPrompt(result.agentText, observedChangedFiles),
         sandbox: "read-only",

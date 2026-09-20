@@ -8,6 +8,7 @@ export type CreationJobView = {
   approvals:Record<string,{hash:string;actor:string;approvedAt:string;authorizationBasis?:string}>;
   blocker:{code:string;message:string}|null;checkpoint:unknown;
   budget:{tokensUsed:number;maxTokens:number;activeMs:number;maxActiveMs:number;unknownAttempts:string[];maxIterations:number;repeatedFailures:number};
+  observedUsage?:{knownMinimumTokens:number;unfinalizedTokens:number;unknownRequests:number};
   deliveryRunId:string|null;actions:Record<CreationAction,boolean>;
   delivery?:{adopted:boolean;acceptance?:string;head?:string|null};agentCardUrl?:string|null;
 };

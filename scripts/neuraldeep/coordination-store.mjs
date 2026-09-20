@@ -379,13 +379,15 @@ export class NeuralDeepCoordinationStore {
       return value;
   }
 
-  claimProviderRequest(runId, requestHash, metadata = {}) {
+  claimProviderRequest(runId, requestHash, metadata = {}, beforeClaim) {
     if (!/^[a-f0-9]{64}$/.test(requestHash)) throw new Error("provider_request_hash_invalid");
     return this.transaction(() => {
       if (!this.runtimeRun(runId)) throw new Error("runtime_receipt_missing");
       if (this.db.prepare("SELECT 1 FROM provider_dispatches WHERE run_id=? AND request_hash=?").get(runId, requestHash)) {
         throw Object.assign(new Error("A possibly dispatched provider request cannot be replayed automatically."), { code: "provider_request_replay_blocked", statusCode: 409 });
       }
+      // A budget/owner check and its reservation share the dispatch transaction.
+      metadata = { ...metadata, ...(beforeClaim?.() || {}) };
       this.db.prepare("INSERT INTO provider_dispatches VALUES(?,?,?,?)").run(runId, requestHash, new Date().toISOString(), JSON.stringify(metadata));
       return this.db.prepare("SELECT count(*) AS count FROM provider_dispatches WHERE run_id=?").get(runId).count;
     });

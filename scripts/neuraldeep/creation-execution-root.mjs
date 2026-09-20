@@ -61,6 +61,7 @@ export async function assertCreationExecutionRoot(store, runtime, options, envir
     // Verification awaits Git, so check the durable fence again after that gap.
     const latest = store.db.prepare('SELECT record FROM agent_creation_jobs WHERE chat_id=?').get(chatId);
     assertProposalGeneration(store, chatId, intent, latest && JSON.parse(latest.record));
+    return { chatId, jobId: job.jobId, releaseSha: job.releaseSha, generation: job.generation ?? 1 };
   } catch {
     throw new Error('execution_code_root_unverified');
   }

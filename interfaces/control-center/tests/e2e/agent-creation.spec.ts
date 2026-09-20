@@ -137,11 +137,14 @@ for (const width of [1440, 390]) {
     const job = proposal(); job.status = 'blocked'; job.phase = 'implementation';
     job.actions = { approve_contract: false, approve_outcome: false, continue: false, pause: false, cancel: false, revise_proposal: false };
     job.budget.unknownAttempts = ['unsettled-run']; job.versions.sourceDirty = true;
+    job.observedUsage = {knownMinimumTokens:367882,unfinalizedTokens:365482,unknownRequests:1};
     job.blocker = { code: 'creation_usage_unknown', message: 'Previous usage is not confirmed.' };
     const f = await fixture(page, job);
     await expect(f.card).toContainText('Есть исполнения с неподтверждённым расходом: 1');
     await expect(f.card).toContainText('Итоговый расход неизвестен');
     await expect(f.card).toContainText('Подтверждённый расход завершённых шагов');
+    await expect(f.card).toContainText('не менее 367 882 токенов, включая 365 482');
+    await expect(f.card).toContainText('Эти числа не складываются повторно');
     await expect(f.card).toContainText('Версии исходников, работающей Pritha и исполнения различаются');
     await expect(f.card.getByRole('button', { name: 'Продолжить создание' })).toHaveCount(0);
     await expect(f.card.getByRole('button', { name: 'Пересмотреть предложение', exact: true })).toHaveCount(0);

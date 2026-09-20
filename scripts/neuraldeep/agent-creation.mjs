@@ -248,14 +248,16 @@ export function approveCreationDocument(job,kind,request,options) {
 }
 export function creationPrompt(job) {
   const phase=creationPhase(job);
-  const cli=job.executionCodeRoot ? `node ${JSON.stringify(path.join(job.executionCodeRoot,'scripts/agents-mother.mjs'))}` : 'node scripts/agents-mother.mjs';
+  const quote=value=>`'${String(value).replaceAll("'", "'\\''")}'`;
+  const cli=job.executionCodeRoot ? `node ${quote(path.join(job.executionCodeRoot,'scripts/pritha.mjs'))}` : 'node scripts/pritha.mjs';
   const details=[`Host creation job ${job.jobId}; proposal generation ${creationGeneration(job)}; phase ${phase}; child slug ${job.agentId}; release ${job.releaseSha}.`,
     `Target: ${job.target}. Authoring root: ${job.draftRoot}. CLI init uses PRITHA_AGENT_AUTHORING_ROOT automatically.`,
     `Your working directory is the authoring root. Pinned Pritha CLI: ${cli}. Use this absolute entrypoint for every Pritha command; do not copy or edit its code.`,
     'Work in this one user task. Do not ask the operator to paste checkpoints, write technical phase markers or open a new chat.',
     'Only host UI actions approve documents. Never use outcome approve, draft-scaffold or research bypass flags. Do not write canonical contracts/audit or run scaffold/deliver/start yourself.',
     'Propose defaults from Pritha standards. Ask a question only for a missing material product decision. Keep authored success criteria, sources, rights and constraints.',
-    `Use ${cli} help or validate for exact enums. Commands must preserve their true exit status (no failure-masking pipelines).`,
+    `Use ${cli} validate for reported issues; ${cli} questions lists supported interview values if a value really needs to change. Do not read CLI implementation. Commands must preserve their true exit status (no failure-masking pipelines).`,
+    `Accounted preparation tokens: ${job.budget?.tokensUsed ?? 0}; total creation limit: ${job.budget?.maxTokens ?? 1_000_000}. Read each relevant document once, batch independent reads, and avoid unrelated source discovery. The host can stop before another request when its reservation exceeds the remaining budget.`,
     'Never modify Pritha platform source in the execution workspace. Product implementation is owned by the host delivery loop after approvals.'];
   if(job.proposalRevisionPending) details.push(`The operator requested an explicit proposal revision: ${JSON.stringify(job.revisionInstruction)}. Edit the seeded contract ${job.contract?.path} in place; do not run init or copy the accepted canonical document back. Keep creation_generation=${creationGeneration(job)} and its unique id ending -revision-${creationGeneration(job)}. Preserve target and identity; revise the product/port/adapter as requested. Validate the draft and stop for new contract approval. The new Outcome will be authored only after that approval. Earlier draft history is contextual and cannot supply current approval or research.`);
   else if(phase==='interview' || phase==='contract') {
@@ -270,9 +272,12 @@ export function creationPrompt(job) {
       `Save this JSON as brief.json in the authoring root, then run: ${cli} init --no-input --brief brief.json --contract-only`,
       'The brief supplies name and mission; additional --name or --mission flags are unnecessary. Init prints the draft contract path and keeps its status draft. It writes under the authoring root, not the child target. Do not add approval or token-budget-confirmation flags.',
       `Validate the printed contract path with: ${cli} validate <contract-path>`,
-      'Use the reported validation issues to make only necessary draft corrections. Once validation passes, stop and present the proposal for host approval. Do not read unrelated platform source, prepare the Outcome or implement the product in this step.');
+      'Read the printed draft once and align its storage, provider/fallback, harness boundaries, permissions and risks with the brief. Remove contradictory generic boilerplate and fill material TBDs from the product request; validation alone does not check meaning. Preserve technical enums when they do not need to change. Validate the absolute printed path, then stop and present the proposal for host approval. Do not read unrelated platform source, prepare the Outcome or implement the product in this step.');
   }
-  else if(phase==='outcome')details.push(`Accepted contract: ${job.contract.path}. Run outcome init for THIS accepted path (older draft-bound specs are not canonical), refine the proposed product and independent Trials, validate, then stop for the separate Outcome approval.`);
+  else if(phase==='outcome')details.push(`The host already verified the accepted contract ${job.contract.path} and its exact approval. Read that contract once; do not compare it with archived drafts or repeat host approval checks. Run: ${cli} outcome init ${quote(job.contract.path)}`,
+    'Read the printed Outcome path once, refine its user journeys, deliverables and independent Trials against the contract. Preserve generated verifier commands and identities; do not create replacement smoke checks or edit verifiers. Older draft-bound specs are not canonical.',
+    `For proposal generation ${creationGeneration(job)}, the Outcome must keep creation_generation=${creationGeneration(job)} and a unique id${creationGeneration(job)>1?` ending -revision-${creationGeneration(job)}`:''}. Validate with: ${cli} outcome validate <absolute-printed-outcome-path>`,
+    'After validation, stop for the separate Outcome approval. Do not scaffold, research, implement or approve in this turn.');
   else if(phase==='research')details.push(`Accepted contract: ${job.contract.path}. Approved outcome: ${job.outcome.path}. Complete research, required current source evidence and synthesis using the normal research commands and this authoring root. Repository policy never waives provider/API/source checks. Stop after the research gate is complete; the host will validate, scaffold and deliver.`);
   if(job.checkpoint)details.push(`Saved checkpoint: ${JSON.stringify(job.checkpoint).slice(0,12000)}`);
   if(job.blocker)details.push(`Previous blocker: ${job.blocker.message}`);

@@ -309,6 +309,7 @@ export function createNeuralDeepAdapter(options = {}) {
     let requestHash = null;
     let providerUsage = null;
     try {
+      if(options.responsesOnly && requestUrl.pathname !== '/v1/responses')throw Object.assign(new Error('This budgeted adapter accepts only Responses requests.'),{code:'provider_budget_endpoint',statusCode:409});
       let body = await readNodeBody(request, requestLimit);
       if (requestUrl.pathname === "/v1/responses") {
         let payload;
@@ -316,9 +317,13 @@ export function createNeuralDeepAdapter(options = {}) {
         catch { throw Object.assign(new Error("Invalid Responses JSON request."), { statusCode: 400 }); }
         if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw Object.assign(new Error("Invalid Responses request."), { statusCode: 400 });
         await options.validateResponsesRequest?.(payload, body);
-        if (options.transformResponsesRequest) body = Buffer.from(JSON.stringify(options.transformResponsesRequest(payload)));
-        requestHash = createHash("sha256").update(body).digest("hex");
-        await options.beforeResponsesDispatch?.({ requestHash, model: payload.model, bytes: body.length });
+        if (options.transformResponsesRequest) payload = options.transformResponsesRequest(payload);
+        // Identity belongs to the caller's request. A shrinking host response
+        // cap must not turn an exact retry into a new payable request.
+        requestHash = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+        if (options.prepareResponsesRequest) payload = await options.prepareResponsesRequest(payload);
+        body = Buffer.from(JSON.stringify(payload));
+        await options.beforeResponsesDispatch?.({ requestHash, model: payload.model, bytes: body.length, payload });
       }
       const target = new URL(`${requestUrl.pathname}${requestUrl.search}`, upstreamOrigin);
       upstreamAttempted = true;

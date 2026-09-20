@@ -766,6 +766,7 @@ async function runDeliveryLoopLocked(input = {}) {
           const preflight = deliveryTokenPreflight(readDeliveryLedger(runRoot).budget);
           if (preflight.available === null) throw new DeliveryLoopError("goal_usage_unavailable", "Resolve the saved attempt before a new model call.");
           if (preflight.available < 1) throw new DeliveryLoopError("token_budget_exhausted", "Continue this same run with an explicitly extended budget.");
+          return {tokenBudget:preflight.available};
         },
         onCheckpoint: async receipt => {
           const reference = storeExecutorResult(runRoot, receipt, state.iteration);

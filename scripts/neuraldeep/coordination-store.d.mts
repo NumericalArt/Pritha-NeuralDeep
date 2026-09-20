@@ -31,7 +31,7 @@ export class NeuralDeepCoordinationStore {
   reconcileStoppedTaskChats(): number;
   beginRuntimeRun(input: { runId: string; requestHash: string; receipt: Record<string, unknown> }): Record<string, unknown>;
   updateRuntimeRun(runId: string, update: Record<string, unknown>): Record<string, unknown>;
-  claimProviderRequest(runId: string, requestHash: string, metadata?: Record<string, unknown>): number;
+  claimProviderRequest(runId: string, requestHash: string, metadata?: Record<string, unknown>, beforeClaim?:()=>Record<string,unknown>): number;
   recordProviderResponse(runId: string, response: { requestHash?: string | null; status: number; usage?: unknown; upstreamAttempted: boolean }): boolean;
   providerUsageSummary(runId: string): { providerRequests: number; unknownRequests: number; usageKnown: boolean; usage: {inputTokens:number;cachedInputTokens:number;outputTokens:number;reasoningTokens:number;totalTokens:number} };
   runtimeRun(runId: string): Record<string, unknown> | null;

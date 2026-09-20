@@ -23,6 +23,7 @@ import { processSnapshot } from "./neuraldeep/process-snapshot.mjs";
 import { acquireRuntimeAdmission } from "./neuraldeep/runtime-admission.mjs";
 import { assertNeuralDeepDispatchAllowed } from "./neuraldeep/release-maintenance.mjs";
 import { assertCreationExecutionRoot } from "./neuraldeep/creation-execution-root.mjs";
+import { providerBudgetGate } from "./neuraldeep/provider-budget.mjs";
 
 import { flattenSearchTools, restoreSearchToolsStream } from "./search/responses-bridge.mjs";
 import { searchMcpConfig, searchMcpArgs, searchRuntimeContext } from "./search/runtime-config.mjs";
@@ -316,7 +317,7 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
   let attachmentDispatch;
   let receiptCreated = false;
   try {
-  await assertCreationExecutionRoot(journal, runtime, options);
+  const creation = await assertCreationExecutionRoot(journal, runtime, options);
   attachmentDispatch = loadAttachmentDispatch(runtime, options);
   if(options.resume) {
     const identity=neuralDeepRuntimeIdentity(runtime.stateRoot,{PRITHA_NEURALDEEP_CODEX_HOME:runtime.codexHome,PRITHA_NEURALDEEP_UPSTREAM_ORIGIN:runtime.upstreamOrigin});
@@ -348,15 +349,32 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
   let providerRequests = 0;
   let providerError = null;
   let providerAccountingError = null;
+  let budgetBlocker = null;
+  const budgetGate = providerBudgetGate(journal, {runId,workloadId:options.workloadId,creation,tokenBudget:options.tokenBudget});
+  const budgetAction = action => {
+    try { return action(); } catch (error) {
+      if (/^provider_(?:token_budget|budget_|usage_unconfirmed)/.test(error.code || '')) {
+        budgetBlocker = {code:error.code,message:error.message};
+        journal.updateRuntimeRun(runId,{budget_blocker:budgetBlocker});
+      }
+      throw error;
+    }
+  };
   server = await listenNeuralDeepAdapter({ host: runtime.host, port: 0,
+    responsesOnly: Boolean(budgetGate),
     transformResponsesRequest: flattenSearchTools, transformResponsesStream: restoreSearchToolsStream,
     upstreamOrigin: runtime.upstreamOrigin,
     validateResponsesRequest: async payload => { await attachmentDispatch?.validate(payload); await options.validateResponsesRequest?.(payload); },
-    beforeResponsesDispatch: ({ requestHash, model, bytes }) => {
+    prepareResponsesRequest: payload => budgetGate ? budgetAction(()=>budgetGate.prepare(payload)) : payload,
+    beforeResponsesDispatch: (event) => {
       if(providerAccountingError || journal.providerUsageSummary(runId).unknownRequests>0) throw Object.assign(new Error('Previous provider response accounting is unresolved.'), {code:'provider_usage_unconfirmed',statusCode:409});
-      providerRequests = journal.claimProviderRequest(runId, requestHash, { model, bytes });
+      providerRequests = budgetGate ? budgetAction(()=>budgetGate.claim(event)) : journal.claimProviderRequest(runId, event.requestHash, { model:event.model, bytes:event.bytes });
     },
     onRequest: (requestEvent) => {
+      if(budgetGate && requestEvent.upstreamAttempted === false && /^provider_(?:token_budget|budget_|usage_unconfirmed)/.test(requestEvent.error?.code || '')) {
+        budgetBlocker ||= {code:requestEvent.error.code,message:'Budgeted dispatch was refused before the provider call.'};
+        journal.updateRuntimeRun(runId,{budget_blocker:budgetBlocker});
+      }
       if (requestEvent.path === "/v1/responses") {
         try { journal.recordProviderResponse(runId,requestEvent); }
         catch { providerAccountingError='provider_usage_receipt_failed'; }
@@ -510,9 +528,10 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
   // Request receipts are deltas for this run. A resumed native thread may emit
   // cumulative totals covering previous paid runs; never add both counters.
   const useRequestUsage=requestUsage.providerRequests>0;
-  const accountedUsage=useRequestUsage?requestUsage.usage:latestUsage;
-  const accountedKnown=useRequestUsage?requestUsage.usageKnown && !providerAccountingError:neuralDeepUsageKnown(latestUsage);
-  outcome = launchError ? "failed" : result.signal ? "cancelled" : result.code === 0 ? "completed" : "failed";
+  const notDispatchedForBudget=Boolean(budgetBlocker && !providerRequests);
+  const accountedUsage=useRequestUsage || notDispatchedForBudget ? requestUsage.usage:latestUsage;
+  const accountedKnown=useRequestUsage?requestUsage.usageKnown && !providerAccountingError:notDispatchedForBudget || neuralDeepUsageKnown(latestUsage);
+  outcome = launchError || budgetBlocker ? "failed" : result.signal ? "cancelled" : result.code === 0 ? "completed" : "failed";
   const usageEvent = {
     profileIdentity: neuralDeepRuntimeIdentity(runtime.stateRoot, { PRITHA_NEURALDEEP_CODEX_HOME: runtime.codexHome, PRITHA_NEURALDEEP_UPSTREAM_ORIGIN: runtime.upstreamOrigin }).profileIdentity,
     stateRoot: runtime.stateRoot, runId, source: usageSource, workloadId, model: selectedModel, sessionId,
@@ -540,7 +559,7 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
       usage: usageRecord?.usage || null })}\n`);
   }
   if (launchError) throw launchError;
-  return { ...result, runId, sessionId, child, usageRecord, providerError };
+  return { ...result, ...(budgetBlocker ? {code:1} : {}), runId, sessionId, child, usageRecord, providerError };
   } finally {
     try {
       if (server) await closeNeuralDeepAdapter(server);
@@ -606,7 +625,7 @@ function parseExecJsonOptions(args) {
   for (let index = 0; index < args.length; index += 1) {
     const flag = args[index];
     if (flag === "--ephemeral") options.ephemeral = true;
-    else if (["--model", "--effort", "--sandbox", "--cwd", "--resume", "--output-schema", "--output-last-message", "--network", "--add-dir", "--usage-source", "--workload-id", "--run-id", "--image", "--attachment-manifest", "--execution-code-root"].includes(flag)) {
+    else if (["--model", "--effort", "--sandbox", "--cwd", "--resume", "--output-schema", "--output-last-message", "--network", "--add-dir", "--usage-source", "--workload-id", "--run-id", "--image", "--attachment-manifest", "--execution-code-root", "--token-budget"].includes(flag)) {
       const value = args[index + 1];
       if (!value) throw new Error(`Missing value for ${flag}`);
       if (flag === "--add-dir") options.add_dirs.push(value);
@@ -617,6 +636,7 @@ function parseExecJsonOptions(args) {
   }
   return {
     runId: options.run_id,
+    tokenBudget: options.token_budget === undefined ? undefined : Number(options.token_budget),
     model: options.model,
     effort: options.effort,
     sandbox: options.sandbox,

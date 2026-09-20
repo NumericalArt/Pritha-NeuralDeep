@@ -23,7 +23,7 @@ import { reserveTaskChatAgentTarget, taskChatAgentCreationNotice } from "../../.
 import { resolveTaskChatPhase, taskChatPhasePreamble, taskChatTimeoutCheckpoint, taskChatTurnTimeoutMs } from "../../../../../scripts/neuraldeep/task-chat-phases.mjs";
 import { privateUserContextFor } from "@/lib/private-user-context";
 import { AgentCreationStore, AgentCreationError, creationBudgetBlocker, creationPhase } from "../../../../../scripts/neuraldeep/agent-creation-store.mjs";
-import { creationRuntimeReceipt } from "../../../../../scripts/neuraldeep/creation-runtime-receipt.mjs";
+import { creationRuntimeReceipt, creationObservedUsage } from "../../../../../scripts/neuraldeep/creation-runtime-receipt.mjs";
 import { reviseCreationProposal, creationRevisionPending } from "../../../../../scripts/neuraldeep/creation-revision.mjs";
 import { preflightAgentCreation } from "../../../../../scripts/neuraldeep/creation-preflight.mjs";
 export { AgentCreationError };
@@ -277,7 +277,9 @@ export class CodexChatGateway {
     if(binding.creationWorkflowVersion!==1)return {job:null,legacy:binding.subject?.taskType==='agent_creation'};
     await this.reconcileCreationExecution(chatId,binding);
     const job=this.withCreationStore(store=>store.get(chatId));
-    return {job:job ? creationJobView(job,{root:this.root,stateRoot:this.store.stateRoot,executionSha:binding.executionWorkspace?.baseCommit}) : null,
+    const view=job ? creationJobView(job,{root:this.root,stateRoot:this.store.stateRoot,executionSha:binding.executionWorkspace?.baseCommit}) : null;
+    if(view)view.observedUsage=this.withCreationStore(store=>creationObservedUsage(store.store,job));
+    return {job:view,
       legacy:binding.subject?.taskType==='agent_creation' && binding.creationWorkflowVersion!==1};
   }
 
@@ -1615,7 +1617,7 @@ export class CodexChatGateway {
         const receipt=creationRuntimeReceipt(store.store,active.turnId,{dispatched:turn?.executionIntent?.dispatchState==='dispatched'});
         store.recordTurn(chatId,{turnId:active.turnId,tokens:receipt.tokens,
           activeMs:active.creationStartedAt ? Date.now()-active.creationStartedAt : 0,
-          dispatched:turn?.executionIntent?.dispatchState==='dispatched',ok:status==='completed',code:error?.code,message:error?.message,checkpoint});
+          dispatched:turn?.executionIntent?.dispatchState==='dispatched',ok:status==='completed' && !receipt.blocker,code:receipt.blocker?.code || error?.code,message:receipt.blocker?.message || error?.message,checkpoint});
         return store.update(chatId,current=>{
           const next=reconcileCreationArtifacts(current,{root:this.root,stateRoot:this.store.stateRoot});
           if(!receipt.processExited) return {...next,activeTurnId:active.turnId,autoContinue:false,

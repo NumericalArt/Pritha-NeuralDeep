@@ -99,10 +99,12 @@ test("Codex CLI build executor separates tool execution from structured summary"
 
   assert.equal(executor.calls.length, 2);
   assert.equal(executor.calls[0].sandbox, "workspace-write");
+  assert.equal(executor.calls[0].tokenBudget, 1000);
   assert.equal(executor.calls[0].outputSchemaPath, undefined);
   assert.match(executor.calls[0].prompt, /Do not push, merge, deploy/);
   assert.match(executor.calls[0].prompt, /scripts\/eval\.mjs/);
   assert.equal(executor.calls[1].sandbox, "read-only");
+  assert.equal(executor.calls[1].tokenBudget, 880, 'the summary receives only the measured remaining allocation');
   assert.ok(executor.calls[1].outputSchemaPath);
   assert.equal(result.provider, "neuraldeep");
   assert.equal(result.model, "fixture-model");

@@ -244,6 +244,49 @@ unsafe. Confirmed missing files and rejected symlinks remain distinct. A delayed
 worker regression failed on the previous policy and now reads the real fixture
 manifest successfully; timeout and unsafe-file controls still fail closed.
 
+## Follow-up UI findings and request budgets
+
+The typed brief guide produced a valid draft in the next UI attempt. Operator
+review still found contradictory storage defaults and unfinished risk/boundary
+sections. Pritha revised the draft through the UI and the delegated operator
+approved that exact contract revision separately. The Outcome was not approved,
+and no successful product creation is claimed. Preparation instructions now
+require a semantic review against the brief, give the exact Outcome command and
+avoid repeating host approval comparisons or inspecting unrelated CLI source.
+
+The same trial exposed a budget defect: preparation checked consumption between
+turns, allowing a single tool turn to spend beyond the remaining allocation.
+A regression on the previous release forwarded three controlled requests where
+the supplied budget could cover only one. The operator paused the actual trial;
+its partial receipts and unknown interrupted response remain intact. Additional
+allocation was explicitly authorized by the user, but this does not authorize
+unlimited retries or convert missing usage into zero.
+
+Budgeted launchers now check durable request receipts before each provider call.
+A transaction rechecks the active creation owner, generation and remainder while
+recording the dispatch reservation. Completed requests are counted once; an
+in-flight or unmeasured response blocks another dispatch. The request reserves
+UTF-8 text bytes plus a framing allowance and a capped response. This is a
+conservative estimate, not a provider usage measurement or a billing guarantee.
+Opaque media, provider-side conversation references, hosted tools and alternative
+paid endpoints cannot bypass that text reservation. The original caller request
+identity remains stable when the host reduces its response cap, so an exact retry
+cannot become another payable request. No automatic limit increase is introduced.
+
+The existing delivery ledger supplies the current remainder to capability,
+implementation and summary phases, and each launcher enforces it within the
+phase. A refusal before dispatch has a known zero cost; a lost upstream response
+remains unknown. The creation UI also shows the known lower bound from partial
+request receipts without adding it to completed-step accounting twice.
+
+The preceding published release passed 1,219 self-test cases, 65 desktop/mobile
+browser cases, 1,604 distribution checks, TypeScript, production build and strict
+page/chunk/identity health. A fresh dependency/state installation and copied-state
+migration/restore checks also passed on the second host. Both installations
+reached that release and preserved history and existing agents. These results
+are evidence for that preceding release only; the request-budget changes require
+a new candidate validation and another authorized UI creation from an empty target.
+
 ## Functional verifier boundary
 
 `public-json-feed-v1` tests the explicit JSON-feed protocol. It is not silently

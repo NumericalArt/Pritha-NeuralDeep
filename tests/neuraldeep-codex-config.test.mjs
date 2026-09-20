@@ -211,15 +211,15 @@ process.stdin.on('end', async () => {
 test("launcher crash preserves its paid-attempt receipt and recovers only after its CLI tree is gone", {timeout:20000}, async t => {
   const stateRoot=mkdtempSync(path.join(os.tmpdir(),"nd-launch-crash-"));t.after(()=>rmSync(stateRoot,{recursive:true,force:true}));
   const binary=path.join(stateRoot,"fake-codex"),parentFile=path.join(stateRoot,"parent.mjs");
-  writeFileSync(binary,`#!${process.execPath}\nconst {spawn}=require('node:child_process');const grand=spawn(process.execPath,['-e',"process.on('SIGTERM',()=>{});setInterval(()=>{},1000)"],{stdio:'ignore'});process.on('SIGTERM',()=>{});console.log(JSON.stringify({type:'fixture.ready',worker:process.pid,grand:grand.pid}));setInterval(()=>{},1000);\n`,{mode:0o700});
+  writeFileSync(binary,`#!${process.execPath}\nif(process.argv.includes('--version')){console.log('fixture-cli');process.exit(0);}\nconst {spawn}=require('node:child_process');const grand=spawn(process.execPath,['-e',"process.on('SIGTERM',()=>{});setInterval(()=>{},1000)"],{stdio:'ignore'});process.on('SIGTERM',()=>{});console.log(JSON.stringify({type:'fixture.ready',worker:process.pid,grand:grand.pid}));setInterval(()=>{},1000);\n`,{mode:0o700});
   writeFileSync(parentFile,`import {runCodexWithNeuralDeep,neuralDeepRuntimeConfig} from ${JSON.stringify(pathToFileURL(path.resolve('scripts/neuraldeep-codex.mjs')).href)};await runCodexWithNeuralDeep(neuralDeepRuntimeConfig(),['exec'],{input:'synthetic',runId:'crashed-fixture',model:'fixture'});`);
   const parent=spawn(process.execPath,[parentFile],{stdio:['ignore','pipe','pipe'],env:{...process.env,
     PRITHA_STATE_ROOT:stateRoot,PRITHA_CODEX_BIN:binary,PRITHA_NEURALDEEP_CODEX_HOME:path.join(stateRoot,'home'),
     PRITHA_NEURALDEEP_KEYCHAIN_SERVICE:'unused-nd-unit-fixture',PRITHA_NEURALDEEP_UPSTREAM_ORIGIN:'https://neuraldeep.invalid',PRITHA_NEURALDEEP_ADMISSION_RECEIPT:''}});
-  parent.stderr.resume();let output='';parent.stdout.setEncoding('utf8');parent.stdout.on('data',chunk=>output+=chunk);
+  let diagnostic='';parent.stderr.setEncoding('utf8');parent.stderr.on('data',chunk=>diagnostic+=chunk);let output='';parent.stdout.setEncoding('utf8');parent.stdout.on('data',chunk=>output+=chunk);
   t.after(()=>{if(parent.exitCode===null&&!parent.signalCode)parent.kill('SIGTERM');});
   for(let n=0;n<80&&!output.includes('fixture.ready');n++)await new Promise(resolve=>setTimeout(resolve,100));
-  assert.ok(output.includes('fixture.ready'));
+  assert.ok(output.includes('fixture.ready'),diagnostic || 'Fixture did not signal readiness');
   const store=new NeuralDeepCoordinationStore(neuralDeepCoordinationPaths(stateRoot,path.resolve('.')));t.after(()=>store.close());
   const before=store.runtimeRun('crashed-fixture');assert.equal(before.dispatch_authorized,true);
   assert.equal(before.worker_pid,parent.pid);assert.ok(processSnapshot().some(row=>row.session===before.process_evidence.session));
@@ -275,4 +275,40 @@ process.stdin.resume();process.stdin.on('end',async()=>{
     assert.equal(run.process_tree_exited,true);assert.equal(run.adapter_closed,true);
     assert.equal(run.provider_usage.unknownRequests,1);assert.equal(run.usage_status,'unknown');
   } finally {store.close();}
+});
+
+
+test('launcher enforces a token remainder inside a tool turn without dispatching blocked requests', {timeout:20000}, async t=>{
+  const stateRoot=mkdtempSync(path.join(os.tmpdir(),'nd-request-budget-'));
+  t.after(()=>rmSync(stateRoot,{recursive:true,force:true}));
+  const binary=path.join(stateRoot,'fake-codex'),statuses=path.join(stateRoot,'statuses.json');
+  writeFileSync(binary,`#!${process.execPath}
+if(process.argv.includes('--version')){console.log('fixture-cli');process.exit(0);}
+const base=JSON.parse(process.argv.find(x=>x.startsWith('model_providers.neuraldeep.base_url=')).split('=').slice(1).join('='));
+process.stdin.resume();process.stdin.on('end',async()=>{
+ const results=[];
+ for(let i=0;i<3;i++){
+  const response=await fetch(base+'/responses',{method:'POST',body:JSON.stringify({model:'fixture',input:'x'.repeat(20000)+i})});
+  await response.text();results.push(response.status);
+ }
+ require('node:fs').writeFileSync(${JSON.stringify(statuses)},JSON.stringify(results));
+});
+`,{mode:0o700});
+  let calls=0;
+  t.mock.method(globalThis,'fetch',async url=>{
+    if(new URL(url).pathname==='/v1/responses'){calls++;return Response.json({usage:{input_tokens:21800,output_tokens:200,total_tokens:22000}});}
+    return Response.json({});
+  });
+  const runtime=neuralDeepRuntimeConfig({PRITHA_STATE_ROOT:stateRoot,PRITHA_CODEX_BIN:binary,
+    PRITHA_NEURALDEEP_KEYCHAIN_SERVICE:'unused-nd-unit-fixture',PRITHA_NEURALDEEP_UPSTREAM_ORIGIN:'https://neuraldeep.invalid'});
+  const result=await runCodexWithNeuralDeep(runtime,['exec'],{input:'fixture',runId:'bounded-turn',model:'fixture',tokenBudget:50000});
+  assert.equal(calls,1);assert.deepEqual(JSON.parse(readFileSync(statuses,'utf8')),[200,409,409]);
+  assert.equal(result.code,1);assert.equal(result.usageRecord.usageKnown,true);assert.equal(result.usageRecord.usage.totalTokens,22000);
+  // A failed workload intentionally retains its resource claim. A separate
+  // fixture tests zero dispatch without bypassing that recovery boundary.
+  const emptyRoot=mkdtempSync(path.join(os.tmpdir(),'nd-empty-budget-'));
+  t.after(()=>rmSync(emptyRoot,{recursive:true,force:true}));
+  const emptyRuntime={...runtime,...resolveNeuralDeepPaths({PRITHA_STATE_ROOT:emptyRoot})};
+  const empty=await runCodexWithNeuralDeep(emptyRuntime,['exec'],{input:'fixture',runId:'no-dispatch',model:'fixture',tokenBudget:1000});
+  assert.equal(calls,1);assert.equal(empty.usageRecord.usageKnown,true);assert.equal(empty.usageRecord.usage.totalTokens,0);
 });

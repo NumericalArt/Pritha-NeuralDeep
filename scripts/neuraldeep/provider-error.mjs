@@ -31,6 +31,10 @@ export function classifyNeuralDeepProviderError({ status, payload, transportCode
   const transport = safeCode(transportCode);
   const retry = retryAfter == null || retryAfter === "" ? null : String(retryAfter).slice(0, 80);
 
+  if (/^provider_(?:token_budget|budget_|usage_unconfirmed)/.test(transport || '')) {
+    return { class: 'input', code: transport, status: statusCode, retryAfter: null };
+  }
+
   if (/^(?:attachment_|model_image_|image_format_|invalid_image_encoding|neuraldeep_model_identity_mismatch)/.test(transport || "")) {
     return { class: "input", code: transport, status: statusCode, retryAfter: null };
   }
