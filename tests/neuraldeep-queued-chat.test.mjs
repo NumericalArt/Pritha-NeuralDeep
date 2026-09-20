@@ -22,7 +22,7 @@ import * as creationDelivery from '../scripts/neuraldeep/creation-delivery.mjs';
 import * as targetManifest from '../scripts/neuraldeep/target-file-manifest.mjs';
 import * as taskPhases from '../scripts/neuraldeep/task-chat-phases.mjs';
 import * as taskAgentCreation from '../scripts/neuraldeep/task-chat-agent-creation.mjs';
-import { NeuralDeepChatHistoryStore } from '../scripts/neuraldeep/chat-history-store.mjs';
+import { ChatHistoryError, NeuralDeepChatHistoryStore } from '../scripts/neuraldeep/chat-history-store.mjs';
 const require=createRequire(import.meta.url), root=process.cwd();
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function until(predicate) { for(let i=0;i<200;i++) { if(await predicate()) return; await sleep(10); } assert.fail('bounded wait expired'); }
@@ -55,6 +55,7 @@ async function fixture(t,{sourceProject=null}={}) {
     '../../../../../scripts/neuraldeep/runtime-identity.mjs':identity,
   });
   const {CodexChatGateway}=load('interfaces/control-center/src/lib/codex-chat/gateway.ts',{
+    '../../../../../scripts/neuraldeep/chat-history-store.mjs':{ChatHistoryError},
     './voice-queued-handoff':handoffModule,
     './voice-task-links':{getVoiceTaskLinkService:()=>({topicStore})},
     '../../../../../scripts/neuraldeep/runtime-identity.mjs':identity,
