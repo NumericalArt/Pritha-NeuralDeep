@@ -155,7 +155,8 @@ test("production readiness adapter skips irrelevant service probes and preserves
   const source = readFileSync("interfaces/control-center/src/lib/control-center/server.ts", "utf8");
   const tree = ts.createSourceFile("server.ts", source, ts.ScriptTarget.Latest, true);
   const fn = tree.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === "operationalReadiness");
-  const compiled = ts.transpileModule(`const operationalRuntimeManager=()=>null; const launchdRuntimeState=()=>{throw new Error('unexpected service probe')}; ${fn.getText(tree)}; export { operationalReadiness };`, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText;
+  const metadataModule = new URL("../scripts/agents-mother/project-metadata-async.mjs", import.meta.url).href;
+  const compiled = ts.transpileModule(`import { projectMetadataIssueMessage } from ${JSON.stringify(metadataModule)}; const operationalRuntimeManager=()=>null; const launchdRuntimeState=()=>{throw new Error('unexpected service probe')}; ${fn.getText(tree)}; export { operationalReadiness };`, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText;
   const { operationalReadiness } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
   const params = { folderPresent: true, manifest: null, operations: "not_installed", health: { status: "not_checked" }, access: {} };
   const cli = await operationalReadiness({ ...params, applicability: operationsApplicability(typed("one-shot-cli")) });
@@ -165,4 +166,10 @@ test("production readiness adapter skips irrelevant service probes and preserves
   assert.equal((await operationalReadiness({ ...params, applicability: operationsApplicability(typed("service").replace("- Service mode: none", "- Service mode: launchd")) })).status, "blocked");
   assert.equal((await operationalReadiness({ ...params, applicability: operationsApplicability(typed("library")), manifestIssue: "invalid" })).status, "blocked");
   assert.equal((await operationalReadiness({ ...params, folderPresent: false, applicability: operationsApplicability(typed("library")) })).status, "missing");
+  const unavailable = await operationalReadiness({ ...params, applicability: operationsApplicability(typed("library")), manifestIssue: "project-metadata-timeout" });
+  assert.equal(unavailable.status, "blocked");
+  assert.match(unavailable.summary, /temporarily unavailable/);
+  assert.doesNotMatch(unavailable.summary, /missing|unsafe/);
+  assert.match(unavailable.nextActions.join("\n"), /Reload/);
+  assert.equal((await operationalReadiness({ ...params, folderPresent: false, manifestIssue: "project-metadata-timeout" })).status, "missing");
 });

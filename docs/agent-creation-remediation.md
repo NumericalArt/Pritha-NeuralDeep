@@ -3,7 +3,7 @@ id: 2026-09-19-agent-creation-remediation
 type: review
 status: draft
 created: 2026-09-19
-updated: 2026-09-19
+updated: 2026-09-20
 topics:
   - agent-engineering
   - agent-creation
@@ -232,6 +232,17 @@ These corrections cannot reconstruct a missing historical provider receipt.
 The first trial's unknown remainder stays unknown pending provider evidence;
 its history and original release binding are retained. A fresh successful
 creation is still required after generation changes.
+
+After the follow-up release reached both installations, a read-only card check
+found that a metadata worker could take longer to start than the shared 2.5-second
+runtime-read deadline. Installed manifests were then displayed as absent even
+while the corresponding services answered their health endpoints. Project
+metadata now has its own bounded 15-second policy, with a 30-second hard maximum.
+An incomplete read reports unknown presence and an unavailable status with a
+retry action; it does not claim that installation is missing or that a file is
+unsafe. Confirmed missing files and rejected symlinks remain distinct. A delayed
+worker regression failed on the previous policy and now reads the real fixture
+manifest successfully; timeout and unsafe-file controls still fail closed.
 
 ## Functional verifier boundary
 

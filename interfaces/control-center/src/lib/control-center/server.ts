@@ -59,7 +59,7 @@ import { readAgentCatalog, findCatalogAgent, currentAgentMission, readCatalogArt
 import { outcomeDocumentLock as currentOutcomeDocumentLock } from "../../../../../scripts/agents-mother/outcome-lock.mjs";
 import { approvalEventMatchesSpec } from "../../../../../scripts/agents-mother/outcome-approval-match.mjs";
 import { readAgentResultReadinessAsync } from "../../../../../scripts/agents-mother/result-readiness-async.mjs";
-import { readProjectMetadataAsync, unavailableProjectMetadata, type ProjectMetadata, type ProjectMetadataFile } from "../../../../../scripts/agents-mother/project-metadata-async.mjs";
+import { readProjectMetadataAsync, unavailableProjectMetadata, projectMetadataIssueMessage, type ProjectMetadata, type ProjectMetadataFile } from "../../../../../scripts/agents-mother/project-metadata-async.mjs";
 import { managedAgentEnvironment, redactAgentRuntimeOutput, AgentProviderError } from "../../../../../scripts/neuraldeep/agent-provider-binding.mjs";
 import { agentProviderStartEnvironment } from "./agent-provider";
 
@@ -1874,7 +1874,7 @@ async function operationalReadiness(params: {
   }
   if (!manifest || params.applicability?.status === "invalid-contract" || params.manifestIssue) {
     const reason = params.applicability?.status === "invalid-contract" ? "Agent type metadata needs contract schema review."
-      : params.manifestIssue ? "operations/manifest.json is invalid or unsafe to read."
+      : params.manifestIssue ? projectMetadataIssueMessage(params.manifestIssue)!
       : params.applicability?.status === "unknown" ? "Operations applicability needs an accepted contract or operations metadata."
       : "operations/manifest.json is missing for the selected operations.";
     return {
@@ -1888,7 +1888,9 @@ async function operationalReadiness(params: {
       },
       checks,
       blockers: [reason],
-      nextActions: ["Review the selected operations contract and prepare only its required metadata."],
+      nextActions: [params.manifestIssue?.startsWith("project-metadata-")
+        ? "Reload the agent status to retry the bounded read."
+        : "Review the selected operations contract and prepare only its required metadata."],
     };
   }
 
@@ -2240,12 +2242,13 @@ async function buildAgent(root: string, record: RegistryRecord, access: AccessLi
     }),
   ]);
   const manifestRead = projectMetadata.manifest;
+  const metadataIssue = folder ? projectMetadataIssueMessage(manifestRead.issue) : null;
   const manifest = manifestRead.manifest as OperationsManifest | null;
   const applicability = agentOperationsApplicability(record, manifest, { root });
   const noRuntimeRequired = Boolean(folder && !manifest && applicability.manifestRequired === false && !manifestRead.issue);
   const health = folder ? await probeHealth(manifest) : { status: "not_checked" as const, detail: "Missing folder" };
   const uiState = noRuntimeRequired ? { state: "alive" as const, activity: "unknown" as const } : agentUiState(Boolean(folder), manifest, health.status);
-  const operations = operationsStatus(manifest);
+  const operations = folder && manifestRead.present === null ? "unavailable" : operationsStatus(manifest);
   const localUrl = manifest?.local_upstream_url;
   const tailscaleUrl = agentTailscaleUrl(manifest, localUrl, access);
   const lifecycle = lifecycleForAgent(root, record, manifest, Boolean(folder));
@@ -2289,19 +2292,19 @@ async function buildAgent(root: string, record: RegistryRecord, access: AccessLi
       stopAvailable: Boolean(manifest?.stop_command),
       localUrl,
       healthcheckCommand: manifest?.healthcheck_command,
-      issue: operations === "failed" ? "Manifest is missing required operation fields" : undefined,
+      issue: metadataIssue || (operations === "failed" ? "Manifest is missing required operation fields" : undefined),
     },
     readiness,
     health,
     url: localUrl || tailscaleUrl
       ? { status: "available", local: localUrl, tailscale: tailscaleUrl }
-      : { status: "unavailable", reason: folder ? "No local URL in operations manifest" : "Missing folder" },
+      : { status: "unavailable", reason: metadataIssue || (folder ? "No local URL in operations manifest" : "Missing folder") },
     ui: {
       ...uiState,
       primaryAction: legacyPlanAction(control),
       actionEnabled: control.executionMode === "executable",
       actionDisabledReason: control.reason,
-      issueText: record.identityStatus === "conflict" ? "Contract and project identity need review" : noRuntimeRequired ? undefined : readinessIssueText(readiness) || issueText(Boolean(folder), manifest, health.status),
+      issueText: record.identityStatus === "conflict" ? "Contract and project identity need review" : noRuntimeRequired ? undefined : metadataIssue || readinessIssueText(readiness) || issueText(Boolean(folder), manifest, health.status),
       updateStatus: "none",
     },
     control,
@@ -2333,7 +2336,7 @@ function capabilities(root: string, registryReady: boolean, agents: ControlCente
   return {
     agents_registry: registryReady ? "ready" : "not_installed",
     sibling_scan: "ready",
-    operations_manifest: anyOperationsReady ? "ready" : "not_installed",
+    operations_manifest: anyOperationsReady ? "ready" : agents.some(agent => agent.operations.status === "unavailable") ? "unavailable" : "not_installed",
     start_stop: anyStartStopExecutable ? "ready" : "planned",
     restore: anyRestorePlan ? "manual_only" : "planned",
     snapshots: snapshotsStatus(root),
