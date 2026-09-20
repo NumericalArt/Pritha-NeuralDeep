@@ -480,6 +480,9 @@ export function renderOutcomeSpecFromContract(data, options = {}) {
   const mode = inferredInteractionMode(data, options.interactionMode);
   const coreFunctions = (data.coreFunctions || []).filter((value) => !missing(value));
   const effectiveCore = coreFunctions.length ? coreFunctions : [data.primaryMission];
+  const productInterface = mode === "interface" && data.primaryInterface === "web"
+    && ["llm-app", "local-feed"].includes(data.interviewPreset);
+  const workflows = (data.criticalWorkflows || []).filter(value => !missing(value));
   const deliverables = [
     "Working implementation of the approved V1 core functions",
     "Runnable project with a user guide and verification evidence",
@@ -503,9 +506,40 @@ export function renderOutcomeSpecFromContract(data, options = {}) {
 - Statement: ${markdownScalar(value, "Complete the main V1 outcome")}
 - Kind: operator-judged
 ${covers.map((item) => `- Covers: ${item}`).join("\n")}
-- Pass criteria: The demonstrated behavior completes this function through the documented interface without an undocumented implementation step.`;
+- Pass criteria: ${productInterface
+    ? `Demonstrate ${markdownScalar(value)} through the web interface and verify the applicable contract success criteria below; no undocumented operator implementation step is required.`
+    : "The demonstrated behavior completes this function through the documented interface without an undocumented implementation step."}`;
   }).join("\n\n");
-  const interfaceSection = `## User-facing outcome
+  const contractSuccessTrial = productInterface && !missing(data.successCriteria) ? `### Trial: contract-success-criteria
+
+- Statement: Demonstrate every contract success criterion, including requirements outside the core function list.
+- Kind: operator-judged
+- Covers: ${coverageId("deliverable", deliverables[0], 0)}
+- Pass criteria: ${markdownScalar(data.successCriteria)}` : "";
+  const interfaceSection = productInterface ? `## User-facing outcome
+
+- Entry point: web
+- User journey goal: ${markdownScalar(data.primaryMission)}
+- User journey start: Open the web application; use Pritha's managed start action when the local service is stopped.
+- User journey progress: Perform the contracted workflows: ${markdownScalar((workflows.length ? workflows : effectiveCore).join("; "))}. Show results and actionable errors in the application.
+- User journey approval: Follow the contract's authorization and network boundaries; personal acceptance of the finished result remains a separate operator decision.
+- User journey completion: ${markdownScalar(data.successCriteria)}
+- User journey recovery: Explain the failed action, preserve previously saved data and allow an explicit retry. Respect these contract limits: ${markdownScalar(data.productConstraints, "the accepted permissions and constraints")}.
+
+### Surfaces
+
+| Surface | Purpose | Primary action |
+| --- | --- | --- |
+| web | ${markdownScalar(data.primaryMission)} | ${markdownScalar(workflows[0] || effectiveCore[0])} |
+
+### Example sessions
+
+#### Session: main-flow
+
+\`\`\`transcript
+user: ${markdownScalar(workflows[0] || effectiveCore[0])}
+agent: Use the web application to perform this workflow, inspect the saved result and verify the contract success criteria; report any failure without claiming completion.
+\`\`\`` : `## User-facing outcome
 
 - Entry point: ${markdownScalar(data.primaryInterface, "Codex project")}
 - User journey goal: The user states the desired result in their own words.
@@ -626,13 +660,21 @@ ${presetTrials}
 
 ${coreTrials}
 
+${contractSuccessTrial}
+
 ## Demo script
 
-1. Open or trigger the primary agent interface.
+${productInterface ? [
+  "Open the web application through Pritha; verify service availability without refreshing product data.",
+  ...effectiveCore.map(value => `Demonstrate through the interface: ${markdownScalar(value)}.`),
+  `Verify all contract success criteria: ${markdownScalar(data.successCriteria)}.`,
+  "Exercise failure and explicit recovery without losing previous successful results.",
+  "Record the reviewed product revision, verification evidence and separate personal acceptance or correction request.",
+].map((value, index) => `${index + 1}. ${value}`).join("\n") : `1. Open or trigger the primary agent interface.
 2. Run the main example session with a realistic input.
 3. Inspect the result and its verification evidence.
 4. Exercise one failure or recovery path.
-5. Record user acceptance or a correction request.
+5. Record user acceptance or a correction request.`}
 `;
 }
 

@@ -5,7 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { creationDraftRoot, reconcileCreationArtifacts, approveCreationDocument } from "../scripts/neuraldeep/agent-creation.mjs";
+import { creationDraftRoot, reconcileCreationArtifacts, approveCreationDocument, creationPrompt } from "../scripts/neuraldeep/agent-creation.mjs";
+import { normalizeExternalResearchEvidence, normalizeExternalResearchSynthesis } from "../scripts/agents-mother/external-research.mjs";
 import { contractData } from "../scripts/agents-mother/contract.mjs";
 import { renderOutcomeSpecFromContract, verifyOutcomeApproval, outcomeSpecFile } from "../scripts/agents-mother/outcome-spec.mjs";
 
@@ -35,6 +36,37 @@ function fixture(t) {
   };
   return { root, stateRoot, target, options, job, request, receipt, outcome };
 }
+
+test("research preparation supplies import commands and a schema accepted by the real evidence validator", t => {
+  const f = fixture(t);
+  const accepted = approveCreationDocument(f.job, "contract", f.request("contract"), f.options);
+  const proposal = f.outcome(accepted);
+  const job = approveCreationDocument(proposal, "outcome", f.request("outcome"), f.options);
+  const prompt = creationPrompt(job);
+  assert.match(prompt, /external-research .* --backend status/);
+  assert.match(prompt, /external-research .* --backend manual --input/);
+  assert.match(prompt, /printed gate status, not only the command exit code/);
+  const match = prompt.match(/```pritha-research-json\n([\s\S]*?)\n```/);
+  assert.ok(match, "research should not require discovering the evidence format in source code");
+  const payload = JSON.parse(match[1]);
+  Object.assign(payload.items[0], { topic_id: "fixture-runtime", source_url: "https://example.com/docs",
+    source_title: "Fixture documentation", retrieved_at: new Date().toISOString(),
+    claim: "The synthetic fixture supports this contract's HTTP request shape.",
+    evidence_summary: "A controlled fixture provides a documented request and failure response.",
+    version_context: "Fixture version 1", temporal_compatibility: "Version 1 matches the fixture runtime." });
+  Object.assign(payload.synthesis, { memory_comparison: "The controlled source confirms the request boundary described in the local memory fixture.",
+    summary: "The current controlled request interface supports the contract requirements.",
+    architecture_decision: "Use the documented HTTP shape and retain the explicit local failure boundary.",
+    alternatives: ["An offline-only fixture"], tradeoffs: ["HTTP requires explicit failure handling"] });
+  const evidence = normalizeExternalResearchEvidence(payload);
+  assert.equal(evidence.validCount, 1, JSON.stringify(evidence.items));
+  const synthesis = normalizeExternalResearchSynthesis(payload, { evidenceLock: evidence.lock,
+    contractFingerprint: contractData(job.contract.path, { root: f.root }).fingerprint,
+    requiredTopicIds: ["fixture-runtime"] });
+  assert.equal(synthesis.complete, true, JSON.stringify(synthesis.errors));
+  delete payload.items[0].retrieved_at;
+  assert.equal(normalizeExternalResearchEvidence(payload).validCount, 0, "the guide does not bypass evidence validation");
+});
 
 for (const stage of ["intent_recorded", "canonical_written", "receipt_completed"]) {
   test(`contract approval recovers a crash at ${stage} using the original host request`, t => {

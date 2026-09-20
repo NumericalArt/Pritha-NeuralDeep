@@ -3,7 +3,7 @@ id: 2026-09-19-agent-creation-remediation
 type: review
 status: draft
 created: 2026-09-19
-updated: 2026-09-20
+updated: 2026-09-21
 topics:
   - agent-engineering
   - agent-creation
@@ -39,6 +39,26 @@ confidence: medium
 ---
 
 # Agent creation remediation: engineering draft
+
+A bounded follow-up UI trial reached two separately approved documents in one
+task, retained them after reload, and entered research automatically. It still
+did not produce an application: preparation and one checkpoint continuation
+used 913,219 accounted tokens before another conservative reservation was
+refused. There was no unknown usage in this attempt and no external child edit.
+The contract step used 128,905 tokens; Outcome authoring used 594,710, including
+failed patch staging, an incorrect patch hunk and a coverage-validation repair.
+This is a failed product completion gate, despite the working context handoff.
+
+The follow-up correction makes web app/feed Outcome proposals carry the actual
+contract goal, workflows and complete success criteria at initialization.
+Product details no longer require replacing a generic conversational journey
+or adding deliverable bullets that change coverage identities. Existing authored
+documents remain untouched on repeated init. Generated functional verifiers,
+separate host approvals and personal acceptance remain independent requirements.
+Research preparation now supplies the exact status/import commands and a tested
+evidence/synthesis shape, while retaining current-source coverage and locked
+gate validation. These changes reduce unnecessary authoring work; a successful
+real creation and its cost must still be established by a new UI attempt.
 
 A later preparation step exhausted its conservative request reservation while
 replaying the entire growing native conversation. Coordinated text-only creation

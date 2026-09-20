@@ -89,6 +89,35 @@ test("Outcome Spec proposal covers V1 functions and deliverables", () => {
   assert.equal(result.parsed.trials.filter(trial => trial.kind === "operator-judged").length, 2);
 });
 
+test("web app proposals carry the product journey and every contract success criterion without authoring repairs", () => {
+  const f = fixture();
+  const appContract = path.join(path.dirname(f.contractPath), "web-app-contract.md");
+  const workflow = "Open the reading list, refresh public RSS and export the selected Russian digest";
+  const success = "Both feeds refresh without duplicates; SQLite survives restart; disabled provider preserves earlier digests";
+  writeFileSync(appContract, readFileSync(f.contractPath, "utf8")
+    .replace("type: agent-contract", "type: agent-contract\ninterview_preset: llm-app\noutcome_trial_preset: llm-http-app-v1")
+    .replace("Agent name: Alpha", "Agent name: Reading Desk")
+    .replace("Primary interface: Codex project", "Primary interface: web\n- Service mode: process")
+    .replace("Submit note and review report", workflow)
+    .replace("A user can provide a note and receive a report with evidence", success));
+  const spec = createOutcomeSpec(appContract, { root: f.root });
+  const text = readFileSync(spec.path, "utf8");
+  const result = validateOutcomeSpecText(text, { root: f.root });
+  assert.equal(result.ok, true, JSON.stringify(result.issues));
+  assert.match(result.parsed.userFacing.journey.start, /Open.*web/);
+  assert.equal(result.parsed.userFacing.journey.goal, "Turn a source note into a concise evidence-linked report");
+  assert.ok(text.includes(workflow));
+  assert.ok(result.parsed.trials.some(t => t.kind === "operator-judged" && t.passCriteria === success));
+  assert.equal(result.parsed.deliverables.length, 2, "product detail must not change coverage identities");
+  assert.equal(result.coverage.every(entry => entry.covered), true);
+  const verifier = result.parsed.trials.find(t => t.id === "preset-behavior");
+  assert.ok(verifier, "host functional verifier remains mandatory");
+  assert.equal(verifyOutcomeApproval(spec.path, { root: f.root, stateRoot: f.stateRoot }).ok, false);
+  writeFileSync(spec.path, text.replace("## Shape", "An operator-authored clarification.\n\n## Shape"));
+  assert.equal(createOutcomeSpec(appContract, { root: f.root }).path, spec.path);
+  assert.ok(readFileSync(spec.path, "utf8").includes("An operator-authored clarification."));
+});
+
 test("semantic and document locks ignore approval metadata but not outcome meaning", () => {
   const { specPath } = fixture();
   const draft = readFileSync(specPath, "utf8");
