@@ -62,6 +62,7 @@ async function fixture(page: Page, job = proposal(), loseFirstApproval = false) 
     if (url.pathname.endsWith('/history')) return send({ data: [], olderCursor: null, newerCursor: null, completeness: 'captured-from-creation' });
     if (url.pathname.endsWith(`/${chatId}`)) return send({ thread, activeTurnId: null, pendingRequests: [], continuationState: 'continuation_enabled', streamUrl: `/api/codex-chat/v1/threads/${chatId}/events` });
     if (url.pathname.endsWith('/ui-activity')) return send({ recorded: true });
+    if (url.pathname.endsWith('/attachments')) return send({ limits: { count: 4, fileBytes: 10_000_000, messageBytes: 20_000_000 } });
     if (url.pathname.endsWith('/attachments/capabilities')) return send({ image: 'supported', files: 'supported' });
     return route.fulfill({ status: 404, json: {} });
   });
@@ -89,9 +90,11 @@ for (const width of [1440, 390]) {
     await page.getByRole('textbox', { name: 'Message Pritha', exact: true }).fill('Create a local app for reviewing public feed entries.');
     const limit = page.getByLabel('Лимит токенов создания', { exact: true });
     await expect(limit).toHaveValue('1000000');
+    await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
     await limit.fill('1000001');
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
     await limit.fill('351052');
+    await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
     await page.getByRole('button', { name: 'Send', exact: true }).click();
     await expect.poll(() => submitted.length).toBe(1);
     expect(submitted[0].subject).toEqual({ taskType: 'agent_creation', subjectId: 'bounded-ui-fixture', tokenBudget: 351052 });
