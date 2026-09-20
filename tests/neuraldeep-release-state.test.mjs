@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { acquireNeuralDeepReleaseLock } from "../scripts/neuraldeep/release-maintenance.mjs";
@@ -34,6 +34,15 @@ test("release drain includes host effects even after the operator process disapp
   store.db.prepare("INSERT INTO resource_claims VALUES(?,?,?,?,?,?,1)").run("host_owner","host","owner","host","execution-effects","exclusive");
   const result=inspectNeuralDeepReleaseState(f);assert.equal(result.ready,false);assert.equal(result.hostControls,1);
   await assert.rejects(backupNeuralDeepReleaseState(f),/Unresolved/);
+});
+test('larger release files use independent copies on the native clone path', async t=>{
+  const f=fixture(t),file=path.join(f.stateRoot,'fixture.jsonl');
+  const original=Buffer.alloc(128*1024,0x61);writeFileSync(file,original);
+  await backupNeuralDeepReleaseState(f);
+  const copied=path.join(f.destination,'state/fixture.jsonl');
+  assert.deepEqual(readFileSync(copied),original);assert.notEqual(statSync(file).ino,statSync(copied).ino);
+  writeFileSync(file,'changed live');assert.deepEqual(readFileSync(copied),original);
+  writeFileSync(copied,'changed backup');assert.equal(readFileSync(file,'utf8'),'changed live');
 });
 test("corrupt legacy admission is retained and cannot be interpreted as idle", t => {
   const f=fixture(t), dir=path.join(f.stateRoot,"codex-chat");mkdirSync(dir);const file=path.join(dir,"admission-registry.json");writeFileSync(file,"{broken");

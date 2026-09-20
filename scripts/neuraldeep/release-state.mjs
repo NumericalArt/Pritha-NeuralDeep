@@ -1,9 +1,28 @@
 import { DatabaseSync, backup } from "node:sqlite";
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { chmodSync, constants, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const terminal = new Set(["completed", "failed", "cancelled"]);
+
+function copyIndependentFile(source, target, size) {
+  // Node reports ENOSYS for FICLONE_FORCE on macOS, even on APFS. Use the
+  // platform clone operation for larger files; small files avoid process cost.
+  // The private destination is new, and cp -n cannot overwrite an existing file.
+  if (process.platform === 'darwin' && size >= 16 * 1024) {
+    try {
+      execFileSync('/bin/cp', ['-c', '-n', source, target], {stdio:'pipe'});
+      const from=lstatSync(source),to=lstatSync(target);
+      if (!to.isFile() || (from.dev===to.dev && from.ino===to.ino)) throw new Error('Snapshot copy is not independent');
+      return;
+    } catch (error) {
+      // A partial destination must not be silently accepted or overwritten.
+      if (existsSync(target)) throw error;
+    }
+  }
+  copyFileSync(source, target, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE);
+}
 export function inspectNeuralDeepReleaseState({ stateRoot, codeRoot }) {
   const root = path.resolve(stateRoot) === path.resolve(codeRoot) ? path.join(codeRoot, ".private/codex-chat") : path.join(stateRoot, "codex-chat");
   const file = path.join(root, "admission.sqlite"), legacy = path.join(root, "admission-registry.json");
@@ -72,7 +91,7 @@ export async function backupNeuralDeepReleaseState({ stateRoot, codeRoot, codexH
     // Reflinks keep independent file identities and copy on later writes.
     // Unsupported filesystems use Node's ordinary-copy fallback; never hard-link
     // mutable state. SQLite still uses its transactional backup above.
-    } else copyFileSync(source, target, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE);
+    } else copyIndependentFile(source, target, stat.size);
     chmodSync(target, 0o600);
     files.push({ path: label, kind: sqlite ? "sqlite-consistent-backup" : "file", sha256: createHash("sha256").update(readFileSync(target)).digest("hex") });
   }
