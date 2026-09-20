@@ -1,6 +1,6 @@
 import { DatabaseSync, backup } from "node:sqlite";
 import { createHash } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, constants, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const terminal = new Set(["completed", "failed", "cancelled"]);
@@ -69,7 +69,10 @@ export async function backupNeuralDeepReleaseState({ stateRoot, codeRoot, codexH
       try { await backup(db, target); } finally { db.close(); }
       const check = new DatabaseSync(target, { readOnly: true });
       try { if (check.prepare("PRAGMA quick_check").get().quick_check !== "ok") throw new Error("SQLite snapshot integrity failed"); } finally { check.close(); }
-    } else copyFileSync(source, target);
+    // Reflinks keep independent file identities and copy on later writes.
+    // Unsupported filesystems use Node's ordinary-copy fallback; never hard-link
+    // mutable state. SQLite still uses its transactional backup above.
+    } else copyFileSync(source, target, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE);
     chmodSync(target, 0o600);
     files.push({ path: label, kind: sqlite ? "sqlite-consistent-backup" : "file", sha256: createHash("sha256").update(readFileSync(target)).digest("hex") });
   }

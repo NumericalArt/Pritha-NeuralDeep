@@ -22,6 +22,10 @@ test("consistent release snapshot includes committed WAL data and native history
   const result=await backupNeuralDeepReleaseState(f);assert.equal(result.ready,true);assert.equal(result.sqlite,2);
   const copy=new DatabaseSync(path.join(f.destination,"state/usage.sqlite"),{readOnly:true});assert.equal(copy.prepare("select n from usage").get().n,42);copy.close();
   assert.equal(readFileSync(path.join(f.destination,"native-history/sessions/history.jsonl"),"utf8"),"synthetic history\n");
+  writeFileSync(path.join(f.codexHome,"sessions/history.jsonl"),'new live history');
+  assert.equal(readFileSync(path.join(f.destination,"native-history/sessions/history.jsonl"),'utf8'),'synthetic history\n','a later live write cannot change the snapshot');
+  writeFileSync(path.join(f.destination,"native-history/sessions/history.jsonl"),'restored fixture');
+  assert.equal(readFileSync(path.join(f.codexHome,"sessions/history.jsonl"),'utf8'),'new live history','restoration must not mutate live state through a shared inode');
   assert.equal(existsSync(path.join(f.destination,"state/home/auth.json")),false);assert.equal(existsSync(path.join(f.destination,"native-history/auth.json")),false);
 });
 test("release drain includes host effects even after the operator process disappears", async t => {
