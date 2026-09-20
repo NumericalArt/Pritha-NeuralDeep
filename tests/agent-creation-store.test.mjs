@@ -15,6 +15,21 @@ test('one creation job owns an instance target across retries and chats',()=>{
   assert.equal(store.create({...input,chatId:'chat_other',instanceId:'another'}).agentId,input.agentId);
  }finally{coordination.close();}
 });
+
+test('a smaller initial allocation is immutable on replay and does not settle another job',()=>{
+ const {coordination,store}=make();try {
+  const previous=store.create(input);
+  store.recordTurn(previous.chatId,{turnId:'old-unknown',tokens:null,dispatched:true,ok:false});
+  const bounded={...input,chatId:'bounded-chat',agentId:'bounded-app',tokenBudget:351052};
+  const job=store.create(bounded);
+  assert.equal(job.budget.maxTokens,351052);
+  assert.deepEqual(store.create(bounded),job);
+  assert.throws(()=>store.create({...bounded,tokenBudget:1000000}),{code:'creation_budget_conflict'});
+  for(const tokenBudget of [null,0,-1,1.2,1000001,'351052',NaN])assert.throws(()=>store.create({...bounded,tokenBudget}),{code:'creation_budget_invalid'});
+  assert.equal(creationBudgetBlocker(store.get(previous.chatId)).code,'creation_usage_unknown');
+  assert.deepEqual(store.get(previous.chatId).budget.unknownAttempts,['old-unknown']);
+ }finally{coordination.close();}
+});
 test('host chooses the next phase from distinct bound approvals',()=>{
  const job={contract:null,outcome:null,approvals:{}};assert.equal(creationPhase(job),'interview');
  job.contract={hash:'c'};assert.equal(creationPhase(job),'contract');

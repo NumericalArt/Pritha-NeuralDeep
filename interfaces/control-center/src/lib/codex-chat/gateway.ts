@@ -71,7 +71,7 @@ type CreateThreadInput = {
   title?: string;
   source: "chat";
   settings?: { modelId?: string; effortId?: string; serviceTierId?: string };
-  subject?: { taskType: ChatSubject["taskType"]; subjectId?: string | null } | null;
+  subject?: { taskType: ChatSubject["taskType"]; subjectId?: string | null; tokenBudget?: number } | null;
 };
 
 type StartTurnInput = {
@@ -268,6 +268,7 @@ export class CodexChatGateway {
       if(versions.sourceDirty || !versions.source || versions.source!==versions.runtime)throw new AgentCreationError('creation_release_mismatch');
       const instanceId=this.store.stateIdentityHash;
       return store.create({chatId:binding.chatId,instanceId,agentId:binding.subject!.subjectId,releaseSha:versions.source,
+        tokenBudget:binding.subject!.tokenBudget,
         target:path.join(resolvePrithaAgentParent(this.root),binding.subject!.subjectId!),draftRoot:creationDraftRoot(this.store.stateRoot,instanceId,binding.chatId)});
     });
   }
@@ -610,6 +611,7 @@ export class CodexChatGateway {
     }
     if(subject?.taskType==='agent_creation') {
       if(!subject.subjectId)throw new AgentCreationError('creation_name_required','Укажите имя нового агента.',400);
+      if(subject.tokenBudget !== undefined && (!Number.isSafeInteger(subject.tokenBudget) || subject.tokenBudget < 1 || subject.tokenBudget > 1_000_000))throw new AgentCreationError('creation_budget_invalid','Лимит создания должен быть целым числом от 1 до 1 000 000 токенов.',400);
       const release=creationReleaseIdentity(this.root);
       if(release.sourceDirty || !release.source || release.source!==release.runtime)throw new AgentCreationError('creation_release_mismatch','Для нового агента нужен чистый проверенный выпуск: исходники и работающая Pritha должны совпадать.');
     }
@@ -649,7 +651,7 @@ export class CodexChatGateway {
       stateIdentityHash: this.store.stateIdentityHash,
       profileIdentity: neuralDeepRuntimeIdentity(this.store.stateRoot).profileIdentity,
       workspacePath: this.root,
-      subject: subject ? { taskType: subject.taskType, subjectId: subject.subjectId ?? null } : null,
+      subject: subject ? { taskType: subject.taskType, subjectId: subject.subjectId ?? null, ...(subject.tokenBudget === undefined ? {} : { tokenBudget: subject.tokenBudget }) } : null,
       creationWorkflowVersion: subject?.taskType === 'agent_creation' ? 1 : undefined,
       identityStatus: "recorded",
       group: "my_chats",
@@ -691,7 +693,7 @@ export class CodexChatGateway {
       modelId: binding.modelId, effortId: binding.effortId, cwd: binding.workspacePath || this.root,
       profileIdentity: binding.profileIdentity || neuralDeepRuntimeIdentity(this.store.stateRoot).profileIdentity,
       sandbox, network: sandbox === "danger-full-access" || (sandbox === "workspace-write" && settings.codexNetworkAccess === true),
-      timeoutMs: taskChatTurnTimeoutMs({ subject: binding.subject ?? null, settingsTimeoutMs: settings.codexTimeoutMs || 600_000 }), settingsAt: settings.updatedAt,
+      timeoutMs: taskChatTurnTimeoutMs({ subject: binding.subject ?? null, coordinated: binding.creationWorkflowVersion === 1, settingsTimeoutMs: settings.codexTimeoutMs || 600_000 }), settingsAt: settings.updatedAt,
       predecessorTurnId: null, queueRevision: 1, dispatchState: "accepted" };
   }
 
@@ -1224,6 +1226,7 @@ export class CodexChatGateway {
         if(versions.sourceDirty || !versions.source || versions.source!==versions.runtime)throw new AgentCreationError('creation_release_mismatch');
         const instanceId=this.store.stateIdentityHash;
         creation=creations!.create({chatId,instanceId,agentId:initial.subject!.subjectId,releaseSha:versions.source,
+          tokenBudget:initial.subject!.tokenBudget,
           target:path.join(resolvePrithaAgentParent(this.root),initial.subject!.subjectId!),draftRoot:creationDraftRoot(this.store.stateRoot,instanceId,chatId)});
       }
       if(creation) {

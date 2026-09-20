@@ -28,12 +28,12 @@ export function resolveTaskChatPhase({ subject = null, text = "" } = {}) {
   return "interview";
 }
 
-export function taskChatTurnTimeoutMs({ subject = null, settingsTimeoutMs, environment = process.env } = {}) {
+export function taskChatTurnTimeoutMs({ subject = null, settingsTimeoutMs, coordinated = false, environment = process.env } = {}) {
   const asNumber = Number(settingsTimeoutMs);
   const base = Number.isFinite(asNumber) && asNumber > 0 ? Math.round(asNumber) : DEFAULT_TURN_TIMEOUT_MS;
   if (!subject || subject.taskType !== "agent_creation") return base;
   const rawChildLimit = Number(environment.PRITHA_TASK_CHAT_CHILD_TURN_TIMEOUT_MS);
-  const childLimit = Number.isFinite(rawChildLimit) && rawChildLimit > 0 ? rawChildLimit : DEFAULT_CHILD_TURN_TIMEOUT_MS;
+  const childLimit = Number.isFinite(rawChildLimit) && rawChildLimit > 0 ? rawChildLimit : coordinated ? base : DEFAULT_CHILD_TURN_TIMEOUT_MS;
   const clamped = Math.min(MAX_CHILD_TURN_TIMEOUT_MS, Math.max(MIN_CHILD_TURN_TIMEOUT_MS, childLimit));
   return Math.min(base, clamped);
 }

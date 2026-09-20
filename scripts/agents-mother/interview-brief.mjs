@@ -3,6 +3,7 @@ import { slug } from "../lib/slug.mjs";
 export const INTERVIEW_BRIEF_SCHEMA_VERSION = 1;
 export const INTERVIEW_PRESETS = new Set(["generic", "local-feed", "llm-app"]);
 const technicalKeys = ["preset", "sourceFormat", "runtimeFamily", "serviceMode", "primaryInterface", "runtimePlacementProfile", "repositoryResearchPolicy", "repositoryAdoptionMode", "repositoryResearchWaiverReason", "repositoryResearchTopics", "targetFolder"];
+const designKeys = ["memoryModel", "storedData", "inputDataTypes", "sensitiveData", "riskNotes"];
 const clean = (value) => typeof value === "string" ? value.trim().replace(/\r\n?/g, "\n") : "";
 const items = (value) => Array.isArray(value) ? value.map(clean).filter(Boolean) : clean(value).split(/\n|;/).map((item) => item.replace(/^\s*(?:[-*]|\d+\.)\s+/, "").trim()).filter(Boolean);
 
@@ -10,7 +11,7 @@ const items = (value) => Array.isArray(value) ? value.map(clean).filter(Boolean)
 export function normalizeInterviewBrief(value = {}) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Interview brief must be an object");
   if (value.schemaVersion !== undefined && value.schemaVersion !== INTERVIEW_BRIEF_SCHEMA_VERSION) throw new Error("Unsupported interview brief schemaVersion");
-  for (const key of ["identity", "permissions", "technical"]) {
+  for (const key of ["identity", "permissions", "technical", "design"]) {
     if (value[key] !== undefined && (!value[key] || typeof value[key] !== "object" || Array.isArray(value[key]))) throw new Error(`Interview brief ${key} must be an object`);
   }
   for (const key of ["goal", "user"]) {
@@ -33,13 +34,17 @@ export function normalizeInterviewBrief(value = {}) {
     if (typeof value.technical[key] !== "string") throw new Error(`Interview brief technical.${key} must be text`);
     return [key, clean(value.technical[key])];
   }));
+  const design = Object.fromEntries(designKeys.filter((key) => value.design?.[key] !== undefined).map((key) => {
+    if (typeof value.design[key] !== "string") throw new Error(`Interview brief design.${key} must be text`);
+    return [key, clean(value.design[key])];
+  }));
   return {
     schemaVersion: INTERVIEW_BRIEF_SCHEMA_VERSION,
     identity, goal: clean(value.goal), user: clean(value.user),
     successCriteria: items(value.successCriteria), coreFunctions: items(value.coreFunctions),
     workflows: items(value.workflows), sources: items(value.sources), constraints: items(value.constraints), nonGoals: items(value.nonGoals),
     permissions: { network: items(value.permissions?.network), filesystem: items(value.permissions?.filesystem), authorization: clean(value.permissions?.authorization) },
-    technical,
+    technical, design,
   };
 }
 
@@ -76,6 +81,7 @@ const aliases = {
   authorization: ["user authorization model", "authorization", "права", "разрешения"],
 };
 for (const key of technicalKeys) aliases[key] = [key, key.replace(/([A-Z])/g, " $1")];
+for (const key of designKeys) aliases[key] = [key, key.replace(/([A-Z])/g, " $1")];
 aliases.preset.push("шаблон");
 const aliasMap = new Map(Object.entries(aliases).flatMap(([key, values]) => values.map((value) => [label(value), key])));
 const unquote = (text) => text.trim().replace(/^`([^`]+)`(?:\s*\([^)]*\))?$/, "$1");
@@ -130,6 +136,7 @@ export function parseInterviewBrief(text) {
     ...Object.fromEntries(["successCriteria", "coreFunctions", "workflows", "sources", "constraints", "nonGoals"].map((key) => [key, values[key]])),
     permissions: { network: values.network, filesystem: values.filesystem, authorization: values.authorization },
     technical: Object.fromEntries(technicalKeys.filter((key) => values[key]).map((key) => [key, values[key]])),
+    design: Object.fromEntries(designKeys.filter((key) => values[key]).map((key) => [key, values[key]])),
   });
   const issues = validateInterviewBrief(brief);
   if (issues.length) throw new Error(issues.join("; "));
@@ -155,6 +162,8 @@ export function interviewBriefOptions(value) {
     "repository-policy": brief.technical.repositoryResearchPolicy, "repository-adoption": brief.technical.repositoryAdoptionMode,
     "repository-waiver": brief.technical.repositoryResearchWaiverReason, "repository-topics": brief.technical.repositoryResearchTopics,
     "target-folder": brief.technical.targetFolder,
+    memory: brief.design.memoryModel, stored: brief.design.storedData, inputs: brief.design.inputDataTypes,
+    sensitive: brief.design.sensitiveData, risks: brief.design.riskNotes,
   };
   return Object.fromEntries(Object.entries(map).filter(([, value]) => Boolean(value)));
 }

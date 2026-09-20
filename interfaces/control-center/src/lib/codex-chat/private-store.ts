@@ -20,6 +20,7 @@ import type {
 export type ChatSubject = {
   taskType: "self" | "agent_creation";
   subjectId: string | null;
+  tokenBudget?: number;
 };
 
 export type MessageReceipt = {
@@ -190,7 +191,8 @@ export function normalizeChatBinding(value: unknown, defaultIdentityHash: string
     workspacePath: typeof row.workspacePath === "string" ? row.workspacePath : undefined,
     executionWorkspace: row.executionWorkspace?.version===1 ? row.executionWorkspace : undefined,
     subject: row.subject && (row.subject.taskType === "self" || row.subject.taskType === "agent_creation")
-      ? { taskType: row.subject.taskType, subjectId: /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(String(row.subject.subjectId || "")) ? String(row.subject.subjectId) : null }
+      ? { taskType: row.subject.taskType, subjectId: /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(String(row.subject.subjectId || "")) ? String(row.subject.subjectId) : null,
+        ...(row.subject.tokenBudget === undefined ? {} : { tokenBudget: row.subject.tokenBudget }) }
       : null,
     creationWorkflowVersion: row.creationWorkflowVersion === 1 ? 1 : undefined,
     profileIdentity: typeof row.profileIdentity === "string" ? row.profileIdentity : undefined,

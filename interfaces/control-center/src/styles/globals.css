@@ -7204,6 +7204,9 @@ button:active,
   cursor: pointer;
 }
 
+.codex-subject-budget { display: grid; gap: 4px; max-width: 100%; }
+.codex-subject-budget input { width: 160px; max-width: 100%; }
+
 .codex-working-indicator {
   position: absolute;
   inset-block-start: 0;

@@ -10,6 +10,7 @@ export interface InterviewBrief {
   constraints: string[];
   nonGoals: string[];
   permissions: { network: string[]; filesystem: string[]; authorization: string };
+  design: { memoryModel?: string; storedData?: string; inputDataTypes?: string; sensitiveData?: string; riskNotes?: string };
   technical: {
     preset?: "generic" | "local-feed" | "llm-app";
     sourceFormat?: "json" | "rss" | "atom" | "mixed";

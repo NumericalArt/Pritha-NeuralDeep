@@ -16,7 +16,7 @@ for (const preset of ['generic','local-feed','llm-app']) {
     const draftRoot=creationDraftRoot(stateRoot,'fixture','chat_fixture');
     for(const folder of [root,stateRoot,draftRoot])mkdirSync(folder,{recursive:true});
     const job={jobId:path.basename(draftRoot),chatId:'chat_fixture',instanceId:'fixture',agentId:'proposal-app',
-      target,draftRoot,releaseSha:'a'.repeat(40),executionCodeRoot:path.resolve('.'),phase:'interview',status:'pending',approvals:{}};
+      target,draftRoot,releaseSha:'a'.repeat(40),executionCodeRoot:path.resolve('.'),phase:'interview',status:'pending',approvals:{},budget:{maxTokens:351052}};
     const prompt=creationPrompt(job);
     assert.match(prompt,/```pritha-brief-json\n/,'the executor receives the authoritative structured shape before dispatch');
     const brief=parseInterviewBrief(prompt);
@@ -24,6 +24,8 @@ for (const preset of ['generic','local-feed','llm-app']) {
       successCriteria:['Saved results survive restart','Export contains source links'],coreFunctions:['Fetch public sources'],
       workflows:['Refresh, select and export'],sources:['https://example.test/feed.xml'],constraints:['At most 20 selected entries'],nonGoals:['No publishing'],
       permissions:{network:['Declared public sources'],filesystem:['Child project only'],authorization:'Local operator'}});
+    brief.design={memoryModel:'SQLite',storedData:'Source records and saved summaries',inputDataTypes:'RSS feeds',sensitiveData:'Local preferences; no provider secrets',riskNotes:'Bound untrusted source content and preserve data on errors'};
+    Object.assign(brief.technical,{sourceFormat:'rss',repositoryResearchPolicy:'not-applicable',repositoryResearchWaiverReason:'Operator declined repositories; API and source evidence remain required'});
     brief.technical.preset=preset;
     assert.deepEqual(validateInterviewBrief(brief,{requireComplete:true}),[]);
     writeFileSync(path.join(draftRoot,'brief.json'),serializeInterviewBrief(brief));
@@ -39,6 +41,9 @@ for (const preset of ['generic','local-feed','llm-app']) {
     assert.equal(contract.fm.status,'draft');
     assert.equal(contract.technicalSlug,job.agentId);
     assert.equal(contract.targetFolder,target);
+    assert.equal(contract.buildTokenBudget,351052);
+    assert.equal(contract.memoryModel,'SQLite');
+    assert.equal(contract.repositoryResearchPolicy,'not-applicable');
     assert.match(reconciled.contract.text,/At most 20 selected entries/);
     assert.match(reconciled.contract.text,/https:\/\/example.test\/feed.xml/);
     assert.match(reconciled.contract.text,/Declared public sources/);

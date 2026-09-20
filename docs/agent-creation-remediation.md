@@ -40,6 +40,30 @@ confidence: medium
 
 # Agent creation remediation: engineering draft
 
+A later UI attempt exposed a semantic preparation defect: the brief requested
+durable database storage and a single provider, while the generated proposal
+still contained generic Markdown storage, alternative-provider fallbacks and a
+large unrelated model-routing table. The typed brief now carries storage,
+records, input types, sensitivity and risks into the contract. App/feed presets
+generate product-specific runtime rows and bounded harness defaults; explicit
+repository research decisions are included in the authoring shape. A real CLI
+regression preserves these decisions, a smaller host allocation, separate
+approval status, authored edits and init idempotency.
+
+Coordinated creation respects the configured step timeout, subject to the
+existing thirty-minute hard cap and remaining total active allowance. The old
+twelve-minute default remains for legacy phase chats. A new creation can use a
+smaller explicit token allocation through the UI; the host validates and
+persists it, including across recovery. This cannot settle another job's
+unknown usage or raise an allocation through request replay.
+
+The release updater now atomically records a verified deployment before
+removing the retired build. Bounded cleanup retries leave a recorded pending
+cleanup if filesystem metadata prevents removal. A failure while recording the
+cleanup result retains the earlier deployment receipt. Fault-injection tests
+check both failures and retain the existing ownership, health, isolation, Git
+and rollback requirements.
+
 The budget-protected UI trial exposed a request-format regression before any
 upstream call: a recursive check interpreted tool JSON-schema properties as
 actual media inputs. Validation now follows Responses input/content boundaries

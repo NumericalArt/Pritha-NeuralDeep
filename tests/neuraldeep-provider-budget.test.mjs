@@ -9,8 +9,8 @@ import { listenNeuralDeepAdapter, closeNeuralDeepAdapter } from '../scripts/neur
 function fixture(t) {
   const store=new NeuralDeepCoordinationStore();t.after(()=>store.close());
   const jobs=new AgentCreationStore(store);
-  const job=jobs.create({chatId:'chat-budget',instanceId:'fixture',agentId:'budget-app',releaseSha:'a'.repeat(40),target:'/tmp/fixture-agent',draftRoot:'/tmp/fixture-draft'});
-  jobs.update(job.chatId,j=>({...j,status:'running',activeTurnId:'turn-budget',budget:{...j.budget,maxTokens:50_000}}));
+  const job=jobs.create({chatId:'chat-budget',instanceId:'fixture',agentId:'budget-app',releaseSha:'a'.repeat(40),target:'/tmp/fixture-agent',draftRoot:'/tmp/fixture-draft',tokenBudget:50_000});
+  jobs.update(job.chatId,j=>({...j,status:'running',activeTurnId:'turn-budget'}));
   store.beginRuntimeRun({runId:'run-budget',requestHash:'a'.repeat(64),receipt:{workload_id:'turn-budget'}});
   const creation={chatId:job.chatId,jobId:job.jobId,releaseSha:job.releaseSha,generation:1};
   const gate=providerBudgetGate(store,{runId:'run-budget',workloadId:'turn-budget',creation});

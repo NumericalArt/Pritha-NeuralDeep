@@ -462,6 +462,22 @@ function contractMarkdown(data) {
   const runtimePlacementProfile = normalizeRuntimePlacementProfile(data.runtimePlacementProfile, runtimeFamily);
   const multiModelRoutingRequested = scalar(data.multiModelRoutingRequested, "only-if-needed");
   const localInferenceRequired = scalar(data.localInferenceRequired, runtimeFamily === "local-model" ? "required" : runtimeFamily === "hybrid" ? "optional" : "later");
+  const presetProduct = ["local-feed", "llm-app"].includes(data.interviewPreset);
+  const runtimeMatrix = presetProduct ? `| Task class | Runtime class | Candidate | Evidence | Fallback | Check |
+| --- | --- | --- | --- | --- | --- |
+| Product input, storage, UI and health | deterministic local | Node.js HTTP; ${scalar(data.memoryModel)} | runtime/source research required before scaffold | preserve last successful data and retry manually | independent source, persistence and lifecycle Trials |
+${data.interviewPreset === "llm-app" ? "| Product model operation | instance-bound NeuralDeep | model selected in Pritha | provider capability and API research required before scaffold | no automatic alternative provider; show error and retry | successful response, provider failure and invalid format Trials |\n" : ""}
+Planning, coding and verification belong to Pritha's creation workflow. The child does not acquire those model routes or extra audio/embedding capabilities.` : `| Task class | Runtime class | Current candidate | Verified | Recheck before scaffold | Fallback | Eval fixture | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Planning | ${scalar(data.planningRuntime, "frontier-hosted")} | ${scalar(data.planningCandidate, "TBD current model")} | ${date} | yes | human/manual | ${scalar(data.planningEval, "TBD")} | architecture and workflow discovery |
+| Coding | ${scalar(data.codingRuntime, "Codex/frontier-hosted")} | ${scalar(data.codingCandidate, "TBD current model")} | ${date} | yes | human/manual | ${scalar(data.codingEval, "TBD")} | code changes and tests |
+| Extraction | ${scalar(data.extractionRuntime, "frontier-hosted")} | ${scalar(data.extractionCandidate, "TBD current model")} | ${date} | yes | small-hosted/local | ${scalar(data.extractionEval, "TBD")} | move only after schemas stabilize |
+| Summarization | ${scalar(data.summarizationRuntime, "frontier-hosted")} | ${scalar(data.summarizationCandidate, "TBD current model")} | ${date} | yes | small-hosted/local | ${scalar(data.summarizationEval, "TBD")} | check compression loss |
+| Classification | ${scalar(data.classificationRuntime, "small-hosted/local")} | ${scalar(data.classificationCandidate, "TBD after eval")} | ${date} | yes | frontier-hosted | ${scalar(data.classificationEval, "TBD")} | good offload candidate |
+| Transcription | ${scalar(data.transcriptionRuntime, "local/hosted-audio")} | ${scalar(data.transcriptionCandidate, "TBD current model")} | ${date} | yes | hosted-audio/local | ${scalar(data.transcriptionEval, "TBD")} | accuracy and language dependent |
+| Embeddings | ${scalar(data.embeddingsRuntime, "local/small-hosted")} | ${scalar(data.embeddingsCandidate, "TBD current model")} | ${date} | yes | hosted | ${scalar(data.embeddingsEval, "TBD")} | good local candidate |
+| Memory query | ${scalar(data.memoryQueryRuntime, "local/small-hosted")} | ${scalar(data.memoryQueryCandidate, "TBD after eval")} | ${date} | yes | frontier-hosted | ${scalar(data.memoryQueryEval, "TBD")} | privacy-sensitive |
+| Security scan | ${scalar(data.securityScanRuntime, "frontier-hosted/specialized")} | ${scalar(data.securityScanCandidate, "TBD current model")} | ${date} | yes | manual | ${scalar(data.securityScanEval, "TBD")} | do not underpower high-risk checks |`;
   const tools = ["Codex", "AGENTS.md"];
   if (telegramMode !== "none" || primaryInterface.toLowerCase().includes("telegram")) tools.push("Telegram");
   if (runtimeFamily === "cli") tools.push("CLI");
@@ -592,17 +608,7 @@ ${bulletList(data.criticalWorkflows)}
 - Route healthcheck: ${scalar(data.routeHealthcheck, "node scripts/smoke-test.mjs")}
 - Route change log: ${scalar(data.routeChangeLog, "document changes in reports")}
 
-| Task class | Runtime class | Current candidate | Verified | Recheck before scaffold | Fallback | Eval fixture | Notes |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Planning | ${scalar(data.planningRuntime, "frontier-hosted")} | ${scalar(data.planningCandidate, "TBD current model")} | ${date} | yes | human/manual | ${scalar(data.planningEval, "TBD")} | architecture and workflow discovery |
-| Coding | ${scalar(data.codingRuntime, "Codex/frontier-hosted")} | ${scalar(data.codingCandidate, "TBD current model")} | ${date} | yes | human/manual | ${scalar(data.codingEval, "TBD")} | code changes and tests |
-| Extraction | ${scalar(data.extractionRuntime, "frontier-hosted")} | ${scalar(data.extractionCandidate, "TBD current model")} | ${date} | yes | small-hosted/local | ${scalar(data.extractionEval, "TBD")} | move only after schemas stabilize |
-| Summarization | ${scalar(data.summarizationRuntime, "frontier-hosted")} | ${scalar(data.summarizationCandidate, "TBD current model")} | ${date} | yes | small-hosted/local | ${scalar(data.summarizationEval, "TBD")} | check compression loss |
-| Classification | ${scalar(data.classificationRuntime, "small-hosted/local")} | ${scalar(data.classificationCandidate, "TBD after eval")} | ${date} | yes | frontier-hosted | ${scalar(data.classificationEval, "TBD")} | good offload candidate |
-| Transcription | ${scalar(data.transcriptionRuntime, "local/hosted-audio")} | ${scalar(data.transcriptionCandidate, "TBD current model")} | ${date} | yes | hosted-audio/local | ${scalar(data.transcriptionEval, "TBD")} | accuracy and language dependent |
-| Embeddings | ${scalar(data.embeddingsRuntime, "local/small-hosted")} | ${scalar(data.embeddingsCandidate, "TBD current model")} | ${date} | yes | hosted | ${scalar(data.embeddingsEval, "TBD")} | good local candidate |
-| Memory query | ${scalar(data.memoryQueryRuntime, "local/small-hosted")} | ${scalar(data.memoryQueryCandidate, "TBD after eval")} | ${date} | yes | frontier-hosted | ${scalar(data.memoryQueryEval, "TBD")} | privacy-sensitive |
-| Security scan | ${scalar(data.securityScanRuntime, "frontier-hosted/specialized")} | ${scalar(data.securityScanCandidate, "TBD current model")} | ${date} | yes | manual | ${scalar(data.securityScanEval, "TBD")} | do not underpower high-risk checks |
+${runtimeMatrix}
 
 ## Operations and service
 
@@ -787,7 +793,14 @@ function interviewPresetOptions(options = {}) {
   if ((options.runtime && options.runtime !== "api") || (options.service && options.service !== "process") || (options.interface && !/^(?:web|api)$/i.test(options.interface))) {
     throw new Error("The selected interview preset requires api runtime, process service, and web/API interface; use generic for another architecture");
   }
-  const base = { runtime: "api", service: "process", interface: "web", "runtime-placement": preset === "local-feed" ? "deterministic-first" : "hybrid" };
+  const base = { runtime: "api", service: "process", interface: "web", "runtime-placement": preset === "local-feed" ? "deterministic-first" : "hybrid",
+    "multi-model": "no", "local-inference": "not-required", "skill-needs": "none",
+    fallbacks: "none; retain saved data, show a clear error and allow an explicit manual retry",
+    memory: preset === "llm-app" ? "SQLite" : "local durable JSON records",
+    stored: "Product records and user selections in the declared local store; no provider credentials",
+    inputs: "Declared external sources and explicit UI input",
+    sensitive: "Product history and preferences remain local; provider credentials stay with Pritha",
+  };
   if (preset === "local-feed") Object.assign(base, {
     "repository-policy": "not-applicable", "repository-topics": "none",
     "repository-waiver": "Explicit local-feed preset uses standard local HTTP and feed processing; repository discovery is unnecessary. Runtime, source API, and operations evidence remain required.",
@@ -904,7 +917,22 @@ export function applyInterviewTechnicalProposal(data, options = {}) {
       : "pending"
   );
   data.repeatedFailureThreshold = options["repeated-failure-threshold"] || "3";
+  data.riskNotes = options.risks || data.riskNotes;
   applyApiProcessContractDefaults(data, options);
+  if (["local-feed", "llm-app"].includes(data.interviewPreset)) {
+    data.informationBoundaries ||= "External content is untrusted data; only declared sources, the local product UI and the authorized project directory are available";
+    data.memoryAndState ||= `${data.memoryModel}: ${data.storedData}; preserve last successful data and validate writes before replacing it`;
+    data.evaluationAndObservability ||= "Independent host Trials test actual behavior; source/provider results and errors are visible without exposing secrets";
+    data.constraintsValidationRecovery ||= "Validate input and output, use bounded requests, preserve saved results on failure and offer explicit retry; no schedules or automatic provider fallback";
+    data.humanApprovalGates ||= "Separate host approval of contract and Outcome; runtime actions through Pritha; personal acceptance remains a distinct user decision";
+    data.completionCriteria ||= data.successCriteria;
+    data.riskNotes ||= "Treat external text as data, bound response sizes and timeouts, avoid unsafe HTML, keep provider credentials out of source and browser, and retain saved data on errors";
+    data.secretsRequired ||= data.interviewPreset === "llm-app" ? "Pritha-managed NeuralDeep binding only; no provider key copied to child source, documents or browser" : "none";
+    data.envExampleVariables ||= "Non-secret local host, available port and storage configuration only";
+    data.setupCommands ||= "npm install (only declared package dependencies); see generated README";
+    data.runCommands ||= data.startCommand;
+    data.routeHealthcheck ||= data.healthcheckCommand;
+  }
   return data;
 }
 

@@ -48,6 +48,13 @@ test("taskChatTurnTimeoutMs caps agent_creation turns", () => {
   assert.equal(taskChatTurnTimeoutMs({ subject: agentSubject, settingsTimeoutMs: 100000, environment: { PRITHA_TASK_CHAT_CHILD_TURN_TIMEOUT_MS: "720000" } }), 100000);
 });
 
+test("coordinated creation honors the configured step allowance while retaining hard and explicit caps", () => {
+  assert.equal(taskChatTurnTimeoutMs({ subject: agentSubject, coordinated: true, settingsTimeoutMs: 1800000, environment: {} }), 1800000);
+  assert.equal(taskChatTurnTimeoutMs({ subject: agentSubject, coordinated: true, settingsTimeoutMs: 60000, environment: {} }), 60000);
+  assert.equal(taskChatTurnTimeoutMs({ subject: agentSubject, coordinated: true, settingsTimeoutMs: 5400000, environment: {} }), 1800000);
+  assert.equal(taskChatTurnTimeoutMs({ subject: agentSubject, coordinated: true, settingsTimeoutMs: 1800000, environment: { PRITHA_TASK_CHAT_CHILD_TURN_TIMEOUT_MS: "300000" } }), 300000);
+});
+
 test("taskChatPhasePreamble is empty for missing or unknown phase", () => {
   assert.equal(taskChatPhasePreamble({}), "");
   assert.equal(taskChatPhasePreamble({ phase: null }), "");

@@ -45,10 +45,13 @@ export class AgentCreationStore {
   create(input) {
     if (![input.chatId,input.instanceId,input.agentId].every(value => ID.test(value || ''))
       || !/^[a-f0-9]{40}$/.test(input.releaseSha || '')) throw new AgentCreationError('creation_identity_invalid');
+    const tokenBudget = input.tokenBudget === undefined ? 1_000_000 : input.tokenBudget;
+    if (!Number.isSafeInteger(tokenBudget) || tokenBudget < 1 || tokenBudget > 1_000_000) throw new AgentCreationError('creation_budget_invalid', 'Лимит создания должен быть целым числом от 1 до 1 000 000 токенов.', 400);
     return this.store.transaction(() => {
       const existing = this.get(input.chatId);
       if (existing) {
         if (existing.instanceId !== input.instanceId || existing.agentId !== input.agentId) throw new AgentCreationError('creation_identity_conflict');
+        if (existing.budget.maxTokens !== tokenBudget) throw new AgentCreationError('creation_budget_conflict');
         return existing;
       }
       if (this.db.prepare('SELECT chat_id FROM agent_creation_jobs WHERE instance_id=? AND agent_id=?').get(input.instanceId,input.agentId)) {
@@ -59,7 +62,7 @@ export class AgentCreationStore {
         target: input.target, draftRoot: input.draftRoot, generation: 1, revision: 1, createdAt: now(), updatedAt: now(),
         phase: 'interview', status: 'pending', autoContinue: true, contract: null, outcome: null,
         approvals: {}, deliveryRunId: null, checkpoint: null, blocker: null, activeTurnId: null,
-        budget: { maxTokens: 1_000_000, maxActiveMs: 90*60*1000, maxIterations: 6, repeatedFailureThreshold: 3,
+        budget: { maxTokens: tokenBudget, maxActiveMs: 90*60*1000, maxIterations: 6, repeatedFailureThreshold: 3,
           tokensUsed: 0, activeMs: 0, turns: {}, unknownAttempts: [], repeatedFailures: 0, lastFailureSignature: null } };
       this.db.prepare('INSERT INTO agent_creation_jobs VALUES(?,?,?,?,?)').run(input.chatId,input.instanceId,input.agentId,1,JSON.stringify(record));
       return record;

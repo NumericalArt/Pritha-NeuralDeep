@@ -72,6 +72,32 @@ async function fixture(page: Page, job = proposal(), loseFirstApproval = false) 
 }
 
 for (const width of [1440, 390]) {
+  test(`new creation preserves a smaller operator allocation at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await fixture(page);
+    const submitted: Array<Record<string, unknown>> = [];
+    await page.route('**/api/codex-chat/v1/threads', async route => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      submitted.push(route.request().postDataJSON());
+      return route.fulfill({ status: 503, json: { apiVersion: '1', requestId: 'budget-fixture', error: { code: 'unavailable', message: 'Fixture stops before any real creation.' } } });
+    });
+    const newChat = page.getByRole('button', { name: 'New chat', exact: true });
+    if (!(await newChat.isVisible())) await page.getByRole('button', { name: 'Open chat history', exact: true }).click();
+    await newChat.click();
+    await page.getByLabel('Chat subject', { exact: true }).selectOption('child');
+    await page.getByLabel('Child agent slug', { exact: true }).fill('bounded-ui-fixture');
+    await page.getByRole('textbox', { name: 'Message Pritha', exact: true }).fill('Create a local app for reviewing public feed entries.');
+    const limit = page.getByLabel('Лимит токенов создания', { exact: true });
+    await expect(limit).toHaveValue('1000000');
+    await limit.fill('1000001');
+    await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
+    await limit.fill('351052');
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect.poll(() => submitted.length).toBe(1);
+    expect(submitted[0].subject).toEqual({ taskType: 'agent_creation', subjectId: 'bounded-ui-fixture', tokenBudget: 351052 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  });
+
   test(`creation reviews each revision and records two delegated approvals at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 900 });
     const f = await fixture(page), contractButton = f.card.getByRole('button', { name: 'Подтвердить контракт', exact: true });

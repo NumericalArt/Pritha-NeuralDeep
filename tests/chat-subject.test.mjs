@@ -21,3 +21,8 @@ test("composeChatSubject: child kind rejects empty and malformed slugs", () => {
     if (!result.ok) assert.match(result.error, /Child slug must be 1–80 chars/);
   }
 });
+
+test("creation form preserves a smaller allocation and rejects invalid or expanded limits", () => {
+  assert.deepEqual(composeChatSubject("child", "bounded-app", "351052"), { ok: true, subject: { taskType: "agent_creation", subjectId: "bounded-app", tokenBudget: 351052 } });
+  for (const value of ["", "0", "-1", "1.5", "1e6", "1000001", "Infinity", "9007199254740993"]) assert.equal(composeChatSubject("child", "bounded-app", value).ok, false, value);
+});

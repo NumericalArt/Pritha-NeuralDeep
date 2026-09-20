@@ -210,6 +210,7 @@ export const resolvePrithaStateRoot = () => ${JSON.stringify(stateRoot)};
   writeFileSync(path.join(tmp, "private-store.mjs"), storeOutput.replace(/"(?:\.\.\/){5}scripts\/([^"\n]+)"/g, (_match, relative) => JSON.stringify(pathToFileURL(path.resolve("scripts", relative)).href)));
   const binding = {
     chatId: "chat_recovered",
+    subject: { taskType: "agent_creation", subjectId: "bounded-restored", tokenBudget: 351052 },
     clientThreadId: "client-thread-recovered",
     createHash: "hash",
     nativeThreadId: "native-thread-recovered",
@@ -239,6 +240,7 @@ export const resolvePrithaStateRoot = () => ${JSON.stringify(stateRoot)};
     assert.equal(restoredPrimary.version, 3);
     const restoredBinding = await recovered.get("chat_recovered");
     assert.equal(restoredBinding.nativeThreadId, binding.nativeThreadId);
+    assert.deepEqual(restoredBinding.subject, binding.subject, "registry recovery must not discard a smaller creation limit");
     assert.equal(restoredBinding.group, "my_chats");
     assert.equal(restoredBinding.origin, "chat");
     assert.equal(restoredBinding.continuationEnabled, true);

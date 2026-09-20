@@ -213,7 +213,8 @@ test("CLI aliases preserve canonical artifacts, authored edits and complete brie
     successCriteria: ["Stored summaries survive restart", "Download Markdown"], coreFunctions: ["Fetch RSS", "Generate digest"],
     sources: ["https://example.test/rss"], constraints: ["At most 20 items"], nonGoals: ["No automatic publishing"],
     permissions: { network: ["Declared feeds only"], filesystem: ["Agent project only"], authorization: "One local operator" },
-    technical: { preset: "llm-app" },
+    technical: { preset: "llm-app", sourceFormat: "rss", repositoryResearchPolicy: "not-applicable", repositoryResearchWaiverReason: "Operator declined repository discovery; API and source checks remain required." },
+    design: { memoryModel: "SQLite", storedData: "Articles, read/favorite marks and saved digests", inputDataTypes: "RSS feeds and UI selections", sensitiveData: "Private reading history; provider secret stays with Pritha", riskNotes: "Untrusted feeds and malformed provider responses must not erase saved data" },
   });
   writeFileSync(briefPath, serializeInterviewBrief(brief));
   const run = (args) => spawnSync(process.execPath, ["scripts/pritha.mjs", "init", "--no-input", ...args], {
@@ -236,6 +237,17 @@ test("CLI aliases preserve canonical artifacts, authored edits and complete brie
     assert.match(contract.successCriteria, /survive restart; Download Markdown/);
     assert.match(text, /Allowed network access: Declared feeds only/);
     assert.match(text, /outcome_trial_preset: llm-http-app-v1/);
+    assert.equal(contract.memoryModel, "SQLite");
+    assert.equal(contract.storedData, "Articles, read/favorite marks and saved digests");
+    assert.equal(contract.repositoryResearchPolicy, "not-applicable");
+    assert.match(text, /Source format: rss/);
+    assert.doesNotMatch(text, /frontier hosted model or manual review|TBD current model|\| Transcription \|/);
+    assert.match(text, /Provider fallbacks: none; retain saved data/);
+    for (const label of ["Information boundaries", "Memory and state", "Evaluation and observability", "Constraints, validation and recovery", "Human approval gates", "Completion criteria", "Risk notes"]) {
+      assert.doesNotMatch(text, new RegExp(`- ${label}: TBD`));
+    }
+    assert.match(text, /provider secret stays with Pritha/);
+    assert.equal(parseInterviewBrief(serializeInterviewBrief(brief)).design.memoryModel, "SQLite");
     writeFileSync(contractPath, `${text}\nUser-authored requirement remains.\n`);
     const outcomeBefore = readFileSync(outcomePath, "utf8");
     const second = run(["--from-brief", briefPath]);

@@ -312,6 +312,7 @@ export function CodexChatPage() {
   const activeNewDraftRef = useRef(activeNewDraft);
   const [newChatKind, setNewChatKind] = useState<"self" | "child">("self");
   const [newChatSlug, setNewChatSlug] = useState("");
+  const [newChatTokenBudget, setNewChatTokenBudget] = useState("1000000");
   const revisionsRef = useRef<Record<string, number>>({});
   const persistDraftsRef = useRef<() => Promise<void>>(async () => {});
   const [error, setError] = useState<ChatFailure | null>(null);
@@ -1065,6 +1066,7 @@ export function CodexChatPage() {
   const startNewDraft = useCallback(() => {
     setNewChatKind("self");
     setNewChatSlug("");
+    setNewChatTokenBudget("1000000");
     openNewDraft(`draft_${crypto.randomUUID()}`);
   }, [openNewDraft]);
 
@@ -1235,7 +1237,7 @@ export function CodexChatPage() {
       return;
     }
     if (!chatId) {
-      const composed = composeChatSubject(newChatKind, newChatSlug);
+      const composed = composeChatSubject(newChatKind, newChatSlug, newChatTokenBudget);
       if (!composed.ok) {
         setError({ message: composed.error, source: "turn", kind: "turn_failed" });
         return;
@@ -1678,6 +1680,7 @@ export function CodexChatPage() {
                   <option value="child">New child agent</option>
                 </select>
                 {newChatKind === "child" ? (
+                  <>
                   <input
                     aria-label="Child agent slug"
                     className="codex-subject-slug"
@@ -1685,6 +1688,10 @@ export function CodexChatPage() {
                     value={newChatSlug}
                     onChange={(event) => setNewChatSlug(event.target.value)}
                   />
+                  <label className="codex-subject-budget">Лимит токенов создания
+                    <input className="codex-subject-slug" aria-label="Лимит токенов создания" type="number" min="1" max="1000000" step="1" value={newChatTokenBudget} onChange={event => setNewChatTokenBudget(event.target.value)} />
+                  </label>
+                  </>
                 ) : null}
               </div>
             ) : null}
@@ -1762,7 +1769,7 @@ export function CodexChatPage() {
                     <Square size={15} /> Stop
                   </button>
                 ) : null}
-                <button className="codex-send" type="button" onClick={() => void sendMessage()} disabled={(!draft.trim() && !currentAttachments.length) || attachmentsBusy || !draftStoreReady || !draftAttachments.ready || sending || hasActiveTurn || Boolean(pendingDelivery) || Boolean(selectedChatId && historyState !== "ready") || backendOffline || runtime?.availability !== "ready" || (!selectedChatId && newChatKind === "child" && !composeChatSubject("child", newChatSlug).ok)}>
+                <button className="codex-send" type="button" onClick={() => void sendMessage()} disabled={(!draft.trim() && !currentAttachments.length) || attachmentsBusy || !draftStoreReady || !draftAttachments.ready || sending || hasActiveTurn || Boolean(pendingDelivery) || Boolean(selectedChatId && historyState !== "ready") || backendOffline || runtime?.availability !== "ready" || (!selectedChatId && newChatKind === "child" && !composeChatSubject("child", newChatSlug, newChatTokenBudget).ok)}>
                   {sending ? <LoaderCircle className="spin" size={16} /> : <Send size={16} />} {voiceQueue ? "Send after Voice" : "Send"}
                 </button>
               </div>
