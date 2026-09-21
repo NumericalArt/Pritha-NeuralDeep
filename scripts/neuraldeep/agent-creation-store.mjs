@@ -130,7 +130,9 @@ export class AgentCreationStore {
       budget.activeMs += Math.max(0,input.activeMs || 0);
       if (!known && input.dispatched) budget.unknownAttempts.push(input.turnId);
       if (current.activeTurnId && current.activeTurnId !== input.turnId) return current;
-      if (input.ok && current.proposalRevisionPending) current.proposalRevisionPending = false;
+      // Host-authored revisions remain seeds until completeCreationBrief publishes
+      // validated content. A model receipt alone must not expose the old seed for approval.
+      if (input.ok && current.proposalRevisionPending && current.preparationPolicyVersion !== 2) current.proposalRevisionPending = false;
       const signature = input.ok ? null : hash({ phase: current.phase, code: input.code || 'creation_step_failed',
         failure: String(input.failureSignature || input.message || '').replace(/\s+/g,' ').trim().slice(0,1000) });
       budget.repeatedFailures = input.ok ? 0 : budget.lastFailureSignature === signature ? budget.repeatedFailures + 1 : 1;

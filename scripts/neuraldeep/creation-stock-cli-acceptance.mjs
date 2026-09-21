@@ -21,6 +21,7 @@ const {NeuralDeepExecutionWorkspaces}=await load('scripts/neuraldeep/execution-w
 const {executionResourceClaims}=await load('scripts/neuraldeep/execution-resources.mjs');
 const {creationDraftRoot,reconcileCreationArtifacts,approveCreationDocument,creationPrompt,creationHostStep}=await load('scripts/neuraldeep/agent-creation.mjs');
 const {completeCreationBrief,prepareCreationOutcome}=await load('scripts/neuraldeep/creation-preparation.mjs');
+const {reviseCreationProposal}=await load('scripts/neuraldeep/creation-revision.mjs');
 const {prepareCreationContextPacket,readCreationContextPacket}=await load('scripts/neuraldeep/creation-context-packet.mjs');
 const {prepareCreationResearch,readCreationResearch}=await load('scripts/neuraldeep/creation-research-context.mjs');
 const {settleCreationPreparation}=await load('scripts/neuraldeep/creation-preparation-control.mjs');
@@ -87,10 +88,10 @@ globalThis.fetch=async(url,init)=>{
   if(mode.startsWith('research'))assert.ok(bytes<96*1024);
   if(mode==='research-resumed'&&modeRequests===1){assert.ok(!input.includes('OLD_LARGE_OUTPUT_'));assert.ok(input.includes('Controlled primary fixture'));}
   let answer='Completed the controlled work.',command;
-  if(mode==='brief')answer='```pritha-brief-json\n'+JSON.stringify(brief)+'\n```';
+  if(mode==='brief'||mode==='brief-revised')answer='```pritha-brief-json\n'+JSON.stringify(brief)+'\n```';
   if(mode.startsWith('brief')) {
     assert.equal(payload.tool_choice,'none');assert.deepEqual(payload.tools,[]);
-    assert.ok(bytes<16*1024,'brief contains exact product context, not the coding executor');
+    assert.ok(bytes<64*1024,'brief contains exact product context within the initial session limit');
     assert.ok(input.includes(product));
     if(mode==='brief-invalid')answer='Preparing the brief now.';
     if(briefToolViolation)command=`${quote(process.execPath)} -e ${quote("require('node:fs').writeFileSync('tool-must-not-run','unexpected')")}`;
@@ -128,7 +129,7 @@ async function prepRun(nextMode) {
   job=jobs.update(chatId,j=>({...j,status:'running',phase:isBrief?'interview':'research',activeTurnId:turnId,blocker:null}));
   const packet=prepareCreationContextPacket(job,dialogue,{root:workspace.cwd,stateRoot,turnId});job=jobs.update(chatId,j=>({...j,contextPacket:packet}));
   const intent={attemptId,agentCreationRequested:true,executionAgentTarget:target,sandbox:'workspace-write',modelId:'fixture-model',effortId:null,
-    creationGeneration:1,creationSession:{mode:'checkpoint',previousSessionId:lastSession,contextHash:dialogue.hash},
+    creationGeneration:job.generation,creationSession:{mode:'checkpoint',previousSessionId:lastSession,contextHash:dialogue.hash},
     creationPreparation:{policyVersion:2,phase:packet.phase,workUnitId:turnId,packetHash:packet.hash},cwd:draftRoot,executionCodeRoot:workspace.cwd,additionalWritableDirs:[]};
   store.enqueue({attemptId,workloadId:turnId,surface:'task_chat',coordinationKeyHash:hash(chatId),queuedAt:new Date().toISOString(),
     payload:{chatId,turnId,execution:intent},resources:executionResourceClaims({cwd:draftRoot,sandbox:'workspace-write',additionalWritableDirs:[]})});
@@ -170,6 +171,17 @@ try {
   await prepRun('brief');assert.equal(job.status,'awaiting_contract_approval');approve('contract');
   const count=requests.length;job=jobs.update(chatId,j=>reconcileCreationArtifacts({...j,...prepareCreationOutcome(j,options)},options));
   assert.equal(requests.length,count);assert.equal(job.status,'awaiting_outcome_approval');approve('outcome');
+  const oldDocuments=[job.contract.path,job.outcome.path].map(file=>[file,readFileSync(file,'utf8')]),priorTokens=job.budget.tokensUsed;
+  const revision={action:'revise_proposal',requestId:'operator-revision',expectedRevision:job.revision,reason:'Display the record count after every manual refresh.',actor:'codex-operator',authorizationBasis:'Synthetic delegated revision'};
+  jobs.beginAction(chatId,revision);
+  const revised=reviseCreationProposal(job,revision,{...options,coordination:store});
+  job=jobs.update(chatId,()=>revised);jobs.finishAction(chatId,revision.requestId,job);
+  brief.constraints.push(revision.reason);
+  await prepRun('brief-revised');assert.equal(job.status,'awaiting_contract_approval');assert.equal(job.proposalRevisionPending,false);
+  assert.ok(job.contract.text.includes(revision.reason));assert.ok(job.budget.tokensUsed>priorTokens);approve('contract');
+  const afterRevision=requests.length;job=jobs.update(chatId,j=>reconcileCreationArtifacts({...j,...prepareCreationOutcome(j,options)},options));
+  assert.equal(requests.length,afterRevision);assert.equal(job.status,'awaiting_outcome_approval');approve('outcome');
+  for(const [file,text] of oldDocuments)assert.equal(readFileSync(file,'utf8'),text);
   execFileSync(process.execPath,[path.join(root,'scripts/rebuild-memory.mjs')],{env:process.env,stdio:'pipe',timeout:60000});
   currentResearch=await prepareCreationResearch(job,{root:workspace.cwd,stateRoot,model:'fixture-model'});
   const reportFile=currentResearch.artifacts.find(item=>item.id==='research').path;
@@ -189,11 +201,11 @@ try {
       return {status:'completed',thread_id:run.sessionId,turn_id:run.runId,tokens_used:run.usageRecord.usage.totalTokens};
     },{name:'stock-codex-cli-local-provider'})});
   assert.equal(builds,2,'stdout-only project must fail before actual source behavior passes');assert.equal(result.adopted,true,JSON.stringify(result.blocker));
-  assert.equal(new Set(sessions).size,4);
+  assert.equal(new Set(sessions).size,5);
   const usage=creationPreparationUsage(store,job);assert.ok(usage.requests<=12);assert.ok(usage.total<=300000);assert.ok(usage.phase.brief<=100000);assert.ok(usage.phase.research<=200000);
   assert.ok([...history.audit({chatId})].some(row=>JSON.stringify(row).includes('OLD_LARGE_OUTPUT_')),'full tool history is retained');
   const report={status:'pass',sha,cli:execFileSync(process.env.PRITHA_CODEX_BIN||'codex',['--version'],{encoding:'utf8'}).trim(),paidCalls:0,
-    nativeSessions:sessions.length,preparation:usage,requests,builds,zeroOutcomeRequests:true,checkpointRotation:true,independentNegativeControl:true,adopted:true,acceptance:'not_accepted'};
+    nativeSessions:sessions.length,preparation:usage,requests,builds,zeroOutcomeRequests:true,reviewedRevision:true,checkpointRotation:true,independentNegativeControl:true,adopted:true,acceptance:'not_accepted'};
   if(reportPath){mkdirSync(path.dirname(reportPath),{recursive:true});writeFileSync(reportPath,JSON.stringify(report,null,2),{mode:0o600});}
   console.error(JSON.stringify(report));passed=true;
   }

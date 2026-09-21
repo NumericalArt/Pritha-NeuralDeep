@@ -142,6 +142,16 @@ binding and resumes the same completed scaffold after a registry failure.
 
 ## Audit trace and remaining product gate
 
+Host-authored proposal revisions keep their revision seed pending after a
+successful model receipt. Only validated host publication clears that state;
+otherwise the old seed could be exposed for approval while the new brief was
+rejected as an unexpected overwrite. Legacy model-authored revisions retain
+their previous completion behavior. Regression coverage includes two fresh
+approvals, unchanged accepted documents and receipts, authored-edit rejection,
+publication crash recovery and duplicate usage receipts. The stock CLI local
+provider scenario also revises a previously approved proposal before research,
+scaffold and delivery. No additional model call is needed to publish Outcome.
+
 | Audit | Relevant evidence or preserved requirement |
 |---|---|
 | A — versions | Pinned job release and execution-intent identity; staged release health/chunk checks |

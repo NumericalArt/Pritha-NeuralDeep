@@ -8,6 +8,7 @@ import {AgentCreationStore} from '../scripts/neuraldeep/agent-creation-store.mjs
 import {creationDraftRoot,reconcileCreationArtifacts,approveCreationDocument,creationPrompt} from '../scripts/neuraldeep/agent-creation.mjs';
 import {prepareCreationContract,prepareCreationOutcome,completeCreationBrief} from '../scripts/neuraldeep/creation-preparation.mjs';
 import {verifyOutcomeApproval} from '../scripts/agents-mother/outcome-spec.mjs';
+import {reviseCreationProposal} from '../scripts/neuraldeep/creation-revision.mjs';
 
 const product={schemaVersion:1,identity:{name:'Signal Desk ND'},goal:'Русский дайджест публичных RSS с историей',user:'Один локальный оператор',
   successCriteria:['Обе ленты загружаются и повторное обновление не создаёт дублей','История SQLite сохраняется после перезапуска','Настройки источников, фильтры по источнику и дате, прочитанное и избранное доступны через UI','Дайджест максимум 20 материалов на русском со ссылками сохранён и экспортируется Markdown','Ошибки источника и провайдера сохраняют прошлые данные; повтор через UI'],
@@ -22,7 +23,7 @@ const product={schemaVersion:1,identity:{name:'Signal Desk ND'},goal:'Русск
 function setup(t) {
   const stateRoot=mkdtempSync(path.join(os.tmpdir(),'creation-host-prep-'));t.after(()=>rmSync(stateRoot,{recursive:true,force:true}));
   const coordination=new NeuralDeepCoordinationStore({databasePath:path.join(stateRoot,'coord.sqlite')});t.after(()=>coordination.close());
-  const store=new AgentCreationStore(coordination),options={root:process.cwd(),stateRoot};
+  const store=new AgentCreationStore(coordination),options={root:process.cwd(),stateRoot,coordination};
   const chatId='chat_hostprep',draftRoot=creationDraftRoot(stateRoot,'test-instance',chatId),target=path.join(stateRoot,'children','signal-desk');
   mkdirSync(draftRoot,{recursive:true});mkdirSync(target,{recursive:true});
   const job=store.create({chatId,instanceId:'test-instance',agentId:'signal-desk',draftRoot,target,releaseSha:'a'.repeat(40),preparationPolicyVersion:2});
@@ -76,4 +77,44 @@ test('invalid JSON gets one structural correction and replay cannot reset the co
   job=completeCreationBrief(job,answer({...product,identity:{name:'Signal Desk ND',slug:'foreign-agent'}}),{...options,turnId:'turn_two'});
   assert.equal(job.status,'blocked');assert.equal(job.autoContinue,false);assert.equal(job.preparation.briefRepairCount,2);
   assert.equal(job.contract,null);
+});
+
+for(const scenario of ['publish','crash-after-write','authored-edit'])test(`host revision retains its seed until validated publication: ${scenario}`,t=>{
+  const {store,options}=setup(t),chatId='chat_hostprep';
+  let job=store.update(chatId,j=>reconcileCreationArtifacts(completeCreationBrief(j,answer(product),{...options,turnId:'initial'}),options));
+  job=store.update(chatId,j=>approveCreationDocument(j,'contract',approval(j,'contract'),options));
+  job=store.update(chatId,j=>reconcileCreationArtifacts({...j,...prepareCreationOutcome(j,options)},options));
+  job=store.update(chatId,j=>approveCreationDocument(j,'outcome',approval(j,'outcome'),options));
+  const accepted=[job.contract.path,job.outcome.path,...['contract','outcome'].map(kind=>path.join(options.stateRoot,'audit','creation-approvals',job.jobId,`${kind}.json`))]
+    .map(file=>[file,readFileSync(file,'utf8')]);
+  const request={action:'revise_proposal',requestId:'revise',expectedRevision:job.revision,reason:'Add a visible count before generating the digest.',actor:'codex-operator',authorizationBasis:'Isolated operator revision test'};
+  store.beginAction(chatId,request);
+  const revised=reviseCreationProposal(job,request,options);
+  job=store.update(chatId,()=>revised);store.finishAction(chatId,request.requestId,job);
+  const seed=readFileSync(job.contract.path,'utf8'),changed={...product,constraints:[...product.constraints,'Show the selected article count before generating the digest']};
+  const receipt={turnId:'revised',ok:true,tokens:17,dispatched:true};
+  job=store.recordTurn(chatId,receipt);
+  assert.equal(job.proposalRevisionPending,true,'a successful model turn is not publication of the revised document');
+  assert.equal(reconcileCreationArtifacts(job,options).status,'pending');
+  assert.throws(()=>approveCreationDocument(job,'contract',approval(job,'contract'),options),/stale/);
+  if(scenario==='authored-edit') {
+    writeFileSync(job.contract.path,seed+'\nAuthor addition.\n');
+    assert.throws(()=>completeCreationBrief(job,answer(changed),{...options,turnId:'revised'}),{code:'creation_preparation_draft_changed'});
+    assert.ok(readFileSync(job.contract.path,'utf8').endsWith('Author addition.\n'));
+  } else {
+    if(scenario==='crash-after-write')assert.throws(()=>completeCreationBrief(job,answer(changed),{...options,turnId:'revised',afterPublish(){throw Error('publication crash');}}),/publication crash/);
+    job=store.update(chatId,j=>reconcileCreationArtifacts(completeCreationBrief(j,answer(changed),{...options,turnId:'revised'}),options));
+    assert.equal(job.proposalRevisionPending,false);assert.equal(job.status,'awaiting_contract_approval');
+    assert.ok(job.contract.text.includes(changed.constraints.at(-1)));
+    assert.deepEqual(store.recordTurn(chatId,receipt),job,'replayed receipt does not reset publication or add usage');
+    job=store.update(chatId,j=>approveCreationDocument(j,'contract',{...approval(j,'contract'),requestId:'contract-revised'},options));
+    job=store.update(chatId,j=>reconcileCreationArtifacts({...j,...prepareCreationOutcome(j,options)},options));
+    assert.equal(job.status,'awaiting_outcome_approval');assert.equal(job.approvals.outcome,undefined);
+    job=store.update(chatId,j=>approveCreationDocument(j,'outcome',{...approval(j,'outcome'),requestId:'outcome-revised'},options));
+    assert.equal(verifyOutcomeApproval(job.outcome.path,options).ok,true);
+    assert.equal(job.phase,'research');assert.equal(job.budget.tokensUsed,17);
+    assert.equal(Object.keys(job.budget.turns).length,1,'host publication and Outcome do not add model turns');
+    assert.equal(readdirSync(path.join(job.draftRoot,'contracts')).filter(file=>file.endsWith('.md')).length,2);
+  }
+  for(const [file,bytes] of accepted)assert.equal(readFileSync(file,'utf8'),bytes,'accepted history stays unchanged');
 });
