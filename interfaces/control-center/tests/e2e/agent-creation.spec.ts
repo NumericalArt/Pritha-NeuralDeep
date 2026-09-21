@@ -73,6 +73,30 @@ async function fixture(page: Page, job = proposal(), loseFirstApproval = false) 
 }
 
 for (const width of [1440, 390]) {
+  test(`preparation telemetry updates and survives reload without dispatch at ${width}px`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 900 });
+    const job=proposal();job.status='running';job.phase='research';
+    job.actions={approve_contract:false,approve_outcome:false,continue:false,pause:true,cancel:true,revise_proposal:false};
+    job.preparation={phase:{brief:2400,research:0},phaseRemaining:{brief:97600,research:200000},total:2400,remaining:297600,
+      requests:2,requestsRemaining:10,pendingRequests:1,unknownRequests:0,deliveryProtected:700000,availableForDelivery:null,
+      limits:{briefTokens:100000,researchTokens:200000,totalTokens:300000,maxRequests:12},research:{checked:['runtime'],remaining:['source','provider']}};
+    job.context={bytes:62000,packetBytes:22000,reservation:78384,outputLimit:8192,freshLimit:65536,rotationLimit:98304,hardLimit:131072};
+    job.nextDispatch={status:'blocked',reason:'Ожидается ответ текущего запроса.'};
+    const f=await fixture(page,job);
+    await expect(f.card).toContainText('Запросы: 2 / 12');await expect(f.card).toContainText('остаток уточняется');
+    await expect(f.card).toContainText('60.5 КиБ');await expect(f.card).toContainText('резерв не является фактическим расходом');
+    Object.assign(job.preparation,{phase:{brief:2400,research:15000},phaseRemaining:{brief:97600,research:185000},total:17400,remaining:282600,pendingRequests:0,availableForDelivery:982600});
+    await expect(f.card).toContainText('Research: 15 000 токенов',{timeout:10000});
+    await page.reload();await expect(f.card).toContainText('Подготовка: подтверждено 17 400');
+    job.preparation.unknownRequests=1;job.preparation.availableForDelivery=null;
+    job.nextDispatch={status:'blocked',reason:'Расход запроса неизвестен.'};job.status='blocked';job.revision++;
+    await f.card.getByRole('button',{name:'Обновить состояние',exact:true}).click();
+    await expect(f.card).toContainText('Запросы с неизвестным расходом: 1. Следующая отправка запрещена.');
+    expect(f.requests).toEqual([]);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+    await page.screenshot({path:info.outputPath('preparation-telemetry.png'),fullPage:true});
+  });
+
   test(`new creation preserves a smaller operator allocation at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await fixture(page);
