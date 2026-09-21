@@ -66,6 +66,18 @@ test("two agents with identical display names and different folders keep separat
   assert.ok(catalog.diagnostics.some((item) => item.code === "ambiguous-legacy-attribution"));
 });
 
+test("catalog selects the latest proposal generation rather than the original filename", t => {
+  const f=fixture(t),folder=f.folder('revised');
+  const files=[1,2,10].map(generation=>f.write(`contracts/agent-contract${generation===1?'':`-revision-${generation}`}.md`,'agent-contract','same-agent',
+    `- Agent name: Revised product\n- Target folder: ${folder}\n- Primary mission: Generation ${generation}`,
+    `creation_generation: ${generation}\n`));
+  const original=files.map(file=>readFileSync(file,'utf8'));
+  const agent=findCatalogAgent(f.catalog(),'same-agent');
+  assert.equal(agent.contractSource,files[2]);assert.equal(agent.mission,'Generation 10');
+  assert.equal(agent.artifacts.length,3);assert.equal(agent.projectPath,folder);
+  files.forEach((file,i)=>assert.equal(readFileSync(file,'utf8'),original[i]));
+});
+
 test("ID precedence rejects contradictions and never reinterprets a non-child subject", () => {
   assert.deepEqual(authoredAgentId({ agent_id: "a", subject: { kind: "child-agent", id: "a" } }), { id: "a", issue: null });
   assert.equal(authoredAgentId({ agent_id: "a", subject: { kind: "child-agent", id: "b" } }).issue, "conflicting-agent-ids");

@@ -183,10 +183,11 @@ function assemble(artifacts, folders, rows, context, diagnostics) {
     add(group, item, attribution);
   }
   const sorted = (items) => [...items].sort((a, b) => `${b.updated}:${b.path}`.localeCompare(`${a.updated}:${a.path}`));
+  const generation = item => { const n=Number(item.fm.creation_generation); return Number.isSafeInteger(n) && n>0 ? n : 0; };
   for (const group of groups.values()) {
     group.artifacts = sorted(group.artifacts);
     const profile = group.artifacts.find((item) => item.type === "child-agent-profile");
-    const contract = group.artifacts.find((item) => item.type === "agent-contract");
+    const contract = group.artifacts.filter((item) => item.type === "agent-contract").sort((a,b)=>generation(b)-generation(a))[0];
     group.name = profile?.name || contract?.name || group.name || group.agentId || "Unclassified agent";
     // Report titles and registry rows cannot replace authored product purpose.
     group.mission = profile?.mission || contract?.mission || "";

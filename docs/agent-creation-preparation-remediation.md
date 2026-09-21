@@ -155,6 +155,9 @@ The revised contract retains the agent ID from its verified revision seed;
 only the document ID changes. Generating another agent ID from the new document
 filename would create conflicting catalog identities for the same target and
 prevent delivery. Historical accepted documents and their approvals stay intact.
+The catalog selects the highest proposal generation numerically for the current
+contract while retaining all older documents; lexical filename order must not
+make the original proposal current again.
 
 A full RSS/SQLite/LLM product fixture also exposed an oversized initial research
 request that the short feed fixture did not: the general coding instructions
