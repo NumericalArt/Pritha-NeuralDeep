@@ -8,7 +8,7 @@ import { verifyPreparedOutcomeVerifierPreset } from '../agents-mother/outcome-ve
 import { AgentCreationError } from './agent-creation-store.mjs';
 import { creationDraftRoot, reconcileCreationArtifacts } from './agent-creation.mjs';
 import { creationHostDirectory } from './creation-research.mjs';
-import { creationGeneration, creationCanonicalFilename } from './creation-generation.mjs';
+import { creationGeneration, creationCanonicalFilename, creationDocumentIdentity } from './creation-generation.mjs';
 import { creationRuntimeReceipt } from './creation-runtime-receipt.mjs';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -142,7 +142,8 @@ function seedContract(job, generation) {
   text = text.replace(/^---\r?\n/, `---\ncreation_generation: ${generation}\n`);
   // Init's old request fingerprint is not authority for the new authored proposal.
   text = text.replace(/^init_request_fingerprint:.*$/m, 'init_request_fingerprint: legacy');
-  const file = path.join(job.draftRoot, 'contracts', creationCanonicalFilename({ generation }, job.contract.path));
+  const identityJob = {...job,generation,...(job.documentIdentity ? {documentIdentity:creationDocumentIdentity({...job,generation})}: {})};
+  const file = path.join(job.draftRoot, 'contracts', creationCanonicalFilename(identityJob, job.contract.path, 'contract'));
   return { path: file, hash: digest(text), text, issues: [] };
 }
 function archiveDrafts(job, receipt) {
@@ -230,6 +231,7 @@ export function reviseCreationProposal(job, request, options) {
       contract: receipt.seed, outcome: null, approvals: {}, researchReady: false, researchAttemptCompleted: false, scaffoldReady: false,
       proposalRevisionPending: true, phase: 'contract', status: 'pending', autoContinue: true, checkpoint: null, blocker: null, preflightWarnings: [], preflight: null };
     delete next.researchReceipt; delete next.scaffoldReceipt;
+    if (next.documentIdentity) next.documentIdentity = creationDocumentIdentity(next);
     return next;
   }));
 }

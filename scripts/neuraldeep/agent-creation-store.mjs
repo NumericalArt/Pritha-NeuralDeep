@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { creationDocumentIdentity } from './creation-generation.mjs';
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -43,6 +44,7 @@ export class AgentCreationStore {
     }));
   }
   create(input) {
+    if (input.preparationPolicyVersion !== undefined && input.preparationPolicyVersion !== 2) throw new AgentCreationError('creation_policy_invalid');
     if (![input.chatId,input.instanceId,input.agentId].every(value => ID.test(value || ''))
       || !/^[a-f0-9]{40}$/.test(input.releaseSha || '')) throw new AgentCreationError('creation_identity_invalid');
     const tokenBudget = input.tokenBudget === undefined ? 1_000_000 : input.tokenBudget;
@@ -64,6 +66,10 @@ export class AgentCreationStore {
         approvals: {}, deliveryRunId: null, checkpoint: null, blocker: null, activeTurnId: null,
         budget: { maxTokens: tokenBudget, maxActiveMs: 90*60*1000, maxIterations: 6, repeatedFailureThreshold: 3,
           tokensUsed: 0, activeMs: 0, turns: {}, unknownAttempts: [], repeatedFailures: 0, lastFailureSignature: null } };
+      if (input.preparationPolicyVersion === 2) {
+        record.preparationPolicyVersion = 2;
+        record.documentIdentity = creationDocumentIdentity(record);
+      }
       this.db.prepare('INSERT INTO agent_creation_jobs VALUES(?,?,?,?,?)').run(input.chatId,input.instanceId,input.agentId,1,JSON.stringify(record));
       return record;
     });

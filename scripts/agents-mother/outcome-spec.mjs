@@ -336,6 +336,10 @@ export function validateOutcomeSpecText(text, options = {}) {
     issues.push(issue("OS003", "contract_fingerprint does not match the referenced contract", "frontmatter.contract_fingerprint"));
   }
   if (!/^[a-z0-9][a-z0-9-]*$/.test(String(fm.agent_slug || ""))) issues.push(issue("OS004", "agent_slug must be lowercase kebab-case", "frontmatter.agent_slug"));
+  if (fm.outcome_identity_version !== undefined && ![1,2].includes(Number(fm.outcome_identity_version))
+    || Number(fm.outcome_identity_version) === 2 && contract?.technicalSlug && fm.agent_slug !== contract.technicalSlug) {
+    issues.push(issue('OS020', 'Outcome technical identity must match its exact contract', 'frontmatter.agent_slug'));
+  }
   if (!INTERACTION_MODES.has(parsed.interactionMode) || parsed.shape.interactionMode !== parsed.interactionMode) {
     issues.push(issue("OS005", `interaction mode must be interface, headless or hybrid and match the body (${allowedHint(INTERACTION_MODES)})`, "Shape.Interaction mode"));
   }
@@ -474,9 +478,18 @@ function inferredInteractionMode(data, requested) {
   return "interface";
 }
 
+export function outcomeTechnicalSlug(data) {
+  // Legacy contracts without a technical identity keep their historical fallback.
+  if (data.technicalSlug) {
+    if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(data.technicalSlug)) throw new Error('Invalid Outcome technical slug');
+    return data.technicalSlug;
+  }
+  return slug(data.agentName, { fallback: 'agent' });
+}
+
 export function renderOutcomeSpecFromContract(data, options = {}) {
   const date = options.date || today();
-  const agentSlug = slug(data.agentName, { fallback: "agent" });
+  const agentSlug = outcomeTechnicalSlug(data);
   const mode = inferredInteractionMode(data, options.interactionMode);
   const coreFunctions = (data.coreFunctions || []).filter((value) => !missing(value));
   const effectiveCore = coreFunctions.length ? coreFunctions : [data.primaryMission];
@@ -616,6 +629,7 @@ confidence: medium
 contract_path: ${yamlScalar(data.fullPath || path.resolve(data.root, data.relPath))}
 contract_fingerprint: ${data.fingerprint}
 agent_slug: ${agentSlug}
+outcome_identity_version: ${data.technicalSlug ? 2 : 1}
 interaction_mode: ${mode}
 automated_trial_waiver: none
 outcome_spec_status: draft
@@ -694,7 +708,7 @@ export function createOutcomeSpec(contractPath, options = {}) {
         status: existing.status, issues: existing.issues };
     }
     return writeUniqueArtifact(
-      path.join(contractDir, `${date}-${slug(data.agentName, { fallback: "agent" })}-agent-outcome-spec${Number(data.fm?.creation_generation)>1 ? `-revision-${Number(data.fm.creation_generation)}` : ""}.md`),
+      path.join(contractDir, `${date}-${outcomeTechnicalSlug(data)}-agent-outcome-spec${Number(data.fm?.creation_generation)>1 ? `-revision-${Number(data.fm.creation_generation)}` : ""}.md`),
       ({ artifactId }) => renderOutcomeSpecFromContract(data, { ...options, date, artifactId }),
     );
   });

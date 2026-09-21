@@ -77,7 +77,8 @@ function readCreationApproval(job,kind,options) {
   if(receipt.schema!==APPROVAL_SCHEMA || !['prepared','completed'].includes(receipt.status)
     || receipt.jobId!==job.jobId || receipt.chatId!==job.chatId || receipt.instanceId!==job.instanceId || receipt.agentId!==job.agentId || receipt.kind!==kind
     || (receipt.generation ?? 1)!==creationGeneration(job) || receipt.target!==path.resolve(job.target) || receipt.releaseSha!==job.releaseSha
-    || receipt.destination!==path.join(options.stateRoot,'agents','contracts',creationCanonicalFilename(job,receipt.source?.path || ''))
+    || (receipt.documentIdentityVersion ?? 1)!==(job.documentIdentity?.version ?? 1)
+    || receipt.destination!==path.join(options.stateRoot,'agents','contracts',creationCanonicalFilename(job,receipt.source?.path || '',kind))
     || path.dirname(receipt.source?.path || '')!==path.join(job.draftRoot,'contracts')
     || typeof receipt.source?.text!=='string' || digest(receipt.source.text)!==receipt.source.hash
     || !receipt.request || typeof receipt.request!=='object' || typeof receipt.approvedAt!=='string'
@@ -191,9 +192,9 @@ export function approveCreationDocument(job,kind,request,options) {
       const next=reconcileCreationArtifacts(job,options),doc=next[kind];
       if(next.blocker || !doc || doc.hash!==job[kind]?.hash || doc.path!==job[kind]?.path || doc.issues.length)throw new AgentCreationError('creation_document_changed','Обновите и проверьте текущий документ.');
       if(kind==='outcome' && !next.approvals.contract)throw new AgentCreationError('creation_contract_approval_required');
-      const destination=path.join(options.stateRoot,'agents','contracts',creationCanonicalFilename(job,doc.path));
+      const destination=path.join(options.stateRoot,'agents','contracts',creationCanonicalFilename(job,doc.path,kind));
       if(existsSync(destination))throw new AgentCreationError('creation_canonical_document_exists','Действующий документ без соответствующего подтверждения хоста уже существует.');
-      receipt={schema:APPROVAL_SCHEMA,status:'prepared',generation:creationGeneration(job),jobId:job.jobId,chatId:job.chatId,instanceId:job.instanceId,agentId:job.agentId,
+      receipt={schema:APPROVAL_SCHEMA,status:'prepared',documentIdentityVersion:job.documentIdentity?.version ?? 1,generation:creationGeneration(job),jobId:job.jobId,chatId:job.chatId,instanceId:job.instanceId,agentId:job.agentId,
         releaseSha:job.releaseSha,target:path.resolve(job.target),kind,source:{path:doc.path,hash:doc.hash,text:doc.text},destination,
         request:approvedRequest,requestHash:requestHash(approvedRequest),approvedAt:new Date().toISOString(),
         contract:kind==='outcome'?{path:next.contract.path,hash:next.contract.hash}:null};
