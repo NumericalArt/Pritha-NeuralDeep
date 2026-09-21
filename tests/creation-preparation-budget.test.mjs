@@ -98,3 +98,14 @@ test('repeated reads are refused without semantic progress and Continue cannot r
   const changedTime={...job,checkpoint:{at:'2030-01-01',text:'done'}};
   assert.equal(creationSemanticProgress(job),creationSemanticProgress(changedTime));
 });
+
+test('reads preceding verified progress do not poison later distinct work, but a new repeat is blocked',t=>{
+  const f=setup(t),{gate}=f.start(1);f.dispatch('start');
+  const read=id=>({type:'function_call',call_id:id,name:'exec_command',arguments:'{"cmd":"cat research.md"}'});
+  const input=[read('a'),read('b')];
+  // A host-validated document/brief changes this semantic hash; timestamps do not.
+  f.jobs.update(f.initial.chatId,j=>({...j,preparation:{briefHash:'c'.repeat(64)}}));
+  f.dispatch(input);
+  f.dispatch([...input,{type:'function_call',call_id:'c',name:'exec_command',arguments:'{"cmd":"node verify-new-evidence.mjs"}'}]);
+  assert.throws(()=>gate.prepare({model:'fixture',input:[...input,read('d')]}),{code:'provider_budget_no_progress'});
+});

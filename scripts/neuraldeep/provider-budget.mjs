@@ -127,15 +127,18 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
     if(!requestCount && bytes>policy.freshBytes)fail('provider_budget_context_initial','The full initial request exceeds 64 KiB; requirements were preserved.');
     if(requestCount && bytes>=policy.rotationBytes)fail('provider_budget_context_boundary','Preparation reached the 96 KiB checkpoint boundary.');
     const calls=Array.isArray(payload.input)?payload.input.filter(item=>['function_call','custom_tool_call'].includes(item.type)):[];
-    const signatures=new Set();let repeatedRead=false;
+    const readCounts={};
     for(const call of calls) {
       const input=String(call.arguments ?? call.input ?? '');
       if(!/creation-context-reader|\b(?:cat|sed|head|tail|read_file)\b/.test(input))continue;
       const signature=createHash('sha256').update(String(call.name)+input.replace(/\s+/g,' ').trim()).digest('hex');
-      if(signatures.has(signature))repeatedRead=true;signatures.add(signature);
+      readCounts[signature]=(readCounts[signature]||0)+1;
     }
     const previous=store.db.prepare('SELECT metadata FROM provider_dispatches WHERE run_id=? ORDER BY rowid DESC LIMIT 1').get(runId);
-    if(repeatedRead && previous && JSON.parse(previous.metadata).budget?.progressHash===current.progressHash)
+    const previousBudget=previous?JSON.parse(previous.metadata).budget:null;
+    current.readCounts=readCounts;
+    const newRepeatedRead=Object.entries(readCounts).some(([signature,count])=>count>1 && count>(previousBudget?.readCounts?.[signature]||0));
+    if(newRepeatedRead && previousBudget?.progressHash===current.progressHash)
       fail('provider_budget_no_progress','Repeated reads produced no verified preparation progress.');
   };
   return {
@@ -158,7 +161,7 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
       if(current && (output>current.job.preparationPolicy.outputTokens || event.bytes!==Buffer.byteLength(JSON.stringify(event.payload))))fail('provider_budget_preparation_invalid','Preparation request or response bound changed.');
       return { model: event.model, bytes: event.bytes,
         ...(current?{creation:{jobId:current.job.jobId,generation:current.job.generation,...creation.preparation}}:{}),
-        budget: { reservation: reserved, outputLimit: output, available, basis: 'utf8-text-plus-framing-v1',...(current?{progressHash:current.progressHash}:{}) } };
+        budget: { reservation: reserved, outputLimit: output, available, basis: 'utf8-text-plus-framing-v1',...(current?{progressHash:current.progressHash,readCounts:current.readCounts}:{}) } };
     }),
   };
 }
