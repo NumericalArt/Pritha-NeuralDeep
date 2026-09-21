@@ -3,6 +3,7 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, realpathSync, constants, o
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { NeuralDeepChatSummaries } from './chat-summary-projection.mjs';
+import { creationAssistantDialogue } from './creation-dialogue.mjs';
 
 export const HISTORY_PAGE_BYTES = 256 * 1024;
 export const HISTORY_CONTENT_BYTES = 64 * 1024;
@@ -436,7 +437,7 @@ export class NeuralDeepChatHistoryStore {
         // Structured proposals already live in the host packet; keep conversational questions verbatim.
         const classify=options.preparationVersion===2;
         const original=body(answer.body,classify);
-        const text=classify?original.replace(/```pritha-(?:brief|research)-json[^\S\n]*\n[\s\S]*?```/g,''):original;
+        const text=classify?creationAssistantDialogue(original,options.hasCanonicalBrief):original;
         if (classify) { used+=Buffer.byteLength(text); if(used>maxBytes)oversized(); if(!text.trim())continue; }
         dialogue.push({ turnId: row.id, role: 'assistant', text });
       }

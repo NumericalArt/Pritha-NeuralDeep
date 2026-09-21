@@ -1319,7 +1319,7 @@ export class CodexChatGateway {
         const saved=database.turn(chatId,active.turnId);
         if(active.interrupted || saved?.executionIntent?.attemptId!==active.intent!.attemptId || saved.executionIntent.dispatchState!=="accepted")throw new AdmissionCancelledError();
         if(saved.executionIntent.workspacePrepared && saved.executionIntent.cwd!==executionCwd)throw new RuntimeIdentityMismatchError();
-        const context=creation ? database.creationContext(chatId,active.turnId,64_000,{preparationVersion:creation.preparationPolicyVersion}) : null;
+        const context=creation ? database.creationContext(chatId,active.turnId,64_000,{preparationVersion:creation.preparationPolicyVersion,hasCanonicalBrief:Boolean(creation.preparation?.briefHash)}) : null;
         const packet=creation?.preparationPolicyVersion===2 ? prepareCreationContextPacket(creation,context,{root:workspace.cwd,stateRoot:this.store.stateRoot,turnId:active.turnId}) : null;
         if(packet)creations!.update(chatId,current=>({...current,contextPacket:packet}));
         const creationSession=context?.restart ? saved.executionIntent.creationSession || {
@@ -1360,7 +1360,7 @@ export class CodexChatGateway {
       await this.store.patch(chatId, { providerState: "available", lastStatus: "active", updatedAt: new Date().toISOString() });
       const attachmentDispatch = await this.attachmentDispatch(binding, active.turnId);
       const creation=binding.creationWorkflowVersion===1 ? this.withCreationStore(store=>store.get(chatId)) : null;
-      const context=intent.creationSession ? (await this.store.historyStore()).creationContext(chatId,active.turnId,64_000,{preparationVersion:creation?.preparationPolicyVersion}) : null;
+      const context=intent.creationSession ? (await this.store.historyStore()).creationContext(chatId,active.turnId,64_000,{preparationVersion:creation?.preparationPolicyVersion,hasCanonicalBrief:Boolean(creation?.preparation?.briefHash)}) : null;
       const packet=intent.creationPreparation ? readCreationContextPacket(creation,{stateRoot:this.store.stateRoot}) : null;
       if(packet && (creation.contextPacket.hash!==intent.creationPreparation!.packetHash || packet.packet.workUnitId!==active.turnId))throw new RuntimeIdentityMismatchError();
       if(intent.creationSession && (!creation || !context?.restart || context.hash!==intent.creationSession.contextHash

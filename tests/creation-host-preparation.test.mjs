@@ -72,6 +72,15 @@ test('invalid JSON gets one structural correction and replay cannot reset the co
   assert.equal(job.contract,null);
 });
 
+test('RSS query strings and malformed proposal wrappers cannot bypass the structural repair limit',t=>{
+  let {job,options}=setup(t);
+  const malformed='<previous_brief>'+JSON.stringify({...product,sources:['https://example.test/rss?alt=rss']})+'</previous_brief>';
+  job=completeCreationBrief(job,malformed,{...options,turnId:'bad_one'});assert.equal(job.status,'pending');
+  job=completeCreationBrief(job,malformed,{...options,turnId:'bad_two'});assert.equal(job.status,'blocked');assert.equal(job.preparation.briefRepairCount,2);
+  const question=completeCreationBrief(setup(t).job,'Allow other public feeds? https://example.test/rss?alt=rss',{...options,turnId:'question'});
+  assert.equal(question.status,'waiting_input');
+});
+
 for(const scenario of ['publish','crash-after-write','authored-edit'])test(`host revision retains its seed until validated publication: ${scenario}`,t=>{
   const {store,options}=setup(t),chatId='chat_hostprep';
   let job=store.update(chatId,j=>reconcileCreationArtifacts(completeCreationBrief(j,answer(product),{...options,turnId:'initial'}),options));

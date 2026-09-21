@@ -182,6 +182,16 @@ out of band. A regression reproduces missing revision text before the fix.
 An LLM-backed feed uses the LLM application preset; the deterministic feed
 preset is reserved for products without model-generated content.
 
+Research context excludes superseded, recognizable XML-wrapped proposal data
+only after a host-validated brief exists. Original messages and questions remain
+in the history; every operator message is passed unchanged. A URL query string
+does not count as a clarification question or bypass the structural repair limit.
+Advisory memory snippets use hash-bound pattern-section cursors. Normative rules,
+all mandatory topics and verified facts remain inline; neither limits nor gates
+are relaxed. Expanded stock-CLI acceptance includes detailed product criteria,
+malformed historical proposals and exact operator replies, and measures the full
+serialized request at the local provider boundary.
+
 | Audit | Relevant evidence or preserved requirement |
 |---|---|
 | A — versions | Pinned job release and execution-intent identity; staged release health/chunk checks |

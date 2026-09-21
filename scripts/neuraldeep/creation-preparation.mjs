@@ -10,6 +10,7 @@ import { applyInterviewTechnicalProposal, contractMarkdown, parseInterviewBriefD
 import { creationDocumentIdentity, creationGeneration } from './creation-generation.mjs';
 import { creationHostDirectory } from './creation-research.mjs';
 import { AgentCreationError } from './agent-creation-store.mjs';
+import { isCreationClarification } from './creation-dialogue.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const read = (file, root) => readBoundedRegularFile(file, {allowedRoots:[root],maxBytes:512*1024}).text;
@@ -115,7 +116,7 @@ export function completeCreationBrief(job, answer, options) {
   const previous=job.preparation?.generation===creationGeneration(job)?job.preparation:{};
   next.preparation={...previous,generation:creationGeneration(job),proposalTurnId:options.turnId,pendingProposalTurnId:null};
   if(parsed.issues.length) {
-    const question=!String(answer).includes('pritha-brief-json') && /[?？]/.test(answer);
+    const question=isCreationClarification(answer);
     const repairs=previous.briefRepairCount || 0;
     next.preparation.briefErrors=parsed.issues;
     next.preparation.briefRepairCount=question?repairs:repairs+1;
@@ -137,6 +138,7 @@ export function completeCreationBrief(job, answer, options) {
 export function creationBriefPrompt(job) {
   return [
     'Propose product content only. Return exactly one pritha-brief-json fenced JSON block; do not run tools or author Markdown/files. The host generates and validates the contract and Outcome. Each is approved separately through the UI.',
+    'Use a Markdown fence starting with ```pritha-brief-json and ending with ```. Do not use XML or previous_brief tags. All design fields, including riskNotes, are strings, not arrays. Do not promise to check sources during this tool-free proposal step; the research stage checks them after document approval.',
     'Preserve every stated requirement, source URL, constraint and permission. Ask a concise substantive question only if its answer changes the outcome or authority; otherwise propose the simplest sufficient design.',
     'When the packet contains proposalRevision, apply its exact operator instruction to the previous brief while preserving all other requirements. The previous brief is a revision seed, not a requirement to repeat an unchanged proposal. Revision is not approval.',
     `Reserved identity.slug=${job.agentId}; technical.targetFolder=${job.target}. Display identity.name is independent. No dates, statuses, locks, approval claims, filenames, Trial ids or verifier commands.`,

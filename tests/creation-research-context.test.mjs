@@ -35,7 +35,8 @@ function fixture(t,{researchProtocolVersion}={}) {
   const approve=kind=>{job=reconcileCreationArtifacts({...job,status:'pending'},options);job=approveCreationDocument(job,kind,{action:`approve_${kind}`,requestId:`approve_${kind}`,expectedRevision:job.revision,actor:'user'},options);};
   approve('contract');Object.assign(job,prepareCreationOutcome(job,options));approve('outcome');
   const data=contractData(job.contract.path,options),directory=path.join(draftRoot,'research');
-  const pattern=patternPackMarkdown(data,{memoryResults:[{path:'04_standards/fixture.md',title:'Retain local history',type:'standard',status:'accepted',snippet:'Use bounded requests and preserve successful data on failure.'}]});
+  const pattern=patternPackMarkdown(data,{memoryResults:[{path:'04_standards/fixture.md',title:'Retain local history',type:'standard',status:'accepted',snippet:'Use bounded requests and preserve successful data on failure.'},
+    ...Array.from({length:23},(_,i)=>({path:`11_agents/knowledge/fixture-${i}.md`,title:'Advisory historical example',heading:`Example ${i}`,type:'agent-contract',status:'accepted',snippet:'ADVISORY_EVIDENCE_Проверить применимость, не заменять текущее задание. '.repeat(9)}))]});
   const topics=deriveExternalResearchTopics(data,{patternPack:{externalResearchSeeds:verifyPatternPackIntegrity(pattern.text).payload.external_research_seeds}});
   const reportPath=path.join(directory,'research.md');let localCalls=0;
   const command=()=>{
@@ -67,6 +68,12 @@ test('90 KiB research is prepared once, checked fully and read in bounded hash-b
   const packet=readCreationContextPacket(job,f.options);
   assert.ok(ref.bytes<32*1024);assert.doesNotMatch(packet.text,/Public synthetic pattern rationale/);
   assert.equal(packet.packet.research.topics.length,f.topics.length);
+  assert.equal(packet.packet.research.rules.length,research.rules.length);
+  assert.ok(packet.packet.research.rules.some(rule=>rule.evidence?.includes('preserve successful data')),'normative rules remain inline');
+  assert.doesNotMatch(packet.text,/ADVISORY_EVIDENCE_/);
+  const reference=packet.packet.research.rules.find(rule=>rule.evidenceRef),patterns=packet.packet.artifacts.find(item=>item.id==='patterns');
+  const referencedPage=readCreationContextArtifact({stateRoot:f.options.stateRoot,jobId:job.jobId,packetHash:ref.hash,artifactId:'patterns',contentHash:patterns.contentHash,cursor:reference.evidenceRef.cursor});
+  assert.ok(referencedPage.text.startsWith(`### ${reference.id}:`));assert.match(referencedPage.text,/ADVISORY_EVIDENCE_/);
   const artifact=packet.packet.artifacts.find(item=>item.id==='research');let cursor=0,combined='';
   do {
     const page=readCreationContextArtifact({stateRoot:f.options.stateRoot,jobId:job.jobId,packetHash:ref.hash,artifactId:'research',contentHash:artifact.contentHash,cursor});

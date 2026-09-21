@@ -14,6 +14,8 @@ if(reportIndex>=0 && (!process.argv[reportIndex+1] || process.argv[reportIndex+1
 const reportPath=reportIndex>=0?path.resolve(process.argv[reportIndex+1]):null;
 const briefToolViolation=process.argv.includes('--brief-tool-violation');
 const signalDeskPreparation=process.argv.includes('--signal-desk-preparation');
+const expandedDialogue=process.argv.includes('--expanded-dialogue');
+const {preparationAnswers,detailedCriteria}=await import('../../tests/fixtures/creation-dialogue-sequence.mjs');
 const root=realpathSync(fileURLToPath(new URL('../..',import.meta.url))),load=relative=>import(pathToFileURL(path.join(root,relative)));
 process.chdir(root);
 const {NeuralDeepCoordinationStore,neuralDeepCoordinationPaths}=await load('scripts/neuraldeep/coordination-store.mjs');
@@ -60,6 +62,7 @@ const brief={identity:{name:'Stock CLI creation fixture',slug:'stock-fixture'},g
 let product='Create a local feed reader. Refresh manually, preserve source records without duplicates, retain the last successful data on errors. No schedules, no copied credentials.';
 if(signalDeskPreparation){
   Object.assign(brief,structuredClone((await load('tests/fixtures/signal-desk-brief.mjs')).signalDeskBrief));brief.identity.slug='stock-fixture';
+  if(expandedDialogue)brief.successCriteria=detailedCriteria;
   product=[brief.goal,brief.user,...brief.successCriteria,...brief.coreFunctions,...brief.workflows,...brief.sources,...brief.constraints,...brief.nonGoals,...brief.permissions.network,...brief.permissions.filesystem,brief.permissions.authorization].join('\n');
 }
 let mode='brief',modeRequests=0,requests=[],turnNumber=0,lastSession=null,builds=0,currentResearch=null;
@@ -105,7 +108,7 @@ globalThis.fetch=async(url,init)=>{
   }
   if(mode.startsWith('brief')) {
     assert.equal(payload.tool_choice,'none');assert.deepEqual(payload.tools,[]);
-    assert.ok(bytes<16*1024,'brief contains exact product context, not the coding executor');
+    assert.ok(bytes<(expandedDialogue?64:16)*1024,'brief contains exact product context, not the coding executor');
     const packet=JSON.parse(payload.input[0].content[0].text);
     const strings=value=>typeof value==='string'?[value]:value&&typeof value==='object'?Object.values(value).flatMap(strings):[];
     assert.ok(strings(packet.dialogue).includes(product),'exact original multiline product request is preserved');
@@ -141,7 +144,12 @@ async function prepRun(nextMode) {
   const turn={turnId,clientMessageId:turnId,status:'queued',items:[],pendingRequestIds:[],startedAt:new Date().toISOString(),completedAt:null,error:null,
     userMessage:{id:`user_${turnId}`,role:'user',markdown:turnNumber===1?product:'Continue the host checkpoint.',status:'completed',createdAt:new Date().toISOString()}};
   turn.executionIntent={creationOrigin:turnNumber===1?undefined:'host-continuation'};history.putTurn(chatId,turn);
-  const dialogue=history.creationContext(chatId,turnId,64000,{preparationVersion:2});
+  const dialogue=history.creationContext(chatId,turnId,64000,{preparationVersion:2,hasCanonicalBrief:Boolean(job.preparation?.briefHash)});
+  if(expandedDialogue && !isBrief){
+    assert.ok(!dialogue.text.includes('<previous_brief>'));
+    for(const answer of preparationAnswers)assert.ok(JSON.parse(dialogue.text).some(item=>item.role==='user' && item.text===answer));
+    assert.ok(dialogue.text.includes('Разрешены только публичные источники?'));
+  }
   job=jobs.update(chatId,j=>({...j,status:'running',phase:isBrief?'interview':'research',activeTurnId:turnId,blocker:null}));
   const packet=prepareCreationContextPacket(job,dialogue,{root:workspace.cwd,stateRoot,turnId});job=jobs.update(chatId,j=>({...j,contextPacket:packet}));
   const intent={attemptId,agentCreationRequested:true,executionAgentTarget:target,sandbox:'workspace-write',modelId:'fixture-model',effortId:null,
@@ -197,6 +205,14 @@ try {
   const afterRevision=requests.length;job=jobs.update(chatId,j=>reconcileCreationArtifacts({...j,...prepareCreationOutcome(j,options)},options));
   assert.equal(requests.length,afterRevision);assert.equal(job.status,'awaiting_outcome_approval');approve('outcome');
   for(const [file,text] of oldDocuments)assert.equal(readFileSync(file,'utf8'),text);
+  if(expandedDialogue){
+    for(let i=0;i<preparationAnswers.length;i++){
+      const id=`turn_${++turnNumber}`,draft=i<2?'<previous_brief>\n'+JSON.stringify({...brief,design:{...brief.design,riskNotes:['Untrusted public feed']}},null,2)+'\n</previous_brief>\nРазрешены только публичные источники?':'';
+      history.putTurn(chatId,{turnId:id,status:'completed',startedAt:new Date().toISOString(),completedAt:new Date().toISOString(),pendingRequestIds:[],
+        userMessage:{id:`user_${id}`,role:'user',markdown:preparationAnswers[i],status:'completed',createdAt:new Date().toISOString()},
+        items:draft?[{id:`message_${id}`,kind:'assistant_message',message:{id:`message_${id}`,role:'assistant',markdown:draft,status:'completed',phase:'final_answer',createdAt:new Date().toISOString()}}]:[]});
+    }
+  }
   execFileSync(process.execPath,[path.join(root,'scripts/rebuild-memory.mjs')],{env:process.env,stdio:'pipe',timeout:60000});
   currentResearch=await prepareCreationResearch(job,{root:workspace.cwd,stateRoot,model:'fixture-model'});
   const reportFile=currentResearch.artifacts.find(item=>item.id==='research').path;
@@ -207,7 +223,8 @@ try {
   job=jobs.update(chatId,j=>reconcileCreationArtifacts(j,options));
   if(signalDeskPreparation){
     const usage=creationPreparationUsage(store,job);assert.equal(readCreationResearch(job,{root:workspace.cwd,stateRoot}).gate.ok,true);assert.ok(usage.total<=300000);assert.ok(usage.requests<=12);
-    const report={status:'pass',sha,scenario:'full Signal Desk preparation with operator revision',paidCalls:0,requests,preparation:usage,zeroOutcomeRequests:true};
+    if(expandedDialogue)assert.ok([...history.audit({chatId})].some(row=>JSON.stringify(row).includes('<previous_brief>')),'invalid draft history remains intact');
+    const report={status:'pass',sha,scenario:'full Signal Desk preparation with operator revision',expandedDialogue,paidCalls:0,requests,preparation:usage,zeroOutcomeRequests:true};
     if(reportPath)writeFileSync(reportPath,JSON.stringify(report,null,2));console.error(JSON.stringify(report));passed=true;
   } else {
   const scaffold=await creationHostStep(job,options);job=jobs.update(chatId,()=>scaffold);

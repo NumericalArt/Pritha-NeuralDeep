@@ -34,15 +34,25 @@ export function prepareCreationContextPacket(job,dialogue,options) {
   const research=phase==='research'?readCreationResearch(job,options):null;
   const directory=creationHostDirectory(options.stateRoot,'audit','creation-context',job.jobId);
   const artifacts=[];
+  const patternSections=new Map();
   for(const artifact of research?.artifacts||[]) {
     const original=read(artifact.path,job.draftRoot);
     if(hash(original)!==artifact.hash)fail('creation_context_source_changed');
     const content=original.replace(/<!--\s*pritha-[\s\S]*?-->/g,'[Machine payload checked by the host; canonical evidence retained.]');
+    if(artifact.id==='patterns')for(const match of content.matchAll(/^### (pattern-\d+):/gm))
+      patternSections.set(match[1],Buffer.byteLength(content.slice(0,match.index)));
     const contentHash=hash(content),file=path.join(directory,`${contentHash}.txt`);
     if(!existsSync(file))atomicWriteFile(file,content);
     artifacts.push({...artifact,snapshot:file,contentHash,contentBytes:Buffer.byteLength(content)});
   }
   const progressHash=creationSemanticProgress(job,research);
+  const rules=research?.rules.map(rule=>{
+    if(!['memory-match','semantic-memory-match'].includes(rule.kind))return rule;
+    const cursor=patternSections.get(rule.id);
+    if(cursor===undefined)fail('creation_research_pattern_section_missing');
+    const {evidence,...reference}=rule;
+    return {...reference,evidenceRef:{artifactId:'patterns',cursor}};
+  });
   const packet={schema:'pritha-creation-context-packet-v1',jobId:job.jobId,instanceId:job.instanceId,agentId:job.agentId,
     ...(job.briefProtocolVersion ? {briefProtocolVersion:job.briefProtocolVersion} : {}),
     ...(job.researchProtocolVersion ? {researchProtocolVersion:job.researchProtocolVersion} : {}),
@@ -50,7 +60,7 @@ export function prepareCreationContextPacket(job,dialogue,options) {
     dialogue:JSON.parse(dialogue.text),brief:job.preparation?.brief||null,
     ...(job.proposalRevisionPending ? {proposalRevision:proposalRevision(job)} : {}),
     documents:{contract:evidenceRef(job.contract),outcome:evidenceRef(job.outcome)},approvals:job.approvals,
-    research:research?{topics:research.topics,facts:research.facts,rules:research.rules,remaining:research.remaining,gate:research.gate}:null,
+    research:research?{topics:research.topics,facts:research.facts,rules,remaining:research.remaining,gate:research.gate}:null,
     checkpoint:creationCheckpointSummary(job),limits:job.preparationPolicy,progressHash,
     artifacts:artifacts.map(({id,hash,bytes,contentHash})=>({id,hash,bytes,contentHash}))};
   const text=JSON.stringify(packet),bytes=Buffer.byteLength(text);

@@ -84,6 +84,23 @@ test('host packet excludes a large structured brief but preserves surrounding qu
   assert.ok(context.text.includes(question));assert.ok(!context.text.includes('Long technical draft'));
   assert.deepEqual(f.store.verifySource(),before);
 });
+test('superseded XML proposal data is omitted only when a canonical brief exists; questions and raw history survive', t => {
+  const f=fixture(t);f.store.put({...binding(),creationWorkflowVersion:1});
+  const question='Можно добавлять публичные источники через UI?';
+  const draft='<previous_brief>\n'+JSON.stringify({schemaVersion:1,identity:{name:'Same display name'},goal:'OLD_DRAFT_'.repeat(900),coreFunctions:['RSS'],sources:['https://example.test/feed?alt=rss']})+'\n</previous_brief>';
+  const first=turn(1,[message('wrapped',draft+'\n'+question)]);first.userMessage.markdown='Точное исходное задание, SQLite и русский дайджест.';f.store.putTurn('chat_test',first);
+  const second=turn(2,[message('wrapped_again',draft)]);second.userMessage.markdown='Да; приватные сети запрещены.';f.store.putTurn('chat_test',second);
+  const third=turn(3);third.userMessage.markdown='Сохранить все ограничения.';f.store.putTurn('chat_test',third);
+  const before=f.store.verifySource();
+  assert.match(f.store.creationContext('chat_test','turn_3',64000,{preparationVersion:2}).text,/OLD_DRAFT_/);
+  const context=f.store.creationContext('chat_test','turn_3',2000,{preparationVersion:2,hasCanonicalBrief:true});
+  assert.doesNotMatch(context.text,/OLD_DRAFT_/);assert.ok(context.text.includes(question));
+  for(const row of [first,second,third])assert.ok(context.text.includes(row.userMessage.markdown));
+  assert.deepEqual(f.store.verifySource(),before);assert.ok(f.store.originalAssistantText('chat_test','turn_1').includes(draft));
+  f.store.putItem('chat_test','turn_2',message('not_json','<previous_brief>Do not silently discard this unresolved choice.</previous_brief>'));
+  assert.match(f.store.creationContext('chat_test','turn_3',64000,{preparationVersion:2,hasCanonicalBrief:true}).text,/unresolved choice/);
+});
+
 test('explicit commentary is visible in activity while final and unclassified answers retain their place', t => {
   const f = fixture(t), progress = message('progress', 'Checking the result for you.'), answer = message('answer', 'Done.');
   progress.message.phase = 'commentary'; answer.message.phase = 'final_answer';
