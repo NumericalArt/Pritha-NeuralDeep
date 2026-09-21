@@ -119,7 +119,7 @@ export function parseInterviewBrief(text) {
     }
     // Older briefs put multiple explicit technical fields in a single bullet.
     for (const key of technicalKeys) {
-      const match = line.match(new RegExp(`\\b${key}\\s*[:：]\\s*\x60?([a-zA-Z0-9][a-zA-Z0-9 _-]*)(?:\x60|$|,)`, "i"));
+      const match = line.match(new RegExp("\\b" + key + "\\s*[:：]\\s*`?([a-zA-Z0-9][a-zA-Z0-9 _-]*)(?:`|$|,)", "i"));
       if (match) values[key] = match[1].trim();
     }
     if (/GitHub research/i.test(line)) {
