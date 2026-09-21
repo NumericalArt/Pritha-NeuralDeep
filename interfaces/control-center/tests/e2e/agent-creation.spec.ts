@@ -19,7 +19,9 @@ function proposal(): CreationJobView {
 // Only the actual compiled browser UI is under test here. Every creation request
 // is intercepted; this fixture grants no approval and creates no child project.
 async function fixture(page: Page, job = proposal(), loseFirstApproval = false) {
-  const health = await (await page.request.get('/api/health')).json();
+  // A previous long browser scenario may leave a keep-alive socket just as
+  // Next closes it. Retry this read-only ECONNRESET once; never retry writes.
+  const health = await (await page.request.get('/api/health', { maxRetries: 1 })).json();
   expect(health.instance?.role).toBe('development');
   expect(health.instance?.id).toMatch(/fixture|e2e|test/);
   const requests: CreationRequest[] = [], applied = new Map<string, CreationJobView>();
