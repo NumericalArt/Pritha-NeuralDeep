@@ -91,7 +91,7 @@ globalThis.fetch=async(url,init)=>{
   if(mode==='brief'||mode==='brief-revised')answer='```pritha-brief-json\n'+JSON.stringify(brief)+'\n```';
   if(mode.startsWith('brief')) {
     assert.equal(payload.tool_choice,'none');assert.deepEqual(payload.tools,[]);
-    assert.ok(bytes<64*1024,'brief contains exact product context within the initial session limit');
+    assert.ok(bytes<16*1024,'brief contains exact product context, not the coding executor');
     assert.ok(input.includes(product));
     if(mode==='brief-invalid')answer='Preparing the brief now.';
     if(briefToolViolation)command=`${quote(process.execPath)} -e ${quote("require('node:fs').writeFileSync('tool-must-not-run','unexpected')")}`;

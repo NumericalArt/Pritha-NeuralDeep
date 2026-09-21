@@ -151,6 +151,10 @@ approvals, unchanged accepted documents and receipts, authored-edit rejection,
 publication crash recovery and duplicate usage receipts. The stock CLI local
 provider scenario also revises a previously approved proposal before research,
 scaffold and delivery. No additional model call is needed to publish Outcome.
+The revised contract retains the agent ID from its verified revision seed;
+only the document ID changes. Generating another agent ID from the new document
+filename would create conflicting catalog identities for the same target and
+prevent delivery. Historical accepted documents and their approvals stay intact.
 
 | Audit | Relevant evidence or preserved requirement |
 |---|---|

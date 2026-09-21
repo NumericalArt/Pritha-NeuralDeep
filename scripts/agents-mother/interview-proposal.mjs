@@ -99,6 +99,7 @@ export function normalizeRuntimePlacementProfile(value, runtimeFamily = "codex-n
 }
 
 export function contractMarkdown(data) {
+  if (data.agentId !== undefined && (typeof data.agentId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/.test(data.agentId))) throw new Error('Invalid host agent identity');
   const date = data.date || today();
   const agentSlug = data.technicalSlug || slug(data.agentName);
   const runtimeFamily = scalar(data.runtimeFamily, "codex-native");
@@ -151,7 +152,7 @@ interview_preset: ${data.interviewPreset || "generic"}
 outcome_trial_preset: ${data.interviewPreset === "llm-app" ? "llm-http-app-v1" : data.interviewPreset === "local-feed" && data.sourceFormat === "json" ? "public-json-feed-v1" : "none"}
 init_request_fingerprint: ${data.initRequestFingerprint || "legacy"}
 agent_kind: ${agentKind}
-agent_id: agent-${createHash("sha256").update(data.artifactId || `${date}-${agentSlug}-agent-contract`).digest("hex").slice(0, 24)}
+agent_id: ${data.agentId || `agent-${createHash("sha256").update(data.artifactId || `${date}-${agentSlug}-agent-contract`).digest("hex").slice(0, 24)}`}
 status: draft
 created: ${date}
 updated: ${date}

@@ -86,6 +86,9 @@ export function prepareCreationContract(job, brief, options) {
     applyInterviewTechnicalProposal(data,{...cliOptions,'build-token-budget':String(job.budget.maxTokens),'target-folder':job.target});
     const generation = creationGeneration(job);
     return contractMarkdown({...data,date:job.createdAt.slice(0,10),artifactId:path.basename(job.documentIdentity.contract,'.md'),
+      // An explicit revision seed retains its authored agent identity. Only the
+      // document identity changes; old accepted documents stay attributable.
+      ...(job.proposalRevisionPending && job.contract ? {agentId:contractData(job.contract.path,{root:options.root}).agentId} : {}),
       initRequestFingerprint:`sha256:${normalized.hash}`}).replace(/^---\n/,`---\ncreation_generation: ${generation}\n`);
   },options);
   const issues = validateContract(result.path,{root:options.root,print:false});

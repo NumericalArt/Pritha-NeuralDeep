@@ -9,6 +9,7 @@ import {creationDraftRoot,reconcileCreationArtifacts,approveCreationDocument,cre
 import {prepareCreationContract,prepareCreationOutcome,completeCreationBrief} from '../scripts/neuraldeep/creation-preparation.mjs';
 import {verifyOutcomeApproval} from '../scripts/agents-mother/outcome-spec.mjs';
 import {reviseCreationProposal} from '../scripts/neuraldeep/creation-revision.mjs';
+import {contractData} from '../scripts/agents-mother/contract.mjs';
 
 const product={schemaVersion:1,identity:{name:'Signal Desk ND'},goal:'Русский дайджест публичных RSS с историей',user:'Один локальный оператор',
   successCriteria:['Обе ленты загружаются и повторное обновление не создаёт дублей','История SQLite сохраняется после перезапуска','Настройки источников, фильтры по источнику и дате, прочитанное и избранное доступны через UI','Дайджест максимум 20 материалов на русском со ссылками сохранён и экспортируется Markdown','Ошибки источника и провайдера сохраняют прошлые данные; повтор через UI'],
@@ -85,6 +86,7 @@ for(const scenario of ['publish','crash-after-write','authored-edit'])test(`host
   job=store.update(chatId,j=>approveCreationDocument(j,'contract',approval(j,'contract'),options));
   job=store.update(chatId,j=>reconcileCreationArtifacts({...j,...prepareCreationOutcome(j,options)},options));
   job=store.update(chatId,j=>approveCreationDocument(j,'outcome',approval(j,'outcome'),options));
+  const agentId=contractData(job.contract.path,options).agentId;
   const accepted=[job.contract.path,job.outcome.path,...['contract','outcome'].map(kind=>path.join(options.stateRoot,'audit','creation-approvals',job.jobId,`${kind}.json`))]
     .map(file=>[file,readFileSync(file,'utf8')]);
   const request={action:'revise_proposal',requestId:'revise',expectedRevision:job.revision,reason:'Add a visible count before generating the digest.',actor:'codex-operator',authorizationBasis:'Isolated operator revision test'};
@@ -105,6 +107,7 @@ for(const scenario of ['publish','crash-after-write','authored-edit'])test(`host
     if(scenario==='crash-after-write')assert.throws(()=>completeCreationBrief(job,answer(changed),{...options,turnId:'revised',afterPublish(){throw Error('publication crash');}}),/publication crash/);
     job=store.update(chatId,j=>reconcileCreationArtifacts(completeCreationBrief(j,answer(changed),{...options,turnId:'revised'}),options));
     assert.equal(job.proposalRevisionPending,false);assert.equal(job.status,'awaiting_contract_approval');
+    assert.equal(contractData(job.contract.path,options).agentId,agentId,'a proposal generation changes document identity, not agent identity');
     assert.ok(job.contract.text.includes(changed.constraints.at(-1)));
     assert.deepEqual(store.recordTurn(chatId,receipt),job,'replayed receipt does not reset publication or add usage');
     job=store.update(chatId,j=>approveCreationDocument(j,'contract',{...approval(j,'contract'),requestId:'contract-revised'},options));
