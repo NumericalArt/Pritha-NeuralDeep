@@ -22,6 +22,8 @@ import * as creationDelivery from '../scripts/neuraldeep/creation-delivery.mjs';
 import * as targetManifest from '../scripts/neuraldeep/target-file-manifest.mjs';
 import * as taskPhases from '../scripts/neuraldeep/task-chat-phases.mjs';
 import * as taskAgentCreation from '../scripts/neuraldeep/task-chat-agent-creation.mjs';
+import { completeCreationBrief, prepareCreationOutcome } from '../scripts/neuraldeep/creation-preparation.mjs';
+import { signalDeskBrief } from './fixtures/signal-desk-brief.mjs';
 import { ChatHistoryError, NeuralDeepChatHistoryStore } from '../scripts/neuraldeep/chat-history-store.mjs';
 const require=createRequire(import.meta.url), root=process.cwd();
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -118,6 +120,65 @@ async function fixture(t,{sourceProject=null}={}) {
   return {gateway,history,admission,runs,settings,chat,topics,journal,voice};
 }
 const message=(id,text=id,mode)=>({clientMessageId:`message_${id}`,input:[{type:'text',text}],...(mode?{mode}: {})});
+
+for (const document of ['contract', 'outcome']) test(`queued creation input preserves the ${document} approval blocker without dispatch or document changes`, async t => {
+  const f = await fixture(t), chatId = f.chat(), stateRoot = f.gateway.store.stateRoot;
+  const instanceId = f.gateway.store.stateIdentityHash, jobs = new creationStore.AgentCreationStore(f.journal);
+  const target = path.join(path.dirname(stateRoot), 'children', 'signal-desk');
+  mkdirSync(target, { recursive: true });
+  f.history.mutate(chatId, current => ({ ...current, creationWorkflowVersion: 1,
+    subject: { taskType: 'agent_creation', subjectId: 'signal-desk' } }));
+  jobs.create({ chatId, instanceId, agentId: 'signal-desk', target,
+    draftRoot: creation.creationDraftRoot(stateRoot, instanceId, chatId), releaseSha: 'a'.repeat(40), preparationPolicyVersion: 2 });
+  mkdirSync(jobs.get(chatId).draftRoot, { recursive: true });
+  // A settled earlier step must stay charged when an ordinary message hits the approval gate.
+  jobs.recordTurn(chatId, { turnId: 'turn_preparation_fixture', tokens: 37, activeMs: 1500, dispatched: true, ok: true });
+  const options = { root, stateRoot, coordination: f.journal };
+  jobs.update(chatId, job => creation.reconcileCreationArtifacts(completeCreationBrief(job,
+    '```pritha-brief-json\n' + JSON.stringify(signalDeskBrief) + '\n```', { ...options, turnId: 'turn_preparation_fixture' }), options));
+  if (document === 'outcome') jobs.update(chatId, job => {
+    const approved = creation.approveCreationDocument(job, 'contract', { action: 'approve_contract',
+      requestId: 'fixture_contract_approval', expectedRevision: job.revision, actor: 'codex-operator',
+      authorizationBasis: 'Separate contract approval in an isolated regression test' }, options);
+    return creation.reconcileCreationArtifacts({ ...approved, ...prepareCreationOutcome(approved, options) }, options);
+  });
+  const before = jobs.get(chatId);
+  assert.equal(before.status, `awaiting_${document}_approval`);
+  const files = [before.contract, before.outcome].filter(Boolean).map(value => [value.path, readFileSync(value.path, 'utf8')]);
+  const input = message('continue_creation', 'Continue creating this agent.');
+  const { accepted } = await f.gateway.startTurn(chatId, input);
+  await until(() => f.history.turn(chatId, accepted.turn.turnId).status === 'failed');
+  const failed = f.history.turn(chatId, accepted.turn.turnId);
+  assert.equal(failed.error.code, 'creation_host_owned_phase');
+  assert.match(failed.error.message, /карточку создания/);
+  assert.equal(f.history.originalUserText(chatId, failed.turnId), input.input[0].text);
+  const replay = await f.gateway.startTurn(chatId, input);
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.accepted.turn.turnId, failed.turnId);
+  assert.deepEqual(replay.accepted.turn.error, failed.error);
+  assert.equal(f.runs.length, 0);
+  assert.equal(f.journal.db.prepare('SELECT COUNT(*) AS count FROM attempts').get().count, 0);
+  assert.equal(f.journal.db.prepare('SELECT COUNT(*) AS count FROM provider_dispatches').get().count, 0);
+  assert.equal(f.gateway.waitingTurns.size, 0);
+  assert.deepEqual(jobs.get(chatId), before);
+  for (const [file, text] of files) assert.equal(readFileSync(file, 'utf8'), text);
+  const view = creation.creationJobView(jobs.get(chatId), { ...options, agentParent: path.dirname(target) });
+  assert.equal(view.actions[`approve_${document}`], true);
+});
+
+test('an unknown failure before queued admission keeps its safe reconciliation error and does not replay work', async t => {
+  const f = await fixture(t), chatId = f.chat(), input = message('unknown_admission', 'Preserve this original input.');
+  f.gateway.prepareExecutionWorkspace = async () => { throw new Error('private internal failure detail'); };
+  const { accepted } = await f.gateway.startTurn(chatId, input);
+  await until(() => f.history.turn(chatId, accepted.turn.turnId).status === 'failed');
+  const failed = f.history.turn(chatId, accepted.turn.turnId);
+  assert.equal(failed.error.code, 'admission_reconciliation_required');
+  assert.doesNotMatch(failed.error.message, /private internal failure detail/);
+  assert.equal((await f.gateway.startTurn(chatId, input)).replayed, true);
+  assert.equal(f.runs.length, 0);
+  assert.equal(f.gateway.waitingTurns.size, 0);
+  assert.equal(f.history.originalUserText(chatId, failed.turnId), input.input[0].text);
+});
 
 test('active Voice handoff preserves multiple typed inputs, blocks future Voice priority, and resumes the exact session once per input',async t=>{
   const f=await fixture(t),v=f.voice(),input={...message('voice_after','Original typed input','after_completion'),voiceHandoff:v.input};

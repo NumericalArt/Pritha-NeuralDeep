@@ -1223,8 +1223,16 @@ export class CodexChatGateway {
       if (this.activeTurns.get(chatId) !== active) {
         if (this.waitingTurns?.get(active.turnId) === active) {
           this.waitingTurns.delete(active.turnId);
-          await this.updateTurn(chatId,active.turnId,current=>({...current,status:active.interrupted ? "interrupted" : "failed",completedAt:new Date().toISOString(),
-            error:active.interrupted ? {code:"queued_cancelled",message:"Queued message cancelled before dispatch."} : {code:"admission_reconciliation_required",message:active.intent?.voiceHandoff ? "The Voice predecessor or saved handoff needs an operator decision before this message can run. The original input is preserved." : "The saved queue needs reconciliation before dispatch."}}));
+          // Creation gates can reject a saved message before it obtains a lease.
+          // Keep their operator-facing reason; an approval gate is not queue corruption.
+          const queuedError = active.interrupted
+            ? { code: "queued_cancelled", message: "Queued message cancelled before dispatch." }
+            : error instanceof AgentCreationError
+              ? { code: error.code, message: error.message }
+              : { code: "admission_reconciliation_required", message: active.intent?.voiceHandoff
+                ? "The Voice predecessor or saved handoff needs an operator decision before this message can run. The original input is preserved."
+                : "The saved queue needs reconciliation before dispatch." };
+          await this.updateTurn(chatId,active.turnId,current=>({...current,status:active.interrupted ? "interrupted" : "failed",completedAt:new Date().toISOString(),error:queuedError}));
           await this.emitThreadUpdated(chatId,active.turnId);
         }
         return;
