@@ -38,6 +38,7 @@ export class NeuralDeepChatHistoryStore {
   liveTurns(chat: string): TurnView[];
   reconcileInactiveDirectChats(): number;
   originalUserText(chat: string, turnId: string, maxBytes?: number): string;
+  originalAssistantText(chat: string, turnId: string, maxBytes?: number): string;
   creationContext(chat: string, turnId: string, maxBytes?: number): {restart:boolean;text:string|null;hash:string|null};
   chatForTask(taskId: string): string | null;
   attachmentInSession(chatId: string, file?: { sha256: string; mediaType: string; size: number } | null): boolean;

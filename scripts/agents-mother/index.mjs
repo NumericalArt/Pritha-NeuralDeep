@@ -441,7 +441,7 @@ function ftsQuery(text) {
   return unique.map((term) => `"${term.replaceAll('"', '""')}"`).join(" OR ");
 }
 
-function contractMarkdown(data) {
+export function contractMarkdown(data) {
   const date = data.date || today();
   const agentSlug = data.technicalSlug || slug(data.agentName);
   const runtimeFamily = scalar(data.runtimeFamily, "codex-native");

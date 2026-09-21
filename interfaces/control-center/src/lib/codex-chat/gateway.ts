@@ -27,6 +27,7 @@ import { AgentCreationStore, AgentCreationError, creationBudgetBlocker, creation
 import { creationRuntimeReceipt, creationObservedUsage } from "../../../../../scripts/neuraldeep/creation-runtime-receipt.mjs";
 import { dispatchBlockerMessage } from "../../../../../scripts/neuraldeep/dispatch-blocker-message.mjs";
 import { reviseCreationProposal, creationRevisionPending } from "../../../../../scripts/neuraldeep/creation-revision.mjs";
+import { completeCreationBrief, prepareCreationOutcome } from "../../../../../scripts/neuraldeep/creation-preparation.mjs";
 import { preflightAgentCreation } from "../../../../../scripts/neuraldeep/creation-preflight.mjs";
 export { AgentCreationError };
 import { runCreationDelivery as deliverCreation, readCreationDelivery } from "../../../../../scripts/neuraldeep/creation-delivery.mjs";
@@ -270,7 +271,7 @@ export class CodexChatGateway {
       if(versions.sourceDirty || !versions.source || versions.source!==versions.runtime)throw new AgentCreationError('creation_release_mismatch');
       const instanceId=this.store.stateIdentityHash;
       return store.create({chatId:binding.chatId,instanceId,agentId:binding.subject!.subjectId,releaseSha:versions.source,
-        tokenBudget:binding.subject!.tokenBudget,
+        tokenBudget:binding.subject!.tokenBudget,preparationPolicyVersion:2,
         target:path.join(resolvePrithaAgentParent(this.root),binding.subject!.subjectId!),draftRoot:creationDraftRoot(this.store.stateRoot,instanceId,binding.chatId)});
     });
   }
@@ -433,11 +434,21 @@ export class CodexChatGateway {
     try {
       let job=this.withCreationStore(store=>store.get(chatId));
       if(!job || !job.autoContinue || job.status!=='pending')return;
+      if(job.preparationPolicyVersion===2 && job.preparation?.pendingProposalTurnId) {
+        await this.completeCreationProposal(chatId,job.preparation.pendingProposalTurnId);
+        job=this.withCreationStore(store=>store.get(chatId));
+      }
       job=this.withCreationStore(store=>store.update(chatId,current=>reconcileCreationArtifacts(current,{root:this.root,stateRoot:this.store.stateRoot})));
       if(job.status!=='pending')return;
       const blocker=creationBudgetBlocker(job);
       if(blocker) {this.withCreationStore(store=>store.update(chatId,current=>({...current,status:'blocked',blocker})));return;}
       const binding=await this.requireBinding(chatId),phase=creationPhase(job);
+      if(job.preparationPolicyVersion===2 && phase==='outcome' && !job.outcome) {
+        const prepared=prepareCreationOutcome(job,{root:this.root,stateRoot:this.store.stateRoot});
+        this.withCreationStore(store=>store.update(chatId,current=>reconcileCreationArtifacts({...current,...prepared},
+          {root:this.root,stateRoot:this.store.stateRoot})));
+        return;
+      }
       if(phase==='research' && job.researchAttemptCompleted) {
         this.withCreationStore(store=>store.update(chatId,current=>({...current,status:'running',phase:'scaffold'})));
         job=await creationHostStep(job,{root:this.root,stateRoot:this.store.stateRoot,sourceRoot:binding.executionWorkspace?.cwd || binding.workspacePath || this.root,
@@ -1228,7 +1239,7 @@ export class CodexChatGateway {
         if(versions.sourceDirty || !versions.source || versions.source!==versions.runtime)throw new AgentCreationError('creation_release_mismatch');
         const instanceId=this.store.stateIdentityHash;
         creation=creations!.create({chatId,instanceId,agentId:initial.subject!.subjectId,releaseSha:versions.source,
-          tokenBudget:initial.subject!.tokenBudget,
+          tokenBudget:initial.subject!.tokenBudget,preparationPolicyVersion:2,
           target:path.join(resolvePrithaAgentParent(this.root),initial.subject!.subjectId!),draftRoot:creationDraftRoot(this.store.stateRoot,instanceId,chatId)});
       }
       if(creation) {
@@ -1647,11 +1658,31 @@ export class CodexChatGateway {
             status:['paused','cancelled'].includes(next.status)?next.status:'blocked',
             blocker:{code:'creation_execution_unconfirmed',message:'Хост проверяет завершение предыдущего процесса. Повторный запуск пока недоступен.'}};
           if(status==='completed' && creation.phase==='research')next.researchAttemptCompleted=true;
-          if(status==='completed' && !next.contract && next.status==='pending')next.status='waiting_input';
+          if(status==='completed' && creation.preparationPolicyVersion===2 && ['interview','contract'].includes(creation.phase)) {
+            next.preparation={...next.preparation,pendingProposalTurnId:active.turnId};
+          } else if(status==='completed' && !next.contract && next.status==='pending')next.status='waiting_input';
           return next;
         });
       });
+      if(status==='completed' && creation.preparationPolicyVersion===2 && ['interview','contract'].includes(creation.phase)) {
+        await this.completeCreationProposal(chatId,active.turnId);
+      }
       if(status==='completed')void this.advanceCreation(chatId);
+    }
+  }
+
+  private async completeCreationProposal(chatId:string,turnId:string) {
+    const job=this.withCreationStore(store=>store.get(chatId));
+    if(job.preparation?.proposalTurnId===turnId)return;
+    try {
+      const receipt=this.withCreationStore(store=>creationRuntimeReceipt(store.store,turnId));
+      if(!receipt.processExited || receipt.tokens===null || receipt.blocker)throw new AgentCreationError('creation_execution_unconfirmed','Документы ожидают подтверждения завершения и расхода шага.');
+      const answer=(await this.store.historyStore()).originalAssistantText(chatId,turnId);
+      this.withCreationStore(store=>store.update(chatId,current=>reconcileCreationArtifacts(
+        completeCreationBrief(current,answer,{root:this.root,stateRoot:this.store.stateRoot,turnId}),{root:this.root,stateRoot:this.store.stateRoot})));
+    } catch(error) {
+      this.withCreationStore(store=>store.update(chatId,current=>({...current,status:['paused','cancelled'].includes(current.status)?current.status:'blocked',
+        autoContinue:false,blocker:{code:error instanceof AgentCreationError?error.code:'creation_preparation_failed',message:error instanceof Error?error.message:'Подготовка документа остановлена.'}})));
     }
   }
 

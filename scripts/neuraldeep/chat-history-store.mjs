@@ -389,6 +389,19 @@ export class NeuralDeepChatHistoryStore {
     if (!body || body.bytes > maxBytes) throw new ChatHistoryError('history_request_unavailable','The original request cannot be dispatched within the current input limit.');
     return this.statement('SELECT text FROM text_parts WHERE hash=? ORDER BY part').all(row.user_body).map(part=>part.text).join('');
   }
+  originalAssistantText(chat, turnId, maxBytes = 128_000) {
+    const rows = this.statement("SELECT body FROM items WHERE chat=? AND turn_id=? AND kind='assistant_message' AND coalesce(json_extract(meta,'$.message.phase'),'')!='commentary' ORDER BY sequence LIMIT 257").all(chat,turnId);
+    if (rows.length>256) throw new ChatHistoryError('creation_context_too_large','Слишком много частей ответа. Полная история сохранена.');
+    let bytes=0;
+    return rows.map(row=>{
+      const info=this.statement('SELECT bytes,parts FROM texts WHERE hash=?').get(row.body);
+      if (!info || (bytes+=info.bytes)>maxBytes) throw new ChatHistoryError('creation_context_too_large','Ответ превышает границу подготовки. Полная история сохранена.');
+      const parts=this.statement('SELECT text FROM text_parts WHERE hash=? ORDER BY part').all(row.body);
+      const text=parts.map(part=>part.text).join('');
+      if (parts.length!==info.parts || Buffer.byteLength(text)!==info.bytes || hash(text)!==row.body) throw new ChatHistoryError('history_source_corrupt','Ответ не прошёл проверку целостности.');
+      return text;
+    }).join('\n');
+  }
   /** A fresh internal creation step needs product dialogue, not old shell output.
    * Read exact source bodies without rewriting, summarizing or truncating history. */
   creationContext(chat, turnId, maxBytes = 64_000) {
