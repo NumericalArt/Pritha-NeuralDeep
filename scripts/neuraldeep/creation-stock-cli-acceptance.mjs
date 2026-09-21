@@ -198,7 +198,7 @@ try {
   await prepRun('research-resumed');assert.equal(job.researchAttemptCompleted,true,JSON.stringify(readCreationResearch(job,{root:workspace.cwd,stateRoot}).gate));
   job=jobs.update(chatId,j=>reconcileCreationArtifacts(j,options));
   if(signalDeskPreparation){
-    const usage=creationPreparationUsage(store,job);assert.equal(job.researchReady,true);assert.ok(usage.total<=300000);assert.ok(usage.requests<=12);
+    const usage=creationPreparationUsage(store,job);assert.equal(readCreationResearch(job,{root:workspace.cwd,stateRoot}).gate.ok,true);assert.ok(usage.total<=300000);assert.ok(usage.requests<=12);
     const report={status:'pass',sha,scenario:'full Signal Desk preparation with operator revision',paidCalls:0,requests,preparation:usage,zeroOutcomeRequests:true};
     if(reportPath)writeFileSync(reportPath,JSON.stringify(report,null,2));console.error(JSON.stringify(report));passed=true;
   } else {
