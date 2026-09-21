@@ -14,6 +14,7 @@ import { researchGateDecisionForReport } from '../scripts/agents-mother/research
 import { markdownDocumentLock } from '../scripts/lib/markdown-content-lock.mjs';
 import { promoteCreationResearch } from '../scripts/neuraldeep/creation-research.mjs';
 import { runCreationScaffoldStep } from '../scripts/neuraldeep/creation-scaffold.mjs';
+import { parseFrontmatterData } from '../scripts/lib/frontmatter.mjs';
 
 const digest = text => createHash('sha256').update(text).digest('hex');
 const repo = path.resolve('.');
@@ -132,6 +133,27 @@ test('crash after scaffold before the completion receipt recovers from exact hos
   const head = git(f.job.target, 'rev-parse', 'HEAD');
   const next = await runCreationScaffoldStep(f.job, f.options, f.run);
   assert.equal(next.scaffoldReceipt.revision, head);
+  assert.equal(f.calls.filter(args => args[0] === 'scaffold').length, 1);
+});
+
+test('redacted report binds an external target exactly; a different binding cannot recover scaffold', async t => {
+  const f = fixture(t);
+  await assert.rejects(runCreationScaffoldStep(f.job, f.options, async args => {
+    await f.run(args); throw new Error('interrupted after scaffold');
+  }), /interrupted after scaffold/);
+  const receiptFile = path.join(f.stateRoot, 'audit', 'creation-scaffolds', `${f.job.jobId}.json`);
+  const { readdirSync } = await import('node:fs');
+  const directory = path.join(f.stateRoot, 'agents', 'reports');
+  const reportFile = path.join(directory, readdirSync(directory).find(name => name.endsWith('-scaffold-report.md')));
+  const text = readFileSync(reportFile, 'utf8'), fm = parseFrontmatterData(text);
+  assert.equal(fm.scaffold_binding_version, '2');
+  assert.equal(fm.status, 'complete');
+  assert.equal(text.includes(f.job.target), false);
+  assert.ok(existsSync(receiptFile));
+  writeFileSync(reportFile, text.replace(fm.scaffold_binding_sha256, '0'.repeat(64)));
+  await assert.rejects(runCreationScaffoldStep(f.job, f.options, f.run), /creation_scaffold_host_report_missing_or_ambiguous/);
+  writeFileSync(reportFile, text);
+  assert.equal((await runCreationScaffoldStep(f.job, f.options, f.run)).scaffoldReady, true);
   assert.equal(f.calls.filter(args => args[0] === 'scaffold').length, 1);
 });
 

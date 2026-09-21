@@ -8,6 +8,7 @@ import { contractData } from '../agents-mother/contract.mjs';
 import { outcomeSpecFile, verifyOutcomeApproval } from '../agents-mother/outcome-spec.mjs';
 import { workspaceRevision } from '../agents-mother/workspace-revision.mjs';
 import { reportReferencesContract } from '../agents-mother/research-gate.mjs';
+import { scaffoldReportBinding } from '../agents-mother/scaffold-binding.mjs';
 import { creationHostDirectory, promoteCreationResearch } from './creation-research.mjs';
 import { AgentCreationError } from './agent-creation-store.mjs';
 
@@ -22,6 +23,8 @@ function exactBaseline(job, options, expectedRevision) {
   const data = contractData(job.contract.path, { root: options.root });
   const outcome = outcomeSpecFile(job.outcome.path, options);
   const fm = outcome.parsed.frontmatter;
+  const reportBinding = scaffoldReportBinding({ ...options, projectRoot: job.target, contractPath: job.contract.path,
+    fingerprint: data.fingerprint, outcome: { id: fm.id, semanticLock: fm.outcome_semantic_lock, documentLock: fm.outcome_document_lock }, revision: revision.head });
   const lineage = JSON.parse(read(path.join(job.target, 'delivery', 'outcome-lineage.json'), job.target));
   if (lineage.schema !== 'pritha-child-outcome-lineage-v1' || lineage.contract_fingerprint !== data.fingerprint
     || lineage.outcome_spec_id !== fm.id || path.resolve(options.root, lineage.outcome_spec_path || '') !== path.resolve(job.outcome.path)
@@ -33,8 +36,11 @@ function exactBaseline(job, options, expectedRevision) {
   const reports = files.filter(file => file.isFile() && file.name.endsWith('.md')).map(file => {
     const fullPath = path.join(directory, file.name), content = read(fullPath, options.stateRoot);
     return { path: fullPath, hash: digest(content), fm: parseFrontmatterData(content) || {}, content };
-  }).filter(item => item.fm.type === 'scaffold-report' && item.fm.project_path && path.resolve(options.root, item.fm.project_path) === path.resolve(job.target)
-    && item.fm.contract_fingerprint === data.fingerprint && reportReferencesContract(item.content, data).ok
+  }).filter(item => item.fm.type === 'scaffold-report'
+    && (String(item.fm.scaffold_binding_version || '') === '2'
+      ? item.fm.scaffold_binding_sha256 === reportBinding
+      : !item.fm.scaffold_binding_version && item.fm.project_path && path.resolve(options.root, item.fm.project_path) === path.resolve(job.target) && reportReferencesContract(item.content, data).ok)
+    && item.fm.contract_fingerprint === data.fingerprint
     && item.fm.delivery_git_status === 'initialized' && item.fm.delivery_git_revision === revision.head
     && item.fm.experimental_scaffold === 'false' && item.fm.outcome_approval_evidence === 'valid'
     && item.fm.outcome_spec_id === fm.id && item.fm.outcome_semantic_lock === fm.outcome_semantic_lock && item.fm.outcome_document_lock === fm.outcome_document_lock);

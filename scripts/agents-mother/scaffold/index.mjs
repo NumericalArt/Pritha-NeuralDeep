@@ -16,6 +16,7 @@ import { verifyRepositoryResearchIntegrity } from "../github-research.mjs";
 import { selectSkillsForContract, skillPolicyFor, skillRowForManifest } from "../skills.mjs";
 import { newestArtifactPathsFirst } from "../artifact-selection.mjs";
 import { writeLifecycleReport } from "../lifecycle-report.mjs";
+import { scaffoldReportBinding } from "../scaffold-binding.mjs";
 import { latestOutcomeSpecForContract, verifyOutcomeApproval } from "../outcome-spec.mjs";
 import { assertScaffoldCapability, scaffoldCapability } from "./capabilities.mjs";
 import { withChildTests } from "./tests.mjs";
@@ -1328,7 +1329,7 @@ function scaffoldReportMarkdown(data, projectRoot, createdFiles, smokeResult, op
   const research = options.research || researchReportStatus(data);
   const healthResult = options.healthResult || smokeResult;
   const deliveryGit = options.deliveryGit || { ok: true, status: "not-requested", revision: null };
-  const scaffoldOk = smokeResult.ok && healthResult.ok && deliveryGit.ok;
+  const scaffoldOk = smokeResult.ok && (apiProcess && healthResult.status === "implementation-required" || healthResult.ok) && deliveryGit.ok;
   const externalVerification = externalVerificationStatus(research);
   const gateFields = research.gate?.fields || {};
   const researchFrontmatter = research.gate?.frontmatter || {};
@@ -1463,7 +1464,7 @@ function scaffoldReportMarkdown(data, projectRoot, createdFiles, smokeResult, op
     value100: smokeResult.ok ? "pass" : "fail",
     value101: smokeResult.ok ? "pass" : "fail",
     value102: markdownValue(smokeResult.output, "no output", 1200),
-    value103: healthResult.ok ? "pass" : "fail",
+    value103: apiProcess && healthResult.status === "implementation-required" ? "implementation-required" : healthResult.ok ? "pass" : "fail",
     value104: markdownValue(healthResult.output, "no output", 1200),
     value105: telegramApplicable ? "pending" : "not-applicable",
     value106: telegramApplicable ? "Fill .env and run npm run telegram:healthcheck" : "Telegram not selected",
@@ -1630,7 +1631,8 @@ export function scaffoldContract(contractPath, options = {}) {
       outcome,
       artifactId,
       capability,
-    }),
+    }).replace(/^readiness_scope: scaffold-only$/m, `readiness_scope: scaffold-only\nscaffold_binding_version: 2\nscaffold_binding_sha256: ${scaffoldReportBinding({ root: ROOT, stateRoot: process.env.PRITHA_STATE_ROOT,
+      projectRoot: targetPath, contractPath: data.fullPath, fingerprint: data.fingerprint, outcome, revision: deliveryGit.revision })}`),
     { projectRoot: targetPath, stateRoot: process.env.PRITHA_STATE_ROOT, root: ROOT },
   );
   const reportPath = writtenReport.path;
