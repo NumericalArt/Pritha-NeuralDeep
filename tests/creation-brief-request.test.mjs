@@ -16,14 +16,15 @@ import {listenNeuralDeepAdapter,closeNeuralDeepAdapter} from '../scripts/neurald
 const hash=text=>createHash('sha256').update(text).digest('hex');
 const dialogue=[{role:'user',text:'Русский дайджест из https://example.test/feed. SQLite; максимум 20 материалов; без расписания.'},
   {role:'assistant',text:'Нужен экспорт Markdown?'},{role:'user',text:'Да. Секреты только в привязке Pritha; никаких частных адресов.'}];
-function setup(t,{briefProtocolVersion=1}={}) {
+function setup(t,{briefProtocolVersion=1,revisionInstruction}={}) {
   const stateRoot=mkdtempSync(path.join(os.tmpdir(),'brief-protocol-'));t.after(()=>rmSync(stateRoot,{recursive:true,force:true}));
   const store=new NeuralDeepCoordinationStore({databasePath:path.join(stateRoot,'coord.sqlite')});t.after(()=>store.close());
   const jobs=new AgentCreationStore(store),chatId='chat_brief',draftRoot=creationDraftRoot(stateRoot,'fixture',chatId);
   mkdirSync(draftRoot,{recursive:true});
   let job=jobs.create({chatId,instanceId:'fixture',agentId:'brief-fixture',releaseSha:'a'.repeat(40),target:path.join(stateRoot,'child'),
     draftRoot,tokenBudget:531720,preparationPolicyVersion:2,...(briefProtocolVersion?{briefProtocolVersion}:{})});
-  job=jobs.update(chatId,j=>({...j,status:'running',activeTurnId:'turn_brief'}));
+  job=jobs.update(chatId,j=>({...j,status:'running',activeTurnId:'turn_brief',
+    ...(revisionInstruction?{proposalRevisionPending:true,revisionInstruction,revisionRequestId:'revision-request'}:{})}));
   const packet=prepareCreationContextPacket(job,{restart:true,text:JSON.stringify(dialogue)},{root:process.cwd(),stateRoot,turnId:'turn_brief'});
   job=jobs.update(chatId,j=>({...j,contextPacket:packet}));
   const runId='run_brief';store.beginRuntimeRun({runId,requestHash:hash(runId),receipt:{workload_id:'turn_brief',process_exited:false}});
@@ -57,6 +58,17 @@ test('prepared host brief cannot gain tools, different input or another model be
   assert.throws(()=>f.jobs.update(f.job.chatId,j=>({...j,briefProtocolVersion:undefined})),{code:'creation_policy_immutable'});
   writeFileSync(f.job.contextPacket.path,'{}');
   assert.throws(()=>f.claim(payload),{code:'provider_budget_documents_changed'});
+});
+
+test('UI revision instructions reach the paid request exactly and cannot change after preparation',t=>{
+  const revisionInstruction='Исправь предложение на приложение с LLM. Сохрани RSS, SQLite и лимит 20.\nПодключение NeuralDeep управляется Pritha.';
+  const f=setup(t,{revisionInstruction}),payload=f.gate.prepare(executorPayload);
+  const packet=JSON.parse(payload.input[0].content[0].text);
+  assert.deepEqual(packet.proposalRevision,{requestId:'revision-request',instruction:revisionInstruction});
+  assert.deepEqual(packet.dialogue,dialogue);
+  f.jobs.update(f.job.chatId,j=>({...j,revisionInstruction:'Substituted instruction'}));
+  assert.throws(()=>f.claim(payload),{code:'provider_budget_documents_changed'});
+  assert.equal(f.store.providerUsageSummary(f.runId).providerRequests,0);
 });
 
 test('unsolicited streamed tool call is withheld from CLI; usage is recorded and no next request is sent',async t=>{

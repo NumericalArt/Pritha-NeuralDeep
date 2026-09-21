@@ -171,6 +171,17 @@ protocol; no limit is raised. The opt-in stock CLI check
 `--signal-desk-preparation` measures the full product request through separate
 approvals, revision and large-research checkpoint recovery without a paid call.
 
+An operator's proposal revision must travel with the compact context. Saving
+the instruction only in the job is insufficient: a tool-free brief request
+replaces the general executor prompt, and could otherwise repeat the old brief
+without receiving the requested change. The packet now carries the exact
+revision instruction and request identity; dispatch rejects a changed or stale
+revision. The stock CLI fixture derives its revised answer from the actual
+received packet, rather than inserting the requested change into its answer
+out of band. A regression reproduces missing revision text before the fix.
+An LLM-backed feed uses the LLM application preset; the deterministic feed
+preset is reserved for products without model-generated content.
+
 | Audit | Relevant evidence or preserved requirement |
 |---|---|
 | A — versions | Pinned job release and execution-intent identity; staged release health/chunk checks |

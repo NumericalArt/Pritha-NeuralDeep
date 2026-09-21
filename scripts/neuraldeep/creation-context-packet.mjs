@@ -13,6 +13,8 @@ const hash=value=>createHash('sha256').update(value).digest('hex');
 const read=(file,root,maxBytes=1024*1024)=>readBoundedRegularFile(file,{allowedRoots:[root],maxBytes}).text;
 const fail=(code,message)=>{throw new AgentCreationError(code,message);};
 const evidenceRef=document=>document?{path:document.path,hash:document.hash}:null;
+const proposalRevision=job=>job.proposalRevisionPending
+  ? {requestId:job.revisionRequestId,instruction:job.revisionInstruction} : null;
 export function creationSemanticProgress(job,research=null) {
   // Retrieval times, filesystem times and "done" messages are not progress.
   return hash(JSON.stringify({brief:job.preparation?.briefHash || null,contract:job.contract?.hash||null,outcome:job.outcome?.hash||null,
@@ -46,6 +48,7 @@ export function prepareCreationContextPacket(job,dialogue,options) {
     ...(job.researchProtocolVersion ? {researchProtocolVersion:job.researchProtocolVersion} : {}),
     generation:creationGeneration(job),releaseSha:job.releaseSha,policyVersion:2,phase,workUnitId:options.turnId,
     dialogue:JSON.parse(dialogue.text),brief:job.preparation?.brief||null,
+    ...(job.proposalRevisionPending ? {proposalRevision:proposalRevision(job)} : {}),
     documents:{contract:evidenceRef(job.contract),outcome:evidenceRef(job.outcome)},approvals:job.approvals,
     research:research?{topics:research.topics,facts:research.facts,rules:research.rules,remaining:research.remaining,gate:research.gate}:null,
     checkpoint:creationCheckpointSummary(job),limits:job.preparationPolicy,progressHash,
@@ -66,6 +69,7 @@ export function readCreationContextPacket(job,options) {
     || packet.releaseSha!==job.releaseSha || packet.policyVersion!==2 || packet.workUnitId!==ref.workUnitId
     || packet.phase!==preparationPhase(creationPhase(job)) || packet.briefProtocolVersion!==job.briefProtocolVersion
     || packet.researchProtocolVersion!==job.researchProtocolVersion)fail('creation_context_changed');
+  if(JSON.stringify(packet.proposalRevision||null)!==JSON.stringify(proposalRevision(job)))fail('creation_context_revision_changed');
   for(const kind of ['contract','outcome']) {
     const document=packet.documents[kind];
     if(document && (job[kind]?.hash!==document.hash || job[kind]?.path!==document.path || hash(read(document.path,options.stateRoot))!==document.hash))fail('creation_context_document_changed');

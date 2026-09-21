@@ -93,7 +93,16 @@ globalThis.fetch=async(url,init)=>{
   if(mode.startsWith('research'))assert.ok(bytes<96*1024);
   if(mode==='research-resumed'&&modeRequests===1){assert.ok(!input.includes('OLD_LARGE_OUTPUT_'));assert.ok(input.includes('Controlled primary fixture'));}
   let answer='Completed the controlled work.',command;
-  if(mode==='brief'||mode==='brief-revised')answer='```pritha-brief-json\n'+JSON.stringify(brief)+'\n```';
+  if(mode==='brief'||mode==='brief-revised') {
+    const proposed=structuredClone(brief);
+    if(mode==='brief-revised') {
+      const packet=JSON.parse(payload.input[0].content[0].text);
+      assert.equal(packet.proposalRevision?.instruction,job.revisionInstruction,'the actual provider request contains the exact operator revision');
+      assert.equal(packet.proposalRevision?.requestId,job.revisionRequestId);
+      proposed.constraints.push(packet.proposalRevision.instruction);
+    }
+    answer='```pritha-brief-json\n'+JSON.stringify(proposed)+'\n```';
+  }
   if(mode.startsWith('brief')) {
     assert.equal(payload.tool_choice,'none');assert.deepEqual(payload.tools,[]);
     assert.ok(bytes<16*1024,'brief contains exact product context, not the coding executor');
@@ -183,7 +192,6 @@ try {
   jobs.beginAction(chatId,revision);
   const revised=reviseCreationProposal(job,revision,{...options,coordination:store});
   job=jobs.update(chatId,()=>revised);jobs.finishAction(chatId,revision.requestId,job);
-  brief.constraints.push(revision.reason);
   await prepRun('brief-revised');assert.equal(job.status,'awaiting_contract_approval');assert.equal(job.proposalRevisionPending,false);
   assert.ok(job.contract.text.includes(revision.reason));assert.ok(job.budget.tokensUsed>priorTokens);approve('contract');
   const afterRevision=requests.length;job=jobs.update(chatId,j=>reconcileCreationArtifacts({...j,...prepareCreationOutcome(j,options)},options));
