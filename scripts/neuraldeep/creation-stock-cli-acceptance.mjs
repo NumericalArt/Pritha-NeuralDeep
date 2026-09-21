@@ -15,6 +15,7 @@ const reportPath=reportIndex>=0?path.resolve(process.argv[reportIndex+1]):null;
 const briefToolViolation=process.argv.includes('--brief-tool-violation');
 const signalDeskPreparation=process.argv.includes('--signal-desk-preparation');
 const expandedDialogue=process.argv.includes('--expanded-dialogue');
+const researchReadLoop=process.argv.includes('--research-read-loop');
 const {preparationAnswers,detailedCriteria}=await import('../../tests/fixtures/creation-dialogue-sequence.mjs');
 const root=realpathSync(fileURLToPath(new URL('../..',import.meta.url))),load=relative=>import(pathToFileURL(path.join(root,relative)));
 process.chdir(root);
@@ -122,6 +123,10 @@ globalThis.fetch=async(url,init)=>{
   if(mode==='research' && modeRequests===2)command=importCommand(currentResearch.topics.slice(0,1),Math.max(48000,110*1024-bytes-10000));
   if(mode==='research' && modeRequests>=3 && modeRequests<=6)command=`${quote(process.execPath)} -e ${quote(`process.stdout.write('iteration-${modeRequests}:OLD_LARGE_OUTPUT_'.repeat(4000))`)}`;
   if(mode==='research-resumed' && modeRequests===1)command=importCommand(currentResearch.topics);
+  if(mode==='research' && researchReadLoop) {
+    const artifact=readCreationContextPacket(job,{stateRoot}).packet.artifacts.find(item=>item.id==='research');
+    command=`${quote(process.execPath)} ${quote(path.join(workspace.cwd,'scripts/creation-context-reader.mjs'))} --packet ${job.contextPacket.hash} --artifact research --hash ${artifact.contentHash} --cursor ${(modeRequests-1)*4096}`;
+  }
   if(mode==='build' && modeRequests===1) {
     const content=builds===1?"console.log('Smoke test passed.');\n":implementation;
     command=`${quote(process.execPath)} -e ${quote(`require('node:fs').writeFileSync('scripts/refresh.mjs',${JSON.stringify(content)})`)}`;
@@ -218,7 +223,17 @@ try {
   const reportFile=currentResearch.artifacts.find(item=>item.id==='research').path;
   let text=readFileSync(reportFile,'utf8');while(Buffer.byteLength(text)+currentResearch.artifacts.find(item=>item.id==='patterns').bytes<90*1024)text+='\nSynthetic non-private evidence volume for bounded context acceptance.';
   text=text.replace(/^research_content_lock:.*$/m,`research_content_lock: ${markdownDocumentLock(text)}`);writeFileSync(reportFile,text);
-  await prepRun('research');assert.equal(job.status,'pending');assert.equal(job.preparationRotations.research,1);
+  await prepRun('research');
+  if(researchReadLoop) {
+    assert.equal(job.status,'blocked');assert.equal(job.blocker.code,'provider_budget_no_progress');assert.equal(job.autoContinue,false);
+    assert.equal(requests.filter(request=>request.mode==='research').length,3,'different page cursors must stop before the fourth provider request');
+    const usage=creationPreparationUsage(store,job);assert.equal(usage.unknownRequests,0);assert.equal(usage.pendingRequests,0);
+    assert.equal(readCreationResearch(job,{root:workspace.cwd,stateRoot}).checked.length,0);
+    const commands=history.turn(chatId,`turn_${turnNumber}`).items.filter(item=>item.kind==='command');assert.equal(commands.length,3);
+    const report={status:'pass',sha,negativeControl:'sequential distinct local pages without verified progress',paidCalls:0,requests,preparation:usage,commandCount:commands.length,blocker:job.blocker.code};
+    if(reportPath)writeFileSync(reportPath,JSON.stringify(report,null,2));console.error(JSON.stringify(report));passed=true;
+  } else {
+  assert.equal(job.status,'pending');assert.equal(job.preparationRotations.research,1);
   await prepRun('research-resumed');assert.equal(job.researchAttemptCompleted,true,JSON.stringify(readCreationResearch(job,{root:workspace.cwd,stateRoot}).gate));
   job=jobs.update(chatId,j=>reconcileCreationArtifacts(j,options));
   if(signalDeskPreparation){
@@ -245,6 +260,7 @@ try {
     nativeSessions:sessions.length,preparation:usage,requests,builds,zeroOutcomeRequests:true,reviewedRevision:true,checkpointRotation:true,independentNegativeControl:true,adopted:true,acceptance:'not_accepted'};
   if(reportPath){mkdirSync(path.dirname(reportPath),{recursive:true});writeFileSync(reportPath,JSON.stringify(report,null,2),{mode:0o600});}
   console.error(JSON.stringify(report));passed=true;
+  }
   }
   }
 } finally {

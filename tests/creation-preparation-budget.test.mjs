@@ -109,3 +109,26 @@ test('reads preceding verified progress do not poison later distinct work, but a
   f.dispatch([...input,{type:'function_call',call_id:'c',name:'exec_command',arguments:'{"cmd":"node verify-new-evidence.mjs"}'}]);
   assert.throws(()=>gate.prepare({model:'fixture',input:[...input,read('d')]}),{code:'provider_budget_no_progress'});
 });
+
+test('distinct local pages cannot spend another request without verified progress',t=>{
+  const f=setup(t),{gate}=f.start(1);f.dispatch('start');
+  const page=(cursor,id=String(cursor))=>({type:'function_call',call_id:id,name:'exec_command',
+    arguments:JSON.stringify({cmd:`node creation-context-reader.mjs --artifact research --cursor ${cursor}`})});
+  const first=[page(0)];f.dispatch(first);f.dispatch([...first,page(4096)]);
+  assert.throws(()=>gate.prepare({model:'fixture',input:[...first,page(4096),page(8192)]}),{code:'provider_budget_no_progress'});
+  assert.equal(f.store.providerUsageSummary('run_1').providerRequests,3);
+  assert.equal(creationPreparationUsage(f.store,f.jobs.get(f.initial.chatId)).confirmedTotal,300);
+});
+
+test('local read allowance survives a new native session and resets only with verified content',t=>{
+  const f=setup(t);f.start(1);f.dispatch('start');
+  const read=(file,id)=>({type:'function_call',call_id:id,name:'exec_command',arguments:JSON.stringify({cmd:`cat ${file}`})});
+  f.dispatch([read('research.md','a')]);f.complete(200);
+  f.start(2);f.dispatch('fresh context is not progress');f.dispatch([read('patterns.md','b')]);f.complete(200);
+  const third=f.start(3);
+  assert.throws(()=>third.gate.prepare({model:'fixture',input:[read('different-page.md','c')]}),{code:'provider_budget_no_progress'});
+  f.jobs.update(f.initial.chatId,j=>({...j,preparation:{briefHash:'d'.repeat(64)}}));
+  f.dispatch([read('different-page.md','c')]);
+  f.dispatch([read('different-page.md','c'),read('new-evidence.md','d')]);
+  assert.equal(creationPreparationUsage(f.store,f.jobs.get(f.initial.chatId)).confirmedTotal,600);
+});

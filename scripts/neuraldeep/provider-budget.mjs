@@ -8,6 +8,9 @@ import {prepareCreationResearchRequest} from './creation-research-request.mjs';
 
 const OUTPUT_LIMIT = 16_384;
 const FRAMING_RESERVE = 8_192;
+// Two local read follow-ups can clarify an evidence reference. A third requires
+// a host-validated brief/document/fact, not a new cursor or native session.
+const LOCAL_READS_WITHOUT_PROGRESS = 2;
 const fail = (code, message) => { throw Object.assign(new Error(message), { code, statusCode: 409 }); };
 const count = value => Number.isSafeInteger(value) && value >= 0;
 
@@ -142,7 +145,17 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
     }
     const previous=store.db.prepare('SELECT metadata FROM provider_dispatches WHERE run_id=? ORDER BY rowid DESC LIMIT 1').get(runId);
     const previousBudget=previous?JSON.parse(previous.metadata).budget:null;
+    const phasePrevious=store.db.prepare(`SELECT metadata FROM provider_dispatches
+      WHERE json_extract(metadata,'$.creation.jobId')=? AND json_extract(metadata,'$.creation.phase')=?
+      ORDER BY rowid DESC LIMIT 1`).get(current.job.jobId,current.phase);
+    const phaseBudget=phasePrevious?JSON.parse(phasePrevious.metadata).budget:null;
     current.readCounts=readCounts;
+    const newReads=Object.entries(readCounts).reduce((total,[signature,reads])=>total+Math.max(0,reads-(previousBudget?.readCounts?.[signature]||0)),0);
+    const progressChanged=phaseBudget && phaseBudget.progressHash!==current.progressHash;
+    const priorDebt=phaseBudget?.localReadsWithoutProgress ?? Object.values(phaseBudget?.readCounts||{}).reduce((sum,n)=>sum+n,0);
+    current.localReadsWithoutProgress=progressChanged?0:priorDebt+newReads;
+    if(current.localReadsWithoutProgress>LOCAL_READS_WITHOUT_PROGRESS)
+      fail('provider_budget_no_progress','Local evidence paging produced no verified preparation progress.');
     const newRepeatedRead=Object.entries(readCounts).some(([signature,count])=>count>1 && count>(previousBudget?.readCounts?.[signature]||0));
     if(newRepeatedRead && previousBudget?.progressHash===current.progressHash)
       fail('provider_budget_no_progress','Repeated reads produced no verified preparation progress.');
@@ -190,7 +203,7 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
       if(current && (output>current.job.preparationPolicy.outputTokens || event.bytes!==Buffer.byteLength(JSON.stringify(event.payload))))fail('provider_budget_preparation_invalid','Preparation request or response bound changed.');
       return { model: event.model, bytes: event.bytes,
         ...(current?{creation:{jobId:current.job.jobId,generation:current.job.generation,...creation.preparation}}:{}),
-        budget: { reservation: reserved, outputLimit: output, available, basis: 'utf8-text-plus-framing-v1',...(current?{progressHash:current.progressHash,readCounts:current.readCounts}:{}) } };
+        budget: { reservation: reserved, outputLimit: output, available, basis: 'utf8-text-plus-framing-v1',...(current?{progressHash:current.progressHash,readCounts:current.readCounts,readGuardVersion:1,localReadsWithoutProgress:current.localReadsWithoutProgress}:{}) } };
     }),
     validateResponse: (body,contentType) => {if(isBrief())validateCreationBriefResponse(body,contentType);},
   };

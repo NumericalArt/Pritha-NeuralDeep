@@ -77,6 +77,24 @@ proposal revision or Continue action does not reset accounting. Repeated reads
 without semantic progress stop dispatch. Timestamps and a model's claim of
 completion do not count as progress.
 
+Distinct cursors must not bypass the read guard. The host now allows at most
+two local-read follow-up requests per unchanged semantic checkpoint. This
+counter is stored in the existing dispatch ledger and survives native-session
+changes; replayed old tool history does not count again. A validated new brief,
+document or research fact resets the counter. Different filenames, cursor
+values and shell whitespace do not reset it. The original exact-repeat guard
+also remains active. The guard bounds paid continuation; it does not claim to
+prevent every possible filesystem read inside a shell command.
+
+A real UI trial passed one-call brief preparation, both separate approvals,
+zero-call Outcome generation and the 64 KiB initial research boundary. It then
+paged local evidence five times without checking an external source. That
+attempt remained blocked and was not restarted. The local stock-CLI negative
+control (`--research-read-loop`) reproduces distinct sequential 4 KiB pages and
+requires a diagnostic stop before the fourth research provider request, with
+known usage and no automatic continuation. Product creation and its full UI
+acceptance remain incomplete; this guard is not proof of successful research.
+
 The creation card presents phase use, actual request counts, prepared request
 bytes, conservative reservation, remaining research topics and the precise
 blocker. Pending/unknown use is explicit. A final receipt replaces provisional
