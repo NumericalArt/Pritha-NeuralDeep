@@ -18,6 +18,17 @@ import {AgentCreationError} from './agent-creation-store.mjs';
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const read=(file,root)=>readBoundedRegularFile(file,{allowedRoots:[root],maxBytes:1024*1024}).text;
 const fail=(code,message)=>{throw new AgentCreationError(code,message);};
+function compactRules(pattern) {
+  // Both the payload and this authored body have already passed their full locks.
+  const sections=new Map([...pattern.text.matchAll(/^### (pattern-\d+):[^\n]*\n([\s\S]*?)(?=^### |^## |$(?![\s\S]))/gm)].map(match=>[match[1],match[2]]));
+  return pattern.payload.patterns.map(item=>{
+    const section=sections.get(item.id);
+    if(!section)fail('creation_research_pattern_section_missing');
+    const field=name=>section.match(new RegExp(`^- ${name}: (.*)$`,'m'))?.[1] || null;
+    return {id:item.id,path:item.path,heading:item.heading,kind:item.kind,status:item.status,
+      applicability:field('Applicability'),evidence:field('Evidence snippet')};
+  });
+}
 function researchCommand(job,options) {
   return new Promise((resolve,reject)=>{
     const child=spawn(process.execPath,[path.join(options.root,'scripts/pritha.mjs'),'research',job.contract.path],{
@@ -84,7 +95,7 @@ export function readCreationResearch(job,options) {
   const gate=researchGateDecisionForReport(data,report.text,{stateRoot:options.stateRoot,artifactRoots:[job.draftRoot]});
   return {topics,facts,checked,remaining:topics.filter(topic=>topic.required!==false && !checked.includes(topic.id)).map(topic=>topic.id),
     gate:{ok:gate.ok,status:gate.status,reasons:gate.reasons},
-    rules:pattern.payload.patterns.map(item=>({id:item.id,path:item.path,heading:item.heading,kind:item.kind,status:item.status})),
+    rules:compactRules(pattern),
     artifacts:[{id:'research',path:report.file,hash:hash(report.text),bytes:Buffer.byteLength(report.text)},
       {id:'patterns',path:pattern.path,hash:hash(pattern.text),bytes:Buffer.byteLength(pattern.text)}]};
 }

@@ -70,6 +70,20 @@ test('creation context retains native resume for attachments or legacy history a
   f.store.put(binding('chat_legacy'), { legacy: true }); f.store.putTurn('chat_legacy', turn(1));
   assert.equal(f.store.creationContext('chat_legacy', 'turn_1').restart, false);
 });
+test('host packet excludes a large structured brief but preserves surrounding questions and every user byte', t => {
+  const f=fixture(t); f.store.put({...binding(),creationWorkflowVersion:1});
+  const question='Сколько материалов включать в дайджест?';
+  const structured='```pritha-brief-json\n'+JSON.stringify({goal:'Long technical draft '.repeat(4000)})+'\n```';
+  const first=turn(1,[message('brief_question',structured+'\n'+question)]);
+  first.userMessage.markdown='Оба публичных RSS источника и SQLite обязательны.';
+  f.store.putTurn('chat_test',first);
+  const second=turn(2);second.userMessage.markdown='Не более двадцати материалов.';f.store.putTurn('chat_test',second);
+  const before=f.store.verifySource();
+  const context=f.store.creationContext('chat_test','turn_2',1000,{preparationVersion:2});
+  assert.ok(context.text.includes(first.userMessage.markdown));assert.ok(context.text.includes(second.userMessage.markdown));
+  assert.ok(context.text.includes(question));assert.ok(!context.text.includes('Long technical draft'));
+  assert.deepEqual(f.store.verifySource(),before);
+});
 test('explicit commentary is visible in activity while final and unclassified answers retain their place', t => {
   const f = fixture(t), progress = message('progress', 'Checking the result for you.'), answer = message('answer', 'Done.');
   progress.message.phase = 'commentary'; answer.message.phase = 'final_answer';

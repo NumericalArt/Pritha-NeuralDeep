@@ -41,5 +41,5 @@ export function creationPreparationUsage(store,job) {
   return {version:2,phase,phaseRemaining:{brief:Math.max(0,policy.briefTokens-phase.brief),research:Math.max(0,policy.researchTokens-phase.research)},
     total,remaining:Math.max(0,policy.totalTokens-total),requests:rows.length,requestsRemaining:Math.max(0,policy.maxRequests-rows.length),
     pendingRequests:pending,unknownRequests:unknown,unsettledKnown,confirmedTotal:job.budget.tokensUsed+unsettledKnown,
-    deliveryProtected:policy.deliveryTokens,availableForDelivery:Math.max(0,job.budget.maxTokens-total)};
+    deliveryProtected:policy.deliveryTokens,availableForDelivery:pending||unknown?null:Math.max(0,job.budget.maxTokens-total)};
 }

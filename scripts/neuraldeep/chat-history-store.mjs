@@ -418,13 +418,13 @@ export class NeuralDeepChatHistoryStore {
     // Media/file history has a separate transport; never silently drop it.
     if (rows.some(row => parse(row.meta).userMessage?.attachments?.length)) return { restart: false, text: null, hash: null };
     let used = 0;
-    const body = id => {
+    const body = (id, classify = false) => {
       const info = this.statement('SELECT bytes,parts FROM texts WHERE hash=?').get(id);
-      if (!info || info.bytes > maxBytes - used) oversized();
+      if (!info || info.bytes > (classify ? 128_000 : maxBytes - used)) oversized();
       const parts = this.statement('SELECT text FROM text_parts WHERE hash=? ORDER BY part').all(id);
       const value = parts.map(part => part.text).join('');
       if (parts.length !== info.parts || Buffer.byteLength(value) !== info.bytes || hash(value) !== id) throw new ChatHistoryError('history_source_corrupt', 'Исходный текст не прошёл проверку целостности.');
-      used += info.bytes; return value;
+      if (!classify) used += info.bytes; return value;
     };
     const dialogue = [];
     for (const row of rows) {
@@ -434,8 +434,10 @@ export class NeuralDeepChatHistoryStore {
       if (answers.length > 256) oversized();
       for (const answer of answers) {
         // Structured proposals already live in the host packet; keep conversational questions verbatim.
-        const text=body(answer.body);
-        if(options.preparationVersion===2 && /```pritha-(?:brief|research)-json\s*\n/.test(text)) {used-=Buffer.byteLength(text);continue;}
+        const classify=options.preparationVersion===2;
+        const original=body(answer.body,classify);
+        const text=classify?original.replace(/```pritha-(?:brief|research)-json[^\S\n]*\n[\s\S]*?```/g,''):original;
+        if (classify) { used+=Buffer.byteLength(text); if(used>maxBytes)oversized(); if(!text.trim())continue; }
         dialogue.push({ turnId: row.id, role: 'assistant', text });
       }
     }

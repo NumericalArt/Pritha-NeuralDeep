@@ -122,7 +122,7 @@ export function AgentCreationProgress({ chatId, refreshKey }: { chatId: string; 
     {job.preparation ? <div aria-label="Расход подготовки">
       <p>Подготовка: подтверждено {job.preparation.total.toLocaleString("ru-RU")} / {job.preparation.limits.totalTokens.toLocaleString("ru-RU")} токенов. Запросы: {job.preparation.requests} / {job.preparation.limits.maxRequests}.</p>
       <ul>{([['brief','Brief и пересмотры'],['research','Research']] as const).map(([key,label])=><li key={key}>{label}: {job.preparation!.phase[key].toLocaleString("ru-RU")} токенов; остаток {job.preparation!.phaseRemaining[key].toLocaleString("ru-RU")}.</li>)}</ul>
-      <p>Для реализации после подготовки доступно {job.preparation.availableForDelivery.toLocaleString("ru-RU")} токенов; защищённый ресурс — {job.preparation.deliveryProtected.toLocaleString("ru-RU")}.</p>
+      <p>Для реализации после подготовки: {job.preparation.availableForDelivery === null ? "остаток уточняется" : `${job.preparation.availableForDelivery.toLocaleString("ru-RU")} токенов`}; защищённый ресурс — {job.preparation.deliveryProtected.toLocaleString("ru-RU")}.</p>
       {job.preparation.pendingRequests ? <p role="status">Ожидают ответа: {job.preparation.pendingRequests}. Их итоговый расход пока неизвестен.</p> : null}
       {job.preparation.unknownRequests ? <p role="alert">Запросы с неизвестным расходом: {job.preparation.unknownRequests}. Следующая отправка запрещена.</p> : null}
       {job.preparation.research ? <p>Research: проверено тем {job.preparation.research.checked.length}; осталось {job.preparation.research.remaining.length}{job.preparation.research.remaining.length ? ` (${job.preparation.research.remaining.join(', ')})` : ''}.</p> : null}

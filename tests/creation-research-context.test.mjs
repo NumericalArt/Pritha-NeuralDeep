@@ -59,6 +59,7 @@ test('90 KiB research is prepared once, checked fully and read in bounded hash-b
   await prepareCreationResearch(f.job,{...f.options,command:f.command});
   await prepareCreationResearch(f.job,{...f.options,command:f.command});assert.equal(f.localCalls(),1);
   const research=readCreationResearch(f.job,f.options);assert.equal(research.remaining.length,f.topics.length);assert.equal(research.gate.ok,false);
+  assert.ok(research.rules.some(rule=>rule.evidence.includes('preserve successful data')));
   const dialogue={restart:true,text:JSON.stringify([{role:'user',text:'Keep the full original request, both feed URLs, Russian text and up to 20 items.'}])};
   const ref=prepareCreationContextPacket(f.job,dialogue,{...f.options,turnId:'turn_research'}),job={...f.job,contextPacket:ref};
   const packet=readCreationContextPacket(job,f.options);
