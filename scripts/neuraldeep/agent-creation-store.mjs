@@ -46,6 +46,7 @@ export class AgentCreationStore {
   }
   create(input) {
     if (input.preparationPolicyVersion !== undefined && input.preparationPolicyVersion !== 2) throw new AgentCreationError('creation_policy_invalid');
+    if (input.briefProtocolVersion !== undefined && (input.briefProtocolVersion !== 1 || input.preparationPolicyVersion !== 2)) throw new AgentCreationError('creation_policy_invalid');
     if (![input.chatId,input.instanceId,input.agentId].every(value => ID.test(value || ''))
       || !/^[a-f0-9]{40}$/.test(input.releaseSha || '')) throw new AgentCreationError('creation_identity_invalid');
     const tokenBudget = input.tokenBudget === undefined ? 1_000_000 : input.tokenBudget;
@@ -72,6 +73,7 @@ export class AgentCreationStore {
         record.preparationPolicy = creationPreparationPolicy(tokenBudget);
         record.documentIdentity = creationDocumentIdentity(record);
       }
+      if (input.briefProtocolVersion === 1) record.briefProtocolVersion = 1;
       this.db.prepare('INSERT INTO agent_creation_jobs VALUES(?,?,?,?,?)').run(input.chatId,input.instanceId,input.agentId,1,JSON.stringify(record));
       return record;
     });
@@ -82,6 +84,7 @@ export class AgentCreationStore {
       if (!current) throw new AgentCreationError('creation_not_found', 'Задача создания не найдена.', 404);
       if (expectedRevision !== null && current.revision !== expectedRevision) throw new AgentCreationError('creation_revision_stale', 'Состояние изменилось. Обновите карточку.');
       const changed = update(structuredClone(current));
+      if (changed.briefProtocolVersion !== current.briefProtocolVersion) throw new AgentCreationError('creation_policy_immutable');
       if (changed.chatId !== current.chatId || changed.agentId !== current.agentId || changed.instanceId !== current.instanceId || changed.releaseSha !== current.releaseSha) {
         throw new AgentCreationError('creation_identity_immutable');
       }

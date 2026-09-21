@@ -49,6 +49,7 @@ export function creationPreparationView(store,job) {
   const blocker=job.preparationStop || job.blocker;
   return {preparation:{...preparation,limits:job.preparationPolicy,research:job.researchProgress || null},
     context:{bytes:prepared?.bytes ?? null,packetBytes:job.contextPacket?.bytes ?? null,reservation:prepared?.reservation ?? null,
+      requestMode:prepared?.requestMode,sourceBytes:prepared?.sourceBytes,
       outputLimit:prepared?.outputLimit ?? null,freshLimit:job.preparationPolicy.freshBytes,rotationLimit:job.preparationPolicy.rotationBytes,hardLimit:job.preparationPolicy.hardBytes},
     nextDispatch:{status:blocker || preparation.pendingRequests || preparation.unknownRequests?'blocked':prepared?'checked':'unprepared',
       reason:blocker?.message || (preparation.pendingRequests?'Ожидается ответ текущего запроса.':preparation.unknownRequests?'Расход запроса неизвестен.':!prepared?'Полный запрос ещё не подготовлен.':'Следующий запрос будет проверен повторно перед отправкой.')}};

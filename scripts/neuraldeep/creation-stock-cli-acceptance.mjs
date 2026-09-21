@@ -12,6 +12,7 @@ if(!process.argv.includes('--synthetic'))throw Error('synthetic_required');
 const reportIndex=process.argv.indexOf('--report');
 if(reportIndex>=0 && (!process.argv[reportIndex+1] || process.argv[reportIndex+1].startsWith('--')))throw Error('report_path_required');
 const reportPath=reportIndex>=0?path.resolve(process.argv[reportIndex+1]):null;
+const briefToolViolation=process.argv.includes('--brief-tool-violation');
 const root=realpathSync(fileURLToPath(new URL('../..',import.meta.url))),load=relative=>import(pathToFileURL(path.join(root,relative)));
 process.chdir(root);
 const {NeuralDeepCoordinationStore,neuralDeepCoordinationPaths}=await load('scripts/neuraldeep/coordination-store.mjs');
@@ -43,7 +44,7 @@ writeFileSync(path.join(home,'config.toml'),`model = "fixture-model"\nmodel_prov
 const runtime=neuralDeepRuntimeConfig(process.env),store=new NeuralDeepCoordinationStore(neuralDeepCoordinationPaths(stateRoot,root)),jobs=new AgentCreationStore(store);
 const chatId='chat_stockcreation',instanceId='stock-creation-fixture',draftRoot=creationDraftRoot(stateRoot,instanceId,chatId),target=path.join(agentParent,'stock-fixture');
 mkdirSync(draftRoot,{recursive:true});mkdirSync(target);
-let job=jobs.create({chatId,instanceId,agentId:'stock-fixture',target,draftRoot,releaseSha:sha,preparationPolicyVersion:2});
+let job=jobs.create({chatId,instanceId,agentId:'stock-fixture',target,draftRoot,releaseSha:sha,preparationPolicyVersion:2,briefProtocolVersion:1});
 const workspace=await new NeuralDeepExecutionWorkspaces(store,{stateRoot}).prepare({ownerId:chatId,sourcePath:root,mutating:true,expectedCommit:sha,requireClean:true});
 const options={root,stateRoot,sourceRoot:workspace.cwd,sourceRevision:sha,agentParent,model:'fixture-model',effort:null};
 const history=new NeuralDeepChatHistoryStore({databasePath:path.join(stateRoot,'history.sqlite'),instanceScope:instanceId});
@@ -87,6 +88,13 @@ globalThis.fetch=async(url,init)=>{
   if(mode==='research-resumed'&&modeRequests===1){assert.ok(!input.includes('OLD_LARGE_OUTPUT_'));assert.ok(input.includes('Controlled primary fixture'));}
   let answer='Completed the controlled work.',command;
   if(mode==='brief')answer='```pritha-brief-json\n'+JSON.stringify(brief)+'\n```';
+  if(mode.startsWith('brief')) {
+    assert.equal(payload.tool_choice,'none');assert.deepEqual(payload.tools,[]);
+    assert.ok(bytes<16*1024,'brief contains exact product context, not the coding executor');
+    assert.ok(input.includes(product));
+    if(mode==='brief-invalid')answer='Preparing the brief now.';
+    if(briefToolViolation)command=`${quote(process.execPath)} -e ${quote("require('node:fs').writeFileSync('tool-must-not-run','unexpected')")}`;
+  }
   if(mode==='research' && modeRequests===1) {
     const artifact=readCreationContextPacket(job,{stateRoot}).packet.artifacts.find(item=>item.id==='patterns');
     command=`${quote(process.execPath)} ${quote(path.join(workspace.cwd,'scripts/creation-context-reader.mjs'))} --packet ${job.contextPacket.hash} --artifact patterns --hash ${artifact.contentHash} --cursor 0`;
@@ -112,11 +120,12 @@ globalThis.fetch=async(url,init)=>{
 };
 async function prepRun(nextMode) {
   mode=nextMode;modeRequests=0;const turnId=`turn_${++turnNumber}`,attemptId=`attempt_${turnId}`;
+  const isBrief=nextMode.startsWith('brief');
   const turn={turnId,clientMessageId:turnId,status:'queued',items:[],pendingRequestIds:[],startedAt:new Date().toISOString(),completedAt:null,error:null,
     userMessage:{id:`user_${turnId}`,role:'user',markdown:turnNumber===1?product:'Continue the host checkpoint.',status:'completed',createdAt:new Date().toISOString()}};
   turn.executionIntent={creationOrigin:turnNumber===1?undefined:'host-continuation'};history.putTurn(chatId,turn);
   const dialogue=history.creationContext(chatId,turnId,64000,{preparationVersion:2});
-  job=jobs.update(chatId,j=>({...j,status:'running',phase:nextMode==='brief'?'interview':'research',activeTurnId:turnId,blocker:null}));
+  job=jobs.update(chatId,j=>({...j,status:'running',phase:isBrief?'interview':'research',activeTurnId:turnId,blocker:null}));
   const packet=prepareCreationContextPacket(job,dialogue,{root:workspace.cwd,stateRoot,turnId});job=jobs.update(chatId,j=>({...j,contextPacket:packet}));
   const intent={attemptId,agentCreationRequested:true,executionAgentTarget:target,sandbox:'workspace-write',modelId:'fixture-model',effortId:null,
     creationGeneration:1,creationSession:{mode:'checkpoint',previousSessionId:lastSession,contextHash:dialogue.hash},
@@ -137,9 +146,9 @@ async function prepRun(nextMode) {
   const receipt=creationRuntimeReceipt(store,turnId);assert.ok(receipt.processExited);assert.notEqual(receipt.tokens,null);
   store.finish(attemptId,claim.ownerToken,result.code===0?'completed':'failed');
   history.mutateTurn(chatId,turnId,t=>({...t,status:result.code===0?'completed':'failed',completedAt:new Date().toISOString()}));
-  job=jobs.recordTurn(chatId,{turnId,tokens:receipt.tokens,activeMs:1,dispatched:true,ok:result.code===0,checkpoint:{turnId,phase:job.phase}});
-  if(nextMode==='brief')job=jobs.update(chatId,j=>reconcileCreationArtifacts(completeCreationBrief(j,history.originalAssistantText(chatId,turnId),{root,stateRoot,turnId}),options));
-  else job=jobs.update(chatId,j=>settleCreationPreparation(j,receipt,{root:workspace.cwd,stateRoot,phase:'research'}));
+  job=jobs.recordTurn(chatId,{turnId,tokens:receipt.tokens,activeMs:1,dispatched:true,ok:result.code===0,code:receipt.blocker?.code,checkpoint:{turnId,phase:job.phase}});
+  if(isBrief && result.code===0)job=jobs.update(chatId,j=>reconcileCreationArtifacts(completeCreationBrief(j,history.originalAssistantText(chatId,turnId),{root,stateRoot,turnId}),options));
+  else job=jobs.update(chatId,j=>settleCreationPreparation(j,receipt,{root:workspace.cwd,stateRoot,phase:isBrief?'interview':'research'}));
   console.error(JSON.stringify({step:nextMode,code:result.code,status:job.status,blocker:job.blocker,usage:job.budget.tokensUsed,requests:modeRequests}));
   return result;
 }
@@ -147,6 +156,17 @@ function approve(kind){job=jobs.update(chatId,j=>approveCreationDocument(reconci
   {action:`approve_${kind}`,requestId:`approve_${kind}`,expectedRevision:j.revision,actor:'codex-operator',authorizationBasis:'Synthetic local stock CLI acceptance'},options));}
 let passed=false;
 try {
+  if(briefToolViolation) {
+    const result=await prepRun('brief');assert.notEqual(result.code,0);
+    assert.equal(requests.length,1);assert.equal(job.blocker.code,'provider_budget_brief_tool_call');
+    assert.equal(history.turn(chatId,'turn_1').items.filter(item=>item.kind==='command').length,0);
+    assert.equal((await import('node:fs')).existsSync(path.join(draftRoot,'tool-must-not-run')),false);
+    const usage=creationPreparationUsage(store,job);assert.ok(usage.total>0);assert.equal(usage.unknownRequests,0);assert.equal(usage.pendingRequests,0);
+    const report={status:'pass',sha,paidCalls:0,negativeControl:'unsolicited brief tool call',requests,preparation:usage,commandExecuted:false};
+    if(reportPath){mkdirSync(path.dirname(reportPath),{recursive:true});writeFileSync(reportPath,JSON.stringify(report,null,2),{mode:0o600});}
+    console.error(JSON.stringify(report));passed=true;
+  } else {
+  await prepRun('brief-invalid');assert.equal(job.status,'pending');assert.equal(job.preparation.briefRepairCount,1);
   await prepRun('brief');assert.equal(job.status,'awaiting_contract_approval');approve('contract');
   const count=requests.length;job=jobs.update(chatId,j=>reconcileCreationArtifacts({...j,...prepareCreationOutcome(j,options)},options));
   assert.equal(requests.length,count);assert.equal(job.status,'awaiting_outcome_approval');approve('outcome');
@@ -169,13 +189,14 @@ try {
       return {status:'completed',thread_id:run.sessionId,turn_id:run.runId,tokens_used:run.usageRecord.usage.totalTokens};
     },{name:'stock-codex-cli-local-provider'})});
   assert.equal(builds,2,'stdout-only project must fail before actual source behavior passes');assert.equal(result.adopted,true,JSON.stringify(result.blocker));
-  assert.equal(new Set(sessions).size,3);
+  assert.equal(new Set(sessions).size,4);
   const usage=creationPreparationUsage(store,job);assert.ok(usage.requests<=12);assert.ok(usage.total<=300000);assert.ok(usage.phase.brief<=100000);assert.ok(usage.phase.research<=200000);
   assert.ok([...history.audit({chatId})].some(row=>JSON.stringify(row).includes('OLD_LARGE_OUTPUT_')),'full tool history is retained');
   const report={status:'pass',sha,cli:execFileSync(process.env.PRITHA_CODEX_BIN||'codex',['--version'],{encoding:'utf8'}).trim(),paidCalls:0,
     nativeSessions:sessions.length,preparation:usage,requests,builds,zeroOutcomeRequests:true,checkpointRotation:true,independentNegativeControl:true,adopted:true,acceptance:'not_accepted'};
   if(reportPath){mkdirSync(path.dirname(reportPath),{recursive:true});writeFileSync(reportPath,JSON.stringify(report,null,2),{mode:0o600});}
   console.error(JSON.stringify(report));passed=true;
+  }
 } finally {
   delete process.env.PRITHA_AGENT_AUTHORING_ROOT;delete process.env.PRITHA_NEURALDEEP_ADMISSION_RECEIPT;
   history.close();store.close();

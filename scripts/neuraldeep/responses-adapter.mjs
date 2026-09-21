@@ -347,6 +347,7 @@ export function createNeuralDeepAdapter(options = {}) {
       const isResponses = requestUrl.pathname === "/v1/responses";
       const isEventStream = upstream.headers.get("content-type")?.includes("text/event-stream");
       if(isResponses)providerUsage=responsesUsage(upstreamBody.toString('utf8'),upstream.headers.get('content-type') || '');
+      if(isResponses && upstream.ok)await options.validateResponsesResponse?.(upstreamBody.toString('utf8'),upstream.headers.get('content-type') || '');
       const output = isResponses && isEventStream
         ? Buffer.from(normalizeResponsesSse(options.transformResponsesStream ? options.transformResponsesStream(upstreamBody.toString("utf8")) : upstreamBody.toString("utf8")))
         : upstreamBody;

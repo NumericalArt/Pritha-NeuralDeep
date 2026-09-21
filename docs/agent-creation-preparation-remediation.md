@@ -84,6 +84,20 @@ accounting for the same work; it is not added again.
 
 ## Connected stock-CLI evidence
 
+New creation jobs additionally pin `briefProtocolVersion: 1`. A brief is a
+content operation: its upstream request contains the verified host context
+packet and the brief schema, an empty tool list and `tool_choice: none`.
+Executor instructions and command history remain local. The host does not
+truncate product requirements to meet the limit. The card identifies this
+mode, and receipts retain both the original and transmitted request sizes.
+
+Each internal brief step permits one provider response. The host can ask for
+one structural JSON correction in a fresh step, within the same phase budget.
+An unsolicited tool response is withheld before Codex can execute it; its
+measured usage is still recorded. A changed retry cannot dispatch a second
+request. Legacy jobs retain their pinned protocol. The conservative UTF-8
+reservation and approval/accounting guards are unchanged.
+
 The opt-in scenario runs the installed Codex CLI against a local Responses
 provider imitation. Real generators, host approvals, research imports,
 scaffold, delivery ledger, protected functional verifiers and adoption are
@@ -94,9 +108,16 @@ Run from a clean committed checkout:
 
 ```sh
 node scripts/neuraldeep/creation-stock-cli-acceptance.mjs --synthetic --report .private/creation-acceptance.json
+node scripts/neuraldeep/creation-stock-cli-acceptance.mjs --synthetic --brief-tool-violation --report .private/creation-tool-negative.json
 ```
 
-A complete run with Codex CLI 0.154.0 used three native preparation sessions
+The current scenario also exercises one invalid brief followed by the host's
+structural correction and checks the actual tool-free wire payload. The
+negative invocation attempts an unsolicited shell call through the stock CLI
+and verifies that no command executes, no second request reaches the provider,
+and usage remains known. These are separate controls, not a paid retry policy.
+
+The preceding protocol's complete run with Codex CLI 0.154.0 used three native preparation sessions
 and seven actual preparation requests. The synthetic usage, computed from
 actual wire sizes rather than fixed success receipts, was 118,427 tokens:
 9,866 for brief and 108,561 for research. These are fixture measurements, not

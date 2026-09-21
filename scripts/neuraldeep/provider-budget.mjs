@@ -3,6 +3,7 @@ import {creationPreparationUsage,preparationPhase,assertPreparationPolicy} from 
 import {readCreationContextPacket,creationSemanticProgress} from './creation-context-packet.mjs';
 import {readCreationResearch} from './creation-research-context.mjs';
 import {reconcileCreationArtifacts} from './agent-creation.mjs';
+import {prepareCreationBriefRequest,validateCreationBriefResponse} from './creation-brief-request.mjs';
 
 const OUTPUT_LIMIT = 16_384;
 const FRAMING_RESERVE = 8_192;
@@ -63,7 +64,8 @@ export function prepareBudgetedRequest(payload, available) {
 export function providerBudgetGate(store, { runId, workloadId, creation, tokenBudget } = {}) {
   if (tokenBudget !== undefined && (!count(tokenBudget) || tokenBudget < 1)) fail('provider_budget_invalid', 'Invalid host token budget.');
   if (!creation && tokenBudget === undefined) return null;
-  let current=null;
+  let current=null, sourceBytes=null, briefRequestHash=null;
+  const isBrief = () => current?.phase === 'brief' && current.job.briefProtocolVersion === 1;
   const remaining = () => {
     let limit = tokenBudget ?? Number.MAX_SAFE_INTEGER;
     let used = 0;
@@ -82,8 +84,9 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
         if(!binding || binding.policyVersion!==2 || binding.phase!==phase || binding.workUnitId!==workloadId
           || binding.packetHash!==job.contextPacket?.hash || job.contextPacket.workUnitId!==workloadId || job.phase==='outcome')
           fail('provider_budget_context_changed','The host preparation binding changed.');
+        let packet;
         try {
-          readCreationContextPacket(job,{stateRoot:creation.stateRoot});
+          packet=readCreationContextPacket(job,{stateRoot:creation.stateRoot});
           const checked=reconcileCreationArtifacts(job,{root:creation.codeRoot,stateRoot:creation.stateRoot});
           if(checked.blocker || ['contract','outcome'].some(kind=>job.approvals[kind] && checked.approvals[kind]?.hash!==job.approvals[kind].hash))throw new Error();
         } catch {fail('provider_budget_documents_changed','The document, approval or context packet is no longer current.');}
@@ -100,7 +103,7 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
           try{research=readCreationResearch(job,{root:creation.codeRoot,stateRoot:creation.stateRoot});}
           catch{fail('provider_budget_research_changed','Research evidence failed validation.');}
         }
-        current={job,phase,usage,progressHash:creationSemanticProgress(job,research)};
+        current={job,phase,usage,packet,progressHash:creationSemanticProgress(job,research)};
         const totalAvailable=Math.max(0,job.budget.maxTokens-usage.confirmedTotal);
         return Math.max(0,Math.min(limit,totalAvailable,usage.remaining,usage.phaseRemaining[phase]));
       }
@@ -121,6 +124,7 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
     const requestCount=store.providerUsageSummary(runId).providerRequests;
     const state={policyVersion:2,phase:current.phase,workUnitId:workloadId,packetHash:current.job.contextPacket.hash,
       bytes,reservation:bytes+FRAMING_RESERVE+(payload.max_output_tokens||policy.outputTokens),
+      requestMode:isBrief()?'host-brief-v1':'executor',sourceBytes:sourceBytes ?? bytes,reservationBasis:'utf8-text-plus-framing-v1',
       outputLimit:payload.max_output_tokens||policy.outputTokens,progressHash:current.progressHash,preparedAt:new Date().toISOString()};
     if(persist)store.updateRuntimeRun(runId,{preparation:state});
     if(bytes>policy.hardBytes)fail('provider_budget_context_hard','Preparation request exceeds 128 KiB; no provider call was made.');
@@ -145,14 +149,33 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
     prepare: payload => {
       const available=remaining();
       if(current) {
+        sourceBytes=Buffer.byteLength(JSON.stringify(payload));
+        if(isBrief()) {
+          assertTextInput(payload);
+          if(store.providerUsageSummary(runId).providerRequests>0)
+            fail('provider_budget_brief_request_limit','A brief step allows one response. Structural correction belongs to the host.');
+          payload=prepareCreationBriefRequest(payload,current.job,current.packet);
+        }
         payload={...payload,max_output_tokens:Math.min(payload.max_output_tokens ?? current.job.preparationPolicy.outputTokens,current.job.preparationPolicy.outputTokens)};
         checkRequest(payload);
       }
-      try{const bounded=prepareBudgetedRequest(payload,available);if(current)checkRequest(bounded);return bounded;}
+      try{
+        const bounded=prepareBudgetedRequest(payload,available);
+        if(current)checkRequest(bounded);
+        if(isBrief())briefRequestHash=createHash('sha256').update(JSON.stringify(bounded)).digest('hex');
+        return bounded;
+      }
       catch(error){if(current && error.code==='provider_token_budget')fail('provider_budget_preparation_tokens','The remaining phase budget cannot cover the complete request and bounded response.');throw error;}
     },
     claim: event => store.claimProviderRequest(runId, event.requestHash, {}, () => {
       const available = remaining();
+      if(isBrief()) {
+        if(store.providerUsageSummary(runId).providerRequests>0)
+          fail('provider_budget_brief_request_limit','A brief response has already been requested.');
+        if(createHash('sha256').update(JSON.stringify(event.payload)).digest('hex')!==briefRequestHash
+          || JSON.stringify(event.payload)!==JSON.stringify(prepareCreationBriefRequest(event.payload,current.job,current.packet)))
+          fail('provider_budget_context_changed','The host brief request was changed before dispatch.');
+      }
       checkRequest(event.payload,false);
       const output = event.payload?.max_output_tokens;
       const reserved = event.bytes + FRAMING_RESERVE + output;
@@ -163,5 +186,6 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
         ...(current?{creation:{jobId:current.job.jobId,generation:current.job.generation,...creation.preparation}}:{}),
         budget: { reservation: reserved, outputLimit: output, available, basis: 'utf8-text-plus-framing-v1',...(current?{progressHash:current.progressHash,readCounts:current.readCounts}:{}) } };
     }),
+    validateResponse: (body,contentType) => {if(isBrief())validateCreationBriefResponse(body,contentType);},
   };
 }

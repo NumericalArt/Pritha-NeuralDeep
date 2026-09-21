@@ -370,6 +370,7 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
       try{return budgetGate ? budgetAction(()=>budgetGate.prepare(payload)) : payload;}
       finally{emitPreparationUsage();}
     },
+    validateResponsesResponse: (body,contentType) => budgetGate && budgetAction(()=>budgetGate.validateResponse(body,contentType)),
     beforeResponsesDispatch: (event) => {
       if(providerAccountingError || journal.providerUsageSummary(runId).unknownRequests>0) throw Object.assign(new Error('Previous provider response accounting is unresolved.'), {code:'provider_usage_unconfirmed',statusCode:409});
       providerRequests = budgetGate ? budgetAction(()=>budgetGate.claim(event)) : journal.claimProviderRequest(runId, event.requestHash, { model:event.model, bytes:event.bytes });

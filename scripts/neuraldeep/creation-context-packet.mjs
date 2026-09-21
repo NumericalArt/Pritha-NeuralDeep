@@ -42,6 +42,7 @@ export function prepareCreationContextPacket(job,dialogue,options) {
   }
   const progressHash=creationSemanticProgress(job,research);
   const packet={schema:'pritha-creation-context-packet-v1',jobId:job.jobId,instanceId:job.instanceId,agentId:job.agentId,
+    ...(job.briefProtocolVersion ? {briefProtocolVersion:job.briefProtocolVersion} : {}),
     generation:creationGeneration(job),releaseSha:job.releaseSha,policyVersion:2,phase,workUnitId:options.turnId,
     dialogue:JSON.parse(dialogue.text),brief:job.preparation?.brief||null,
     documents:{contract:evidenceRef(job.contract),outcome:evidenceRef(job.outcome)},approvals:job.approvals,
@@ -62,7 +63,7 @@ export function readCreationContextPacket(job,options) {
   const text=read(ref.path,options.stateRoot,128*1024),packet=JSON.parse(text);
   if(hash(text)!==ref.hash || packet.jobId!==job.jobId || packet.instanceId!==job.instanceId || packet.generation!==creationGeneration(job)
     || packet.releaseSha!==job.releaseSha || packet.policyVersion!==2 || packet.workUnitId!==ref.workUnitId
-    || packet.phase!==preparationPhase(creationPhase(job)))fail('creation_context_changed');
+    || packet.phase!==preparationPhase(creationPhase(job)) || packet.briefProtocolVersion!==job.briefProtocolVersion)fail('creation_context_changed');
   for(const kind of ['contract','outcome']) {
     const document=packet.documents[kind];
     if(document && (job[kind]?.hash!==document.hash || job[kind]?.path!==document.path || hash(read(document.path,options.stateRoot))!==document.hash))fail('creation_context_document_changed');
