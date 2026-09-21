@@ -13,6 +13,7 @@ const reportIndex=process.argv.indexOf('--report');
 if(reportIndex>=0 && (!process.argv[reportIndex+1] || process.argv[reportIndex+1].startsWith('--')))throw Error('report_path_required');
 const reportPath=reportIndex>=0?path.resolve(process.argv[reportIndex+1]):null;
 const briefToolViolation=process.argv.includes('--brief-tool-violation');
+const signalDeskPreparation=process.argv.includes('--signal-desk-preparation');
 const root=realpathSync(fileURLToPath(new URL('../..',import.meta.url))),load=relative=>import(pathToFileURL(path.join(root,relative)));
 process.chdir(root);
 const {NeuralDeepCoordinationStore,neuralDeepCoordinationPaths}=await load('scripts/neuraldeep/coordination-store.mjs');
@@ -45,7 +46,7 @@ writeFileSync(path.join(home,'config.toml'),`model = "fixture-model"\nmodel_prov
 const runtime=neuralDeepRuntimeConfig(process.env),store=new NeuralDeepCoordinationStore(neuralDeepCoordinationPaths(stateRoot,root)),jobs=new AgentCreationStore(store);
 const chatId='chat_stockcreation',instanceId='stock-creation-fixture',draftRoot=creationDraftRoot(stateRoot,instanceId,chatId),target=path.join(agentParent,'stock-fixture');
 mkdirSync(draftRoot,{recursive:true});mkdirSync(target);
-let job=jobs.create({chatId,instanceId,agentId:'stock-fixture',target,draftRoot,releaseSha:sha,preparationPolicyVersion:2,briefProtocolVersion:1});
+let job=jobs.create({chatId,instanceId,agentId:'stock-fixture',target,draftRoot,releaseSha:sha,preparationPolicyVersion:2,briefProtocolVersion:1,researchProtocolVersion:1});
 const workspace=await new NeuralDeepExecutionWorkspaces(store,{stateRoot}).prepare({ownerId:chatId,sourcePath:root,mutating:true,expectedCommit:sha,requireClean:true});
 const options={root,stateRoot,sourceRoot:workspace.cwd,sourceRevision:sha,agentParent,model:'fixture-model',effort:null};
 const history=new NeuralDeepChatHistoryStore({databasePath:path.join(stateRoot,'history.sqlite'),instanceScope:instanceId});
@@ -56,7 +57,11 @@ const brief={identity:{name:'Stock CLI creation fixture',slug:'stock-fixture'},g
   workflows:['Open the local app, refresh manually and inspect records'],sources:['https://example.test/feed'],constraints:['No schedules and no copied credentials'],nonGoals:['External deployment'],
   permissions:{network:['Declared public feed'],filesystem:['Own target only'],authorization:'Manual local operator actions'},
   technical:{preset:'local-feed',sourceFormat:'json'}};
-const product='Create a local feed reader. Refresh manually, preserve source records without duplicates, retain the last successful data on errors. No schedules, no copied credentials.';
+let product='Create a local feed reader. Refresh manually, preserve source records without duplicates, retain the last successful data on errors. No schedules, no copied credentials.';
+if(signalDeskPreparation){
+  Object.assign(brief,structuredClone((await load('tests/fixtures/signal-desk-brief.mjs')).signalDeskBrief));brief.identity.slug='stock-fixture';
+  product=[brief.goal,brief.user,...brief.successCriteria,...brief.coreFunctions,...brief.workflows,...brief.sources,...brief.constraints,...brief.nonGoals,...brief.permissions.network,...brief.permissions.filesystem,brief.permissions.authorization].join('\n');
+}
 let mode='brief',modeRequests=0,requests=[],turnNumber=0,lastSession=null,builds=0,currentResearch=null;
 const sessions=[];
 function evidence(topics){const now=new Date().toISOString();return {backend:'manual',items:topics.map(topic=>({topic_id:topic.id,source_url:`https://example.test/official/${topic.id}`,source_type:'official-docs',source_updated:now,retrieved_at:now,
@@ -92,7 +97,9 @@ globalThis.fetch=async(url,init)=>{
   if(mode.startsWith('brief')) {
     assert.equal(payload.tool_choice,'none');assert.deepEqual(payload.tools,[]);
     assert.ok(bytes<16*1024,'brief contains exact product context, not the coding executor');
-    assert.ok(input.includes(product));
+    const packet=JSON.parse(payload.input[0].content[0].text);
+    const strings=value=>typeof value==='string'?[value]:value&&typeof value==='object'?Object.values(value).flatMap(strings):[];
+    assert.ok(strings(packet.dialogue).includes(product),'exact original multiline product request is preserved');
     if(mode==='brief-invalid')answer='Preparing the brief now.';
     if(briefToolViolation)command=`${quote(process.execPath)} -e ${quote("require('node:fs').writeFileSync('tool-must-not-run','unexpected')")}`;
   }
@@ -190,6 +197,11 @@ try {
   await prepRun('research');assert.equal(job.status,'pending');assert.equal(job.preparationRotations.research,1);
   await prepRun('research-resumed');assert.equal(job.researchAttemptCompleted,true,JSON.stringify(readCreationResearch(job,{root:workspace.cwd,stateRoot}).gate));
   job=jobs.update(chatId,j=>reconcileCreationArtifacts(j,options));
+  if(signalDeskPreparation){
+    const usage=creationPreparationUsage(store,job);assert.equal(job.researchReady,true);assert.ok(usage.total<=300000);assert.ok(usage.requests<=12);
+    const report={status:'pass',sha,scenario:'full Signal Desk preparation with operator revision',paidCalls:0,requests,preparation:usage,zeroOutcomeRequests:true};
+    if(reportPath)writeFileSync(reportPath,JSON.stringify(report,null,2));console.error(JSON.stringify(report));passed=true;
+  } else {
   const scaffold=await creationHostStep(job,options);job=jobs.update(chatId,()=>scaffold);
   assert.ok(job.scaffoldReady);
   const result=await runCreationDelivery(job,{...options,trialBackend:'local',reportDir:false,task:{chatId,nativeThreadId:lastSession,providerId:'neuraldeep_cli',stateIdentityHash:instanceId},
@@ -208,6 +220,7 @@ try {
     nativeSessions:sessions.length,preparation:usage,requests,builds,zeroOutcomeRequests:true,reviewedRevision:true,checkpointRotation:true,independentNegativeControl:true,adopted:true,acceptance:'not_accepted'};
   if(reportPath){mkdirSync(path.dirname(reportPath),{recursive:true});writeFileSync(reportPath,JSON.stringify(report,null,2),{mode:0o600});}
   console.error(JSON.stringify(report));passed=true;
+  }
   }
 } finally {
   delete process.env.PRITHA_AGENT_AUTHORING_ROOT;delete process.env.PRITHA_NEURALDEEP_ADMISSION_RECEIPT;

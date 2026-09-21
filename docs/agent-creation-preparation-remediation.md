@@ -156,6 +156,18 @@ only the document ID changes. Generating another agent ID from the new document
 filename would create conflicting catalog identities for the same target and
 prevent delivery. Historical accepted documents and their approvals stay intact.
 
+A full RSS/SQLite/LLM product fixture also exposed an oversized initial research
+request that the short feed fixture did not: the general coding instructions
+pushed the serialized request beyond 64 KiB before any provider call. New jobs
+opt into immutable research request protocol 1. It replaces only the general
+coding instructions with host research instructions. Exact input messages,
+developer constraints, tool schemas and tool results remain untouched. The
+packet, complete prepared request hash and conservative byte reservation are
+checked again in the dispatch transaction. Existing jobs keep their previous
+protocol; no limit is raised. The opt-in stock CLI check
+`--signal-desk-preparation` measures the full product request through separate
+approvals, revision and large-research checkpoint recovery without a paid call.
+
 | Audit | Relevant evidence or preserved requirement |
 |---|---|
 | A — versions | Pinned job release and execution-intent identity; staged release health/chunk checks |

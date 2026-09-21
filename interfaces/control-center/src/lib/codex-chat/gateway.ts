@@ -274,7 +274,7 @@ export class CodexChatGateway {
       if(versions.sourceDirty || !versions.source || versions.source!==versions.runtime)throw new AgentCreationError('creation_release_mismatch');
       const instanceId=this.store.stateIdentityHash;
       return store.create({chatId:binding.chatId,instanceId,agentId:binding.subject!.subjectId,releaseSha:versions.source,
-        tokenBudget:binding.subject!.tokenBudget,preparationPolicyVersion:2,briefProtocolVersion:1,
+        tokenBudget:binding.subject!.tokenBudget,preparationPolicyVersion:2,briefProtocolVersion:1,researchProtocolVersion:1,
         target:path.join(resolvePrithaAgentParent(this.root),binding.subject!.subjectId!),draftRoot:creationDraftRoot(this.store.stateRoot,instanceId,binding.chatId)});
     });
   }
@@ -1259,7 +1259,7 @@ export class CodexChatGateway {
         if(versions.sourceDirty || !versions.source || versions.source!==versions.runtime)throw new AgentCreationError('creation_release_mismatch');
         const instanceId=this.store.stateIdentityHash;
         creation=creations!.create({chatId,instanceId,agentId:initial.subject!.subjectId,releaseSha:versions.source,
-          tokenBudget:initial.subject!.tokenBudget,preparationPolicyVersion:2,briefProtocolVersion:1,
+          tokenBudget:initial.subject!.tokenBudget,preparationPolicyVersion:2,briefProtocolVersion:1,researchProtocolVersion:1,
           target:path.join(resolvePrithaAgentParent(this.root),initial.subject!.subjectId!),draftRoot:creationDraftRoot(this.store.stateRoot,instanceId,chatId)});
       }
       if(creation) {

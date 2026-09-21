@@ -4,6 +4,7 @@ import {readCreationContextPacket,creationSemanticProgress} from './creation-con
 import {readCreationResearch} from './creation-research-context.mjs';
 import {reconcileCreationArtifacts} from './agent-creation.mjs';
 import {prepareCreationBriefRequest,validateCreationBriefResponse} from './creation-brief-request.mjs';
+import {prepareCreationResearchRequest} from './creation-research-request.mjs';
 
 const OUTPUT_LIMIT = 16_384;
 const FRAMING_RESERVE = 8_192;
@@ -66,6 +67,7 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
   if (!creation && tokenBudget === undefined) return null;
   let current=null, sourceBytes=null, briefRequestHash=null;
   const isBrief = () => current?.phase === 'brief' && current.job.briefProtocolVersion === 1;
+  const isResearch = () => current?.phase === 'research' && current.job.researchProtocolVersion === 1;
   const remaining = () => {
     let limit = tokenBudget ?? Number.MAX_SAFE_INTEGER;
     let used = 0;
@@ -124,7 +126,7 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
     const requestCount=store.providerUsageSummary(runId).providerRequests;
     const state={policyVersion:2,phase:current.phase,workUnitId:workloadId,packetHash:current.job.contextPacket.hash,
       bytes,reservation:bytes+FRAMING_RESERVE+(payload.max_output_tokens||policy.outputTokens),
-      requestMode:isBrief()?'host-brief-v1':'executor',sourceBytes:sourceBytes ?? bytes,reservationBasis:'utf8-text-plus-framing-v1',
+      requestMode:isBrief()?'host-brief-v1':isResearch()?'host-research-v1':'executor',sourceBytes:sourceBytes ?? bytes,reservationBasis:'utf8-text-plus-framing-v1',
       outputLimit:payload.max_output_tokens||policy.outputTokens,progressHash:current.progressHash,preparedAt:new Date().toISOString()};
     if(persist)store.updateRuntimeRun(runId,{preparation:state});
     if(bytes>policy.hardBytes)fail('provider_budget_context_hard','Preparation request exceeds 128 KiB; no provider call was made.');
@@ -156,13 +158,14 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
             fail('provider_budget_brief_request_limit','A brief step allows one response. Structural correction belongs to the host.');
           payload=prepareCreationBriefRequest(payload,current.job,current.packet);
         }
+        if(isResearch())payload=prepareCreationResearchRequest(payload,current.job,current.packet,creation.codeRoot);
         payload={...payload,max_output_tokens:Math.min(payload.max_output_tokens ?? current.job.preparationPolicy.outputTokens,current.job.preparationPolicy.outputTokens)};
         checkRequest(payload);
       }
       try{
         const bounded=prepareBudgetedRequest(payload,available);
         if(current)checkRequest(bounded);
-        if(isBrief())briefRequestHash=createHash('sha256').update(JSON.stringify(bounded)).digest('hex');
+        if(isBrief() || isResearch())briefRequestHash=createHash('sha256').update(JSON.stringify(bounded)).digest('hex');
         return bounded;
       }
       catch(error){if(current && error.code==='provider_token_budget')fail('provider_budget_preparation_tokens','The remaining phase budget cannot cover the complete request and bounded response.');throw error;}
@@ -176,6 +179,9 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
           || JSON.stringify(event.payload)!==JSON.stringify(prepareCreationBriefRequest(event.payload,current.job,current.packet)))
           fail('provider_budget_context_changed','The host brief request was changed before dispatch.');
       }
+      if(isResearch() && (createHash('sha256').update(JSON.stringify(event.payload)).digest('hex')!==briefRequestHash
+        || JSON.stringify(event.payload)!==JSON.stringify(prepareCreationResearchRequest(event.payload,current.job,current.packet,creation.codeRoot))))
+        fail('provider_budget_context_changed','The host research request was changed before dispatch.');
       checkRequest(event.payload,false);
       const output = event.payload?.max_output_tokens;
       const reserved = event.bytes + FRAMING_RESERVE + output;

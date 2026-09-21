@@ -16,19 +16,21 @@ import {patternPackMarkdown,verifyPatternPackIntegrity} from '../scripts/agents-
 import {deriveExternalResearchTopics} from '../scripts/agents-mother/external-research-topics.mjs';
 import {applyExternalResearchEvidence} from '../scripts/agents-mother/external-research.mjs';
 import {markdownDocumentLock} from '../scripts/lib/markdown-content-lock.mjs';
+import {createHash} from 'node:crypto';
+import {providerBudgetGate} from '../scripts/neuraldeep/provider-budget.mjs';
 
 const brief={identity:{name:'Feed and digest'},goal:'Read public feeds and retain a local digest',user:'Local operator',successCriteria:['Refresh without duplicates and keep SQLite after restart'],
   coreFunctions:['Refresh feeds','Create a digest'],workflows:['Open UI, refresh, select up to 20 items, create a digest and export Markdown'],
   sources:['https://example.test/rss'],constraints:['No credentials in the browser'],nonGoals:['Automatic schedules'],
   permissions:{network:['Declared public feed and Pritha provider binding'],filesystem:['Own target only'],authorization:'Explicit operator UI actions'},
   technical:{preset:'llm-app',sourceFormat:'rss',repositoryResearchPolicy:'not-applicable',repositoryResearchWaiverReason:'No repository discovery; runtime, source and provider checks stay mandatory'}};
-function fixture(t) {
+function fixture(t,{researchProtocolVersion}={}) {
   const stateRoot=mkdtempSync(path.join(os.tmpdir(),'creation-research-context-'));t.after(()=>rmSync(stateRoot,{recursive:true,force:true}));
   const options={root:process.cwd(),stateRoot,model:'fixture-model',effort:null};
   const store=new NeuralDeepCoordinationStore({databasePath:path.join(stateRoot,'coord.sqlite')});t.after(()=>store.close());
   const jobs=new AgentCreationStore(store),chatId='chat_research_context',draftRoot=creationDraftRoot(stateRoot,'fixture',chatId),target=path.join(stateRoot,'children','feed');
   mkdirSync(draftRoot,{recursive:true});mkdirSync(target,{recursive:true});
-  let job=jobs.create({chatId,instanceId:'fixture',agentId:'feed',target,draftRoot,releaseSha:'a'.repeat(40),preparationPolicyVersion:2});
+  let job=jobs.create({chatId,instanceId:'fixture',agentId:'feed',target,draftRoot,releaseSha:'a'.repeat(40),preparationPolicyVersion:2,researchProtocolVersion});
   const contract=prepareCreationContract(job,brief,options);job={...job,contract:contract.contract,preparation:{brief:contract.brief,briefHash:contract.briefHash}};
   const approve=kind=>{job=reconcileCreationArtifacts({...job,status:'pending'},options);job=approveCreationDocument(job,kind,{action:`approve_${kind}`,requestId:`approve_${kind}`,expectedRevision:job.revision,actor:'user'},options);};
   approve('contract');Object.assign(job,prepareCreationOutcome(job,options));approve('outcome');
@@ -51,7 +53,7 @@ function fixture(t) {
       synthesis:{relationship:'confirms',memory_comparison:'The fixture confirms local history preservation.',summary:'Retain a bounded local service.',architecture_decision:'Use the instance provider binding.',alternatives:['Defer the integration'],tradeoffs:['More verification effort']}},{topics});
     writeFileSync(reportPath,updated.text);
   };
-  return {job,options,command,importEvidence,topics,reportPath,localCalls:()=>localCalls};
+  return {job,jobs,store,options,command,importEvidence,topics,reportPath,localCalls:()=>localCalls};
 }
 
 test('90 KiB research is prepared once, checked fully and read in bounded hash-bound pages',async t=>{
@@ -94,4 +96,35 @@ test('partial verified facts survive a checkpoint, stale evidence and timestamps
   f.importEvidence(true,true);assert.equal(readCreationResearch(f.job,f.options).checked.length,0);
   writeFileSync(f.reportPath,readFileSync(f.reportPath,'utf8')+'tampered');
   assert.throws(()=>readCreationResearch(f.job,f.options),{code:'creation_research_integrity'});
+});
+
+for(const protocol of [undefined,1])test(`research request protocol ${protocol || 'legacy'} preserves exact tools, dialogue and boundaries`,async t=>{
+  const f=fixture(t,{researchProtocolVersion:protocol});await prepareCreationResearch(f.job,{...f.options,command:f.command});
+  const turnId='turn_research',runId='run_research';
+  let job=f.jobs.update(f.job.chatId,()=>({...f.job,status:'running',activeTurnId:turnId}));
+  const packet=prepareCreationContextPacket(job,{restart:true,text:JSON.stringify([{role:'user',text:'Все исходные требования; без удаления данных и без ключей в браузере.'}])},{...f.options,turnId});
+  job=f.jobs.update(job.chatId,j=>({...j,contextPacket:packet}));
+  f.store.beginRuntimeRun({runId,requestHash:'a'.repeat(64),receipt:{workload_id:turnId}});
+  const gate=providerBudgetGate(f.store,{runId,workloadId:turnId,creation:{chatId:job.chatId,jobId:job.jobId,generation:1,releaseSha:job.releaseSha,
+    stateRoot:f.options.stateRoot,codeRoot:f.options.root,preparation:{policyVersion:2,phase:'research',workUnitId:turnId,packetHash:packet.hash}}});
+  const original={model:'fixture',instructions:'General coding instructions. '.repeat(2500),tools:[{type:'function',name:'exec_command',parameters:{type:'object'}}],tool_choice:'auto',
+    input:[{role:'developer',content:'No access beyond the sandbox; approvals remain required.'},{role:'user',content:readCreationContextPacket(job,f.options).text},
+      {type:'function_call',name:'exec_command',call_id:'call_one',arguments:'{"cmd":"node inspect-source.mjs"}'},{type:'function_call_output',call_id:'call_one',output:'Exact prior tool result.'}]};
+  if(!protocol){
+    assert.throws(()=>gate.prepare(original),{code:'provider_budget_context_initial'});
+    assert.throws(()=>f.jobs.update(job.chatId,j=>({...j,researchProtocolVersion:1})),{code:'creation_policy_immutable'});
+    return;
+  }
+  const payload=gate.prepare(original);
+  assert.deepEqual(payload.input,original.input);assert.deepEqual(payload.tools,original.tools);assert.equal(payload.tool_choice,original.tool_choice);
+  assert.match(payload.instructions,/tool permissions, sandbox boundaries and approval requirements remain in force/);
+  assert.match(payload.instructions,/Never invent checked facts/);assert.doesNotMatch(payload.instructions,/General coding instructions/);
+  const bytes=Buffer.byteLength(JSON.stringify(payload));assert.ok(bytes<64*1024);
+  const claim=p=>gate.claim({payload:p,model:p.model,bytes:Buffer.byteLength(JSON.stringify(p)),requestHash:createHash('sha256').update(JSON.stringify(p)).digest('hex')});
+  for(const changed of [{instructions:'bypass'},{input:'lost requirements'},{tools:[]}])assert.throws(()=>claim({...payload,...changed}),{code:'provider_budget_context_changed'});
+  assert.equal(f.store.providerUsageSummary(runId).providerRequests,0);claim(payload);
+  assert.equal(f.store.runtimeRun(runId).preparation.requestMode,'host-research-v1');
+  const metadata=JSON.parse(f.store.db.prepare('SELECT metadata FROM provider_dispatches').get().metadata);
+  assert.equal(metadata.budget.reservation,bytes+8192+8192);
+  assert.throws(()=>f.jobs.update(job.chatId,j=>({...j,researchProtocolVersion:undefined})),{code:'creation_policy_immutable'});
 });
