@@ -9,6 +9,11 @@ export type CreationJobView = {
   blocker:{code:string;message:string}|null;checkpoint:unknown;
   budget:{tokensUsed:number;maxTokens:number;activeMs:number;maxActiveMs:number;unknownAttempts:string[];maxIterations:number;repeatedFailures:number};
   observedUsage?:{knownMinimumTokens:number;unfinalizedTokens:number;unknownRequests:number};
+  preparation?:{phase:{brief:number;research:number};phaseRemaining:{brief:number;research:number};total:number;remaining:number;
+    requests:number;requestsRemaining:number;pendingRequests:number;unknownRequests:number;deliveryProtected:number;availableForDelivery:number;
+    limits:{briefTokens:number;researchTokens:number;totalTokens:number;maxRequests:number};research:{checked:string[];remaining:string[]}|null};
+  context?:{bytes:number|null;packetBytes:number|null;reservation:number|null;outputLimit:number|null;freshLimit:number;rotationLimit:number;hardLimit:number};
+  nextDispatch?:{status:string;reason:string};
   deliveryRunId:string|null;actions:Record<CreationAction,boolean>;
   delivery?:{adopted:boolean;acceptance?:string;head?:string|null};agentCardUrl?:string|null;
 };

@@ -189,6 +189,8 @@ export type ExecutionIntent = {
   agentCreationRequested?: boolean;
   creationGeneration?: number;
   creationSession?: { mode: 'checkpoint'; previousSessionId: string | null; contextHash: string };
+  creationOrigin?: 'host-continuation';
+  creationPreparation?: {policyVersion:2;phase:string;workUnitId:string;packetHash:string};
   profileIdentity: string;
   sandbox: "read-only" | "workspace-write" | "danger-full-access";
   network: boolean;

@@ -1,3 +1,9 @@
+import {createHash} from 'node:crypto';
+import {creationPreparationUsage,preparationPhase,assertPreparationPolicy} from './creation-preparation-policy.mjs';
+import {readCreationContextPacket,creationSemanticProgress} from './creation-context-packet.mjs';
+import {readCreationResearch} from './creation-research-context.mjs';
+import {reconcileCreationArtifacts} from './agent-creation.mjs';
+
 const OUTPUT_LIMIT = 16_384;
 const FRAMING_RESERVE = 8_192;
 const fail = (code, message) => { throw Object.assign(new Error(message), { code, statusCode: 409 }); };
@@ -57,6 +63,7 @@ export function prepareBudgetedRequest(payload, available) {
 export function providerBudgetGate(store, { runId, workloadId, creation, tokenBudget } = {}) {
   if (tokenBudget !== undefined && (!count(tokenBudget) || tokenBudget < 1)) fail('provider_budget_invalid', 'Invalid host token budget.');
   if (!creation && tokenBudget === undefined) return null;
+  let current=null;
   const remaining = () => {
     let limit = tokenBudget ?? Number.MAX_SAFE_INTEGER;
     let used = 0;
@@ -69,6 +76,34 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
         || job.status !== 'running' || job.budget.turns[workloadId]) fail('provider_budget_owner_changed', 'The owning creation step is no longer active.');
       if (!count(job.budget.maxTokens) || !count(job.budget.tokensUsed)) fail('provider_budget_invalid', 'Invalid creation accounting.');
       if (job.budget.unknownAttempts.length) fail('provider_usage_unconfirmed', 'Previous creation accounting is unresolved.');
+      if(job.preparationPolicyVersion===2) {
+        assertPreparationPolicy(job);
+        const binding=creation.preparation,phase=preparationPhase(job.phase);
+        if(!binding || binding.policyVersion!==2 || binding.phase!==phase || binding.workUnitId!==workloadId
+          || binding.packetHash!==job.contextPacket?.hash || job.contextPacket.workUnitId!==workloadId || job.phase==='outcome')
+          fail('provider_budget_context_changed','The host preparation binding changed.');
+        try {
+          readCreationContextPacket(job,{stateRoot:creation.stateRoot});
+          const checked=reconcileCreationArtifacts(job,{root:creation.codeRoot,stateRoot:creation.stateRoot});
+          if(checked.blocker || ['contract','outcome'].some(kind=>job.approvals[kind] && checked.approvals[kind]?.hash!==job.approvals[kind].hash))throw new Error();
+        } catch {fail('provider_budget_documents_changed','The document, approval or context packet is no longer current.');}
+        const usage=creationPreparationUsage(store,job);
+        if(usage.unknownRequests || usage.pendingRequests)fail('provider_usage_unconfirmed','A previous preparation request has unresolved usage.');
+        if(usage.requests>=job.preparationPolicy.maxRequests)fail('provider_budget_preparation_requests','Preparation reached its request count limit.');
+        const previousRuns=store.db.prepare('SELECT id,receipt FROM runtime_receipts').all().filter(row=>{
+          const receipt=JSON.parse(row.receipt);return row.id!==runId && (receipt.workload_id===workloadId || job.budget.turns[receipt.workload_id]?.dispatched);
+        });
+        if(previousRuns.some(row=>{const receipt=JSON.parse(row.receipt);return !receipt.process_exited || !receipt.process_tree_exited || !receipt.adapter_closed;}))
+          fail('provider_budget_execution_unsettled','The previous process tree has not exited.');
+        let research=null;
+        if(phase==='research') {
+          try{research=readCreationResearch(job,{root:creation.codeRoot,stateRoot:creation.stateRoot});}
+          catch{fail('provider_budget_research_changed','Research evidence failed validation.');}
+        }
+        current={job,phase,usage,progressHash:creationSemanticProgress(job,research)};
+        const totalAvailable=Math.max(0,job.budget.maxTokens-usage.confirmedTotal);
+        return Math.max(0,Math.min(limit,totalAvailable,usage.remaining,usage.phaseRemaining[phase]));
+      }
       limit = Math.min(limit, job.budget.maxTokens - job.budget.tokensUsed);
       runs = store.db.prepare("SELECT id FROM runtime_receipts WHERE json_extract(receipt,'$.workload_id')=?").all(workloadId);
     }
@@ -80,16 +115,50 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
     }
     return Math.max(0, limit - used);
   };
+  const checkRequest=(payload,persist=true)=>{
+    if(!current)return;
+    const bytes=Buffer.byteLength(JSON.stringify(payload)),policy=current.job.preparationPolicy;
+    const requestCount=store.providerUsageSummary(runId).providerRequests;
+    const state={policyVersion:2,phase:current.phase,workUnitId:workloadId,packetHash:current.job.contextPacket.hash,
+      bytes,reservation:bytes+FRAMING_RESERVE+(payload.max_output_tokens||policy.outputTokens),
+      outputLimit:payload.max_output_tokens||policy.outputTokens,progressHash:current.progressHash,preparedAt:new Date().toISOString()};
+    if(persist)store.updateRuntimeRun(runId,{preparation:state});
+    if(bytes>policy.hardBytes)fail('provider_budget_context_hard','Preparation request exceeds 128 KiB; no provider call was made.');
+    if(!requestCount && bytes>policy.freshBytes)fail('provider_budget_context_initial','The full initial request exceeds 64 KiB; requirements were preserved.');
+    if(requestCount && bytes>=policy.rotationBytes)fail('provider_budget_context_boundary','Preparation reached the 96 KiB checkpoint boundary.');
+    const calls=Array.isArray(payload.input)?payload.input.filter(item=>['function_call','custom_tool_call'].includes(item.type)):[];
+    const signatures=new Set();let repeatedRead=false;
+    for(const call of calls) {
+      const input=String(call.arguments ?? call.input ?? '');
+      if(!/creation-context-reader|\b(?:cat|sed|head|tail|read_file)\b/.test(input))continue;
+      const signature=createHash('sha256').update(String(call.name)+input.replace(/\s+/g,' ').trim()).digest('hex');
+      if(signatures.has(signature))repeatedRead=true;signatures.add(signature);
+    }
+    const previous=store.db.prepare('SELECT metadata FROM provider_dispatches WHERE run_id=? ORDER BY rowid DESC LIMIT 1').get(runId);
+    if(repeatedRead && previous && JSON.parse(previous.metadata).budget?.progressHash===current.progressHash)
+      fail('provider_budget_no_progress','Repeated reads produced no verified preparation progress.');
+  };
   return {
-    prepare: payload => prepareBudgetedRequest(payload, remaining()),
+    prepare: payload => {
+      const available=remaining();
+      if(current) {
+        payload={...payload,max_output_tokens:Math.min(payload.max_output_tokens ?? current.job.preparationPolicy.outputTokens,current.job.preparationPolicy.outputTokens)};
+        checkRequest(payload);
+      }
+      try{const bounded=prepareBudgetedRequest(payload,available);if(current)checkRequest(bounded);return bounded;}
+      catch(error){if(current && error.code==='provider_token_budget')fail('provider_budget_preparation_tokens','The remaining phase budget cannot cover the complete request and bounded response.');throw error;}
+    },
     claim: event => store.claimProviderRequest(runId, event.requestHash, {}, () => {
       const available = remaining();
+      checkRequest(event.payload,false);
       const output = event.payload?.max_output_tokens;
       const reserved = event.bytes + FRAMING_RESERVE + output;
       if (!count(output) || output < 1 || output > OUTPUT_LIMIT || !count(reserved) || reserved > available)
         fail('provider_token_budget', 'The remaining token budget cannot cover this request and a bounded response.');
+      if(current && (output>current.job.preparationPolicy.outputTokens || event.bytes!==Buffer.byteLength(JSON.stringify(event.payload))))fail('provider_budget_preparation_invalid','Preparation request or response bound changed.');
       return { model: event.model, bytes: event.bytes,
-        budget: { reservation: reserved, outputLimit: output, available, basis: 'utf8-text-plus-framing-v1' } };
+        ...(current?{creation:{jobId:current.job.jobId,generation:current.job.generation,...creation.preparation}}:{}),
+        budget: { reservation: reserved, outputLimit: output, available, basis: 'utf8-text-plus-framing-v1',...(current?{progressHash:current.progressHash}:{}) } };
     }),
   };
 }

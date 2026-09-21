@@ -2,6 +2,7 @@ import { lstatSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { NeuralDeepExecutionWorkspaces } from './execution-workspaces.mjs';
 import { workspaceRevision } from '../agents-mother/workspace-revision.mjs';
+import {assertPreparationPolicy,preparationPhase} from './creation-preparation-policy.mjs';
 
 function directory(value) {
   if (!value || !path.isAbsolute(value) || lstatSync(value).isSymbolicLink() || !lstatSync(value).isDirectory()) throw new Error('execution_code_root_unverified');
@@ -43,6 +44,12 @@ export async function assertCreationExecutionRoot(store, runtime, options, envir
       || options.sandbox !== 'workspace-write' || intent.sandbox !== options.sandbox || options.model !== intent.modelId
       || String(options.effort || 'none') !== String(intent.effortId || 'none')) throw new Error();
     assertProposalGeneration(store, chatId, intent, job);
+    if(job.preparationPolicyVersion===2) {
+      assertPreparationPolicy(job);
+      if(intent.creationPreparation?.policyVersion!==2 || intent.creationPreparation.phase!==preparationPhase(job.phase)
+        || intent.creationPreparation.workUnitId!==options.workloadId || intent.creationPreparation.packetHash!==job.contextPacket?.hash
+        || job.phase==='outcome')throw new Error();
+    }
     if (intent.creationSession && (intent.creationSession.mode !== 'checkpoint'
       || !/^[a-f0-9]{64}$/.test(intent.creationSession.contextHash || '')
       || (intent.creationSession.previousSessionId !== null && !/^[A-Za-z0-9._:-]{1,160}$/.test(intent.creationSession.previousSessionId || ''))
@@ -65,7 +72,8 @@ export async function assertCreationExecutionRoot(store, runtime, options, envir
     // Verification awaits Git, so check the durable fence again after that gap.
     const latest = store.db.prepare('SELECT record FROM agent_creation_jobs WHERE chat_id=?').get(chatId);
     assertProposalGeneration(store, chatId, intent, latest && JSON.parse(latest.record));
-    return { chatId, jobId: job.jobId, releaseSha: job.releaseSha, generation: job.generation ?? 1 };
+    return { chatId, jobId: job.jobId, releaseSha: job.releaseSha, generation: job.generation ?? 1,
+      ...(job.preparationPolicyVersion===2?{preparation:intent.creationPreparation,stateRoot:runtime.stateRoot,codeRoot:code}:{}) };
   } catch {
     throw new Error('execution_code_root_unverified');
   }

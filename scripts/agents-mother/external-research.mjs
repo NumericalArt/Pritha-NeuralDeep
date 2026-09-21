@@ -1135,6 +1135,11 @@ export function verifyExternalResearchIntegrity(reportText, requiredTopics, opti
     requiredTopicIds,
     coverage,
     repositoryEvidence: authorizingRepositoryEvidence(evidence, options),
+    // Reusable individual findings are still advisory; only the complete gate authorizes scaffold.
+    verifiedItems: reportedContentLock === markdownDocumentLock(reportText) && frontmatterEvidenceLock === expectedEvidenceLock
+      && expectedEvidenceLock !== 'pending' && !uniqueReasons.some(reason=>reason.startsWith('repository_'))
+      ? evidence.validItems.filter(item=>externalEvidenceItemIsFresh(item,
+        (requiredTopics || []).find(topic=>topic.id===item.topic_id)?.freshnessWindowDays || 30)) : [],
   };
 }
 

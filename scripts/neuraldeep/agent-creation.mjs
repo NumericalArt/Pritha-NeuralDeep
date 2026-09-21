@@ -14,6 +14,7 @@ import { readAgentCatalog } from '../agents-mother/identity.mjs';
 import { creationGeneration, creationCanonicalFilename } from './creation-generation.mjs';
 import { creationRevisionPending } from './creation-revision.mjs';
 import { creationBriefPrompt } from './creation-preparation.mjs';
+import { creationCheckpointSummary } from './creation-context-packet.mjs';
 import { AgentCreationError, creationBudgetBlocker, creationPhase } from './agent-creation-store.mjs';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -253,6 +254,14 @@ export function creationPrompt(job) {
   if(job.preparationPolicyVersion===2 && ['interview','contract'].includes(phase))return creationBriefPrompt(job);
   const quote=value=>`'${String(value).replaceAll("'", "'\\''")}'`;
   const cli=job.executionCodeRoot ? `node ${quote(path.join(job.executionCodeRoot,'scripts/pritha.mjs'))}` : 'node scripts/pritha.mjs';
+  if(job.preparationPolicyVersion===2 && phase==='research')return [
+    'The host has prepared and fully checked local research and the pattern pack once for the approved contract. Use the CreationContextPacket: all mandatory topics, selected rules, already checked findings and missing topics are included. Summaries are advisory; only the host validates the complete research gate.',
+    'Use Pritha Search to check primary sources for the remaining topics. Reuse still-current checked evidence. Do not repeat init, local research, whole-file reads, CLI source inspection, approvals, scaffold or delivery. Do not modify contract, Outcome, locks or verifier files.',
+    `If a particular research section needs detail, use the bounded reader: node ${quote(path.join(job.executionCodeRoot || '.', 'scripts/creation-context-reader.mjs'))} --packet ${job.contextPacket?.hash} --artifact <research|patterns> --hash <contentHash from the packet> --cursor <0 or nextCursor>. Each page includes hashes and an explicit continuation marker. Do not reread the same page.`,
+    `Write evidence JSON only under ${job.draftRoot}; then import through ${cli} external-research ${quote(job.contract.path)} --backend manual --input <absolute-evidence-json-path>. The host and CLI validate all locks. Import partial verified findings before a long lookup sequence so a checkpoint can retain progress. Finish with complete synthesis and inspect the returned gate status.`,
+    'Evidence shape: {backend:"manual",items:[{topic_id,source_url,source_title,source_type:"official-docs|specification|changelog|official-repository",retrieved_at:<actual ISO timestamp>,claim,evidence_summary,confidence:"low|medium|high",version_context,temporal_compatibility,temporal_compatibility_status:"compatible|incompatible|unknown"}],synthesis:{relationship:"confirms|refines|contradicts|makes-outdated",memory_comparison,summary,architecture_decision,alternatives:[text],tradeoffs:[text]}}. Repository adoption requires its additional exact repository/license evidence and recommendation. Never invent checked facts or freshness dates.',
+    'Keep every contract requirement and both approvals. Stop after importing evidence; the host handles scaffold and implementation. At a context or budget boundary preserve evidence and stop. Do not start a new chat or ask the operator to transfer checkpoints.',
+  ].join('\n');
   const details=[`Host creation job ${job.jobId}; proposal generation ${creationGeneration(job)}; phase ${phase}; child slug ${job.agentId}; release ${job.releaseSha}.`,
     `Target: ${job.target}. Authoring root: ${job.draftRoot}. CLI init uses PRITHA_AGENT_AUTHORING_ROOT automatically.`,
     `Your working directory is the authoring root. Pinned Pritha CLI: ${cli}. Use this absolute entrypoint for every Pritha command; do not copy or edit its code.`,
@@ -290,7 +299,7 @@ export function creationPrompt(job) {
     `\`\`\`pritha-research-json\n${JSON.stringify({backend:'manual',items:[{topic_id:'<reported topic id>',source_url:'<checked primary HTTPS URL>',source_title:'<actual source title>',source_type:'official-docs',retrieved_at:'<actual ISO timestamp>',claim:'<supported finding>',evidence_summary:'<observed evidence and limitations>',confidence:'medium',version_context:'<actual version/date context>',temporal_compatibility:'<relationship to the selected runtime/API>',temporal_compatibility_status:'compatible'}],synthesis:{relationship:'refines',memory_comparison:'<compare the local research with checked primary sources>',summary:'<findings relevant to this contract>',architecture_decision:'<concrete implementation decision within the accepted contract>',alternatives:['<considered alternative>'],tradeoffs:['<material tradeoff>']}},null,2)}\n\`\`\``,
     `Import the evidence and synthesis together: ${cli} external-research ${quote(job.contract.path)} --backend manual --input ${quote(path.join(job.draftRoot,'research-evidence.json'))}`,
     'Inspect the printed gate status, not only the command exit code. Correct only reported missing/invalid evidence. Stop when the gate is complete; the host verifies the locks, scaffolds and starts delivery. Never hand-edit gate status or approval fields.');
-  if(job.checkpoint)details.push(`Saved checkpoint: ${JSON.stringify(job.checkpoint).slice(0,12000)}`);
+  if(job.checkpoint)details.push(`Saved checkpoint: ${JSON.stringify(creationCheckpointSummary(job))}`);
   if(job.blocker)details.push(`Previous blocker: ${job.blocker.message}`);
   if(job.preflightWarnings?.length)details.push(`Resolve these proposal checks before requesting approval: ${JSON.stringify(job.preflightWarnings)}`);
   return details.join('\n');

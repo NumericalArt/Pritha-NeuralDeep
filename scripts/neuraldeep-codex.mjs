@@ -350,6 +350,7 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
   let providerError = null;
   let providerAccountingError = null;
   let budgetBlocker = null;
+  const emitPreparationUsage=()=>{if(creation?.preparation && options.emitProviderEvents===true && options.passthrough!=='inherit')process.stdout.write(JSON.stringify({type:'pritha.preparation_usage'})+'\n');};
   const budgetGate = providerBudgetGate(journal, {runId,workloadId:options.workloadId,creation,tokenBudget:options.tokenBudget});
   const budgetAction = action => {
     try { return action(); } catch (error) {
@@ -365,7 +366,10 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
     transformResponsesRequest: flattenSearchTools, transformResponsesStream: restoreSearchToolsStream,
     upstreamOrigin: runtime.upstreamOrigin,
     validateResponsesRequest: async payload => { await attachmentDispatch?.validate(payload); await options.validateResponsesRequest?.(payload); },
-    prepareResponsesRequest: payload => budgetGate ? budgetAction(()=>budgetGate.prepare(payload)) : payload,
+    prepareResponsesRequest: payload => {
+      try{return budgetGate ? budgetAction(()=>budgetGate.prepare(payload)) : payload;}
+      finally{emitPreparationUsage();}
+    },
     beforeResponsesDispatch: (event) => {
       if(providerAccountingError || journal.providerUsageSummary(runId).unknownRequests>0) throw Object.assign(new Error('Previous provider response accounting is unresolved.'), {code:'provider_usage_unconfirmed',statusCode:409});
       providerRequests = budgetGate ? budgetAction(()=>budgetGate.claim(event)) : journal.claimProviderRequest(runId, event.requestHash, { model:event.model, bytes:event.bytes });
@@ -395,6 +399,7 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
         }
       }
       options.onProviderRequest?.(requestEvent);
+      emitPreparationUsage();
     },
   });
   const address = server.address();

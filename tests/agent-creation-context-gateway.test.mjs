@@ -20,6 +20,9 @@ import * as preflight from '../scripts/neuraldeep/creation-preflight.mjs';
 import * as manifest from '../scripts/neuraldeep/target-file-manifest.mjs';
 import * as receipts from '../scripts/neuraldeep/creation-runtime-receipt.mjs';
 import * as delivery from '../scripts/neuraldeep/creation-delivery.mjs';
+import * as preparation from '../scripts/neuraldeep/creation-preparation.mjs';
+import * as contextPacket from '../scripts/neuraldeep/creation-context-packet.mjs';
+import * as preparationControl from '../scripts/neuraldeep/creation-preparation-control.mjs';
 import { runCreationScaffoldStep } from '../scripts/neuraldeep/creation-scaffold.mjs';
 import { FunctionBuildExecutor } from '../scripts/agents-mother/build-executors.mjs';
 import { contractData } from '../scripts/agents-mother/contract.mjs';
@@ -34,7 +37,7 @@ const hash = value => createHash('sha256').update(value).digest('hex');
 const git = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
 const tick = () => new Promise(resolve => setTimeout(resolve, 10));
 
-async function fixture(t) {
+async function fixture(t,preparationVersion) {
   const temporary = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'creation-context-gateway-')));
   t.after(() => rmSync(temporary, { recursive: true, force: true }));
   const root = path.join(temporary, 'code'), stateRoot = path.join(temporary, 'state'), agentParent = path.join(temporary, 'children');
@@ -49,7 +52,7 @@ async function fixture(t) {
   t.after(() => { history.close(); journal.close(); });
   const jobs = new creationStore.AgentCreationStore(journal), target = path.join(agentParent, 'alpha');
   const draftRoot = creation.creationDraftRoot(stateRoot, runtimeIdentity.stateIdentityHash, chatId);
-  jobs.create({ chatId, instanceId: runtimeIdentity.stateIdentityHash, agentId: 'alpha', releaseSha, target, draftRoot });
+  jobs.create({ chatId, instanceId: runtimeIdentity.stateIdentityHash, agentId: 'alpha', releaseSha, target, draftRoot,preparationPolicyVersion:preparationVersion });
   history.put({ chatId, clientThreadId: 'client_contextfixture', creationWorkflowVersion: 1, origin: 'chat',
     providerId: 'neuraldeep_cli', modelId: 'fixture-model', effortId: null, nativeThreadId: null,
     stateIdentityHash: runtimeIdentity.stateIdentityHash, profileIdentity: runtimeIdentity.profileIdentity,
@@ -63,6 +66,9 @@ async function fixture(t) {
   let gateway, sequence = 0, buildCalls = 0;
   const launches = [], leases = [], completions = [];
   const dependencies = {
+    '../../../../../scripts/neuraldeep/creation-preparation.mjs':preparation,
+    '../../../../../scripts/neuraldeep/creation-context-packet.mjs':contextPacket,
+    '../../../../../scripts/neuraldeep/creation-preparation-control.mjs':preparationControl,
     '../../../../../scripts/neuraldeep/coordination-store.mjs': coordination,
     '../../../../../scripts/neuraldeep/agent-creation-store.mjs': creationStore,
     '../../../../../scripts/neuraldeep/chat-history-store.mjs': historyModule,
@@ -119,12 +125,13 @@ async function fixture(t) {
     });
     // Input persistence matches the HTTP host. Workspace, admission, launch,
     // event binding, completion, approvals, scaffold and delivery use production code.
-    gateway.startTurn = async (id, input) => {
+    gateway.startTurn = async (id, input,hostContinuation=false) => {
       const binding = history.get(id), turnId = `turn_context_${++sequence}`;
       const turn = { turnId, clientMessageId: input.clientMessageId, status: 'queued', items: [], pendingRequestIds: [],
         startedAt: new Date().toISOString(), completedAt: null, error: null,
         userMessage: { id: `user_${sequence}`, role: 'user', status: 'completed', markdown: input.input[0].text, createdAt: new Date().toISOString() } };
       turn.executionIntent = gateway.executionIntent(binding, turnId);
+      if(hostContinuation)turn.executionIntent.creationOrigin='host-continuation';
       history.mutate(id, current => ({ ...current, messageReceipts: { ...current.messageReceipts,
         [input.clientMessageId]: { clientMessageId: input.clientMessageId, turnId, nativeTurnId: binding.nativeThreadId || '', requestHash: hash(input.input[0].text), startedAt: turn.startedAt } }, turns: [...current.turns, turn] }));
       const active = gateway.activeAttempt(turn, hash(input.input[0].text), input.input[0].text);
@@ -209,6 +216,24 @@ test('one creation task crosses fresh native steps, separate approvals, actual s
   assert.equal(readFileSync(path.join(f.target, 'result.txt'), 'utf8'), 'working');
   assert.equal(new Set(Object.values(f.history.get(f.chatId).messageReceipts).map(receipt => receipt.nativeTurnId)).size, 3);
   assert.ok(f.history.item(f.chatId, 'large_command').contentRef, 'full original output remains retrievable');
+});
+
+test('v2 gateway consumes the exact brief and prepares Outcome after approval without another model turn',async t=>{
+  const f=await fixture(t,2);
+  await f.gateway.startTurn(f.chatId,{clientMessageId:'initial',input:[{type:'text',text:'Produce a local report without external access; preserve the source.'}]});
+  const brief={identity:{name:'Alpha',slug:'alpha'},goal:'Produce a local report',user:'Local operator',successCriteria:['A working report is saved'],
+    coreFunctions:['Produce the report'],workflows:['Request, inspect and accept the saved report'],sources:['Operator input'],constraints:['No external access'],nonGoals:['Automatic publication'],
+    permissions:{network:['none'],filesystem:['Own target'],authorization:'Explicit user actions'},technical:{preset:'generic'}};
+  const answer='```pritha-brief-json\n'+JSON.stringify(brief)+'\n```';
+  f.history.putItem(f.chatId,'turn_context_1',{id:'brief_answer',kind:'assistant_message',message:{id:'brief_answer',role:'assistant',markdown:answer,status:'completed',phase:'final_answer',createdAt:new Date().toISOString()}},answer);
+  await f.complete();
+  assert.equal(f.jobs.get(f.chatId).status,'awaiting_contract_approval');assert.equal(f.launches.length,1);
+  const approved=await f.approve('contract');
+  assert.equal(f.jobs.get(f.chatId).status,'awaiting_outcome_approval');assert.equal(f.launches.length,1,'Outcome is a host operation');
+  const outcome=f.jobs.get(f.chatId).outcome;
+  f.restart();await f.gateway.creationAction(f.chatId,approved.request);
+  assert.equal(f.launches.length,1);assert.equal(f.jobs.get(f.chatId).outcome.hash,outcome.hash);
+  assert.equal(f.jobs.get(f.chatId).budget.tokensUsed,100);assert.equal(f.jobs.get(f.chatId).approvals.outcome,undefined);
 });
 
 test('a fresh creation session rejects stale context and unexpected second session identity before another model call', async t => {

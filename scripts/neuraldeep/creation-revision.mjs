@@ -232,6 +232,7 @@ export function reviseCreationProposal(job, request, options) {
       proposalRevisionPending: true, phase: 'contract', status: 'pending', autoContinue: true, checkpoint: null, blocker: null, preflightWarnings: [], preflight: null };
     delete next.researchReceipt; delete next.scaffoldReceipt;
     if (next.documentIdentity) next.documentIdentity = creationDocumentIdentity(next);
+    if(next.preparationPolicyVersion===2){next.contextPacket=null;next.preparationStop=null;}
     return next;
   }));
 }

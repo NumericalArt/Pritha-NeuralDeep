@@ -404,7 +404,7 @@ export class NeuralDeepChatHistoryStore {
   }
   /** A fresh internal creation step needs product dialogue, not old shell output.
    * Read exact source bodies without rewriting, summarizing or truncating history. */
-  creationContext(chat, turnId, maxBytes = 64_000) {
+  creationContext(chat, turnId, maxBytes = 64_000, options = {}) {
     requireId(chat); requireId(turnId);
     if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 64_000) throw new ChatHistoryError('creation_context_limit_invalid', 'Некорректная граница контекста.');
     const binding = parse(this.statement('SELECT meta FROM chats WHERE id=?').get(chat)?.meta);
@@ -428,11 +428,16 @@ export class NeuralDeepChatHistoryStore {
     };
     const dialogue = [];
     for (const row of rows) {
-      dialogue.push({ turnId: row.id, role: 'user', text: body(row.user_body) });
+      if(options.preparationVersion!==2 || parse(row.meta).executionIntent?.creationOrigin!=='host-continuation')dialogue.push({ turnId: row.id, role: 'user', text: body(row.user_body) });
       if (row.id === turnId) continue;
       const answers = this.statement("SELECT body FROM items WHERE chat=? AND turn_id=? AND kind='assistant_message' AND coalesce(json_extract(meta,'$.message.phase'),'')!='commentary' ORDER BY sequence LIMIT 257").all(chat, row.id);
       if (answers.length > 256) oversized();
-      for (const answer of answers) dialogue.push({ turnId: row.id, role: 'assistant', text: body(answer.body) });
+      for (const answer of answers) {
+        // Structured proposals already live in the host packet; keep conversational questions verbatim.
+        const text=body(answer.body);
+        if(options.preparationVersion===2 && /```pritha-(?:brief|research)-json\s*\n/.test(text)) {used-=Buffer.byteLength(text);continue;}
+        dialogue.push({ turnId: row.id, role: 'assistant', text });
+      }
     }
     const text = JSON.stringify(dialogue);
     if (Buffer.byteLength(text) > maxBytes) oversized();

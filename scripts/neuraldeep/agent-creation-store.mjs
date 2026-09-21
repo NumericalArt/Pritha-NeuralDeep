@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { creationDocumentIdentity } from './creation-generation.mjs';
+import { creationPreparationPolicy } from './creation-preparation-policy.mjs';
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -68,6 +69,7 @@ export class AgentCreationStore {
           tokensUsed: 0, activeMs: 0, turns: {}, unknownAttempts: [], repeatedFailures: 0, lastFailureSignature: null } };
       if (input.preparationPolicyVersion === 2) {
         record.preparationPolicyVersion = 2;
+        record.preparationPolicy = creationPreparationPolicy(tokenBudget);
         record.documentIdentity = creationDocumentIdentity(record);
       }
       this.db.prepare('INSERT INTO agent_creation_jobs VALUES(?,?,?,?,?)').run(input.chatId,input.instanceId,input.agentId,1,JSON.stringify(record));
@@ -83,6 +85,8 @@ export class AgentCreationStore {
       if (changed.chatId !== current.chatId || changed.agentId !== current.agentId || changed.instanceId !== current.instanceId || changed.releaseSha !== current.releaseSha) {
         throw new AgentCreationError('creation_identity_immutable');
       }
+      if(current.preparationPolicyVersion===2 && (changed.preparationPolicyVersion!==2 || changed.budget.maxTokens!==current.budget.maxTokens
+        || JSON.stringify(changed.preparationPolicy)!==JSON.stringify(current.preparationPolicy)))throw new AgentCreationError('creation_policy_immutable');
       if (JSON.stringify(changed) === JSON.stringify(current)) return current;
       const next = {...changed, revision: current.revision+1, updatedAt: now()};
       this.db.prepare('UPDATE agent_creation_jobs SET revision=?,record=? WHERE chat_id=? AND revision=?').run(next.revision,JSON.stringify(next),chatId,current.revision);
@@ -117,7 +121,8 @@ export class AgentCreationStore {
       if (budget.turns[input.turnId]) return current;
       const known = Number.isSafeInteger(input.tokens) && input.tokens >= 0;
       if (!Number.isSafeInteger(budget.tokensUsed + (known ? input.tokens : 0)) || !Number.isSafeInteger(budget.activeMs + (input.activeMs || 0))) throw new AgentCreationError('creation_budget_overflow');
-      budget.turns[input.turnId] = {tokens: known ? input.tokens : null, activeMs: input.activeMs || 0, dispatched: input.dispatched === true};
+      budget.turns[input.turnId] = {tokens: known ? input.tokens : null, activeMs: input.activeMs || 0, dispatched: input.dispatched === true,
+        ...(current.preparationPolicyVersion===2?{phase:current.phase,policyVersion:2}: {})};
       budget.tokensUsed += known ? input.tokens : 0;
       budget.activeMs += Math.max(0,input.activeMs || 0);
       if (!known && input.dispatched) budget.unknownAttempts.push(input.turnId);
@@ -170,6 +175,7 @@ export function creationBudgetBlocker(job) {
   if (b.tokensUsed >= b.maxTokens) return {code:'creation_token_budget',message:'Достигнут бюджет создания.'};
   if (b.activeMs >= b.maxActiveMs) return {code:'creation_time_budget',message:'Достигнут лимит активного времени.'};
   if (b.repeatedFailures >= b.repeatedFailureThreshold) return {code:'creation_repeated_failure',message:'Повторилась ошибка. Требуется диагностика перед продолжением.'};
+  if(job.preparationPolicyVersion===2 && job.preparationStop)return {code:job.preparationStop.code,message:job.preparationStop.message};
   return null;
 }
 
