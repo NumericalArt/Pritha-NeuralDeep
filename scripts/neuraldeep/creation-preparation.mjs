@@ -6,7 +6,7 @@ import { readBoundedRegularFile } from '../lib/safe-file-read.mjs';
 import { normalizeInterviewBrief, validateInterviewBrief } from '../agents-mother/interview-brief.mjs';
 import { contractData, validateContract } from '../agents-mother/contract.mjs';
 import { renderOutcomeSpecFromContract, outcomeSpecFile } from '../agents-mother/outcome-spec.mjs';
-import { applyInterviewTechnicalProposal, contractMarkdown, parseInterviewBriefDecisions } from '../agents-mother/index.mjs';
+import { applyInterviewTechnicalProposal, contractMarkdown, parseInterviewBriefDecisions } from '../agents-mother/interview-proposal.mjs';
 import { creationDocumentIdentity, creationGeneration } from './creation-generation.mjs';
 import { creationHostDirectory } from './creation-research.mjs';
 import { AgentCreationError } from './agent-creation-store.mjs';
