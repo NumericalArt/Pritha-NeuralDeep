@@ -23,6 +23,12 @@ function bounded(value, maximum = 20_000) {
   return text.length <= maximum ? text : `${text.slice(0, maximum - 3)}...`;
 }
 
+function providerFailure(result) {
+  const error=result.events?.findLast(event=>event?.type==='pritha.provider_error')?.error;
+  if(!/^[a-z][a-z0-9_]{0,95}$/.test(error?.code || ''))return null;
+  return {code:error.code,status:Number.isInteger(error.status)?error.status:null};
+}
+
 function worktreeRoot(value) {
   const requested = path.resolve(String(value || ""));
   if (!existsSync(requested)) throw new Error("Build worktree does not exist");
@@ -314,6 +320,7 @@ export class CodexCliBuildExecutor {
         usage_status: measured ? "measured" : "unknown", tokens_used: measured ? result.tokensUsed : null,
         process_exited: result.processExited !== false, finished_at: new Date().toISOString(),
         ...this.savedProcessReceipt(input, attemptId),
+        provider_error: providerFailure(result),
         termination_reason: result.timedOut ? 'iteration_deadline' : result.aborted ? 'operator_cancel' : result.terminationReason || null,
         usage_ledger_recorded: result.usageLedgerRecorded ?? null };
       await checkpoint();
@@ -479,7 +486,9 @@ export class CodexCliBuildExecutor {
         && Number(event.item.exit_code) === 0
         && String(event.item.aggregated_output || "").includes("PRITHA_NEURALDEEP_TOOL_OK")
       ));
-      const schemaResult = await this.phase({...options,...(options.tokenBudget === undefined ? {} : {tokenBudget:Number.isSafeInteger(toolResult.tokensUsed) ? options.tokenBudget-toolResult.tokensUsed : 0})}, "probe-schema", {
+      // The second capability cannot make a failed first phase usable. Preserve
+      // its cause and charge; require an explicit retry after that cause is fixed.
+      const schemaResult = toolResult.code === 0 && commandCompleted ? await this.phase({...options,...(options.tokenBudget === undefined ? {} : {tokenBudget:Number.isSafeInteger(toolResult.tokensUsed) ? options.tokenBudget-toolResult.tokensUsed : 0})}, "probe-schema", {
         cwd,
         sandbox: "read-only",
         timeoutMs,
@@ -488,7 +497,7 @@ export class CodexCliBuildExecutor {
         prompt: "Return the required structured result with summary PRITHA_NEURALDEEP_PROBE_OK and empty changed_files and remaining_risks arrays. Do not call tools.",
         usageSource: "agent-mother",
         workloadId: "capability-probe-schema",
-      });
+      }) : {code:null,events:[],stderr:'',agentText:'',threadId:null,skipped:true};
       let structuredOutput = null;
       try {
         structuredOutput = JSON.parse(existsSync(outputPath) ? readFileSync(outputPath, "utf8") : schemaResult.agentText);
@@ -499,6 +508,7 @@ export class CodexCliBuildExecutor {
         && Array.isArray(structuredOutput?.changed_files)
         && Array.isArray(structuredOutput?.remaining_risks);
       const available = toolResult.code === 0 && schemaResult.code === 0 && commandCompleted && schemaCompleted;
+      const providerError=toolResult.receipt.provider_error || schemaResult.receipt?.provider_error || null;
       return {
         backend: this.name,
         provider: "neuraldeep",
@@ -506,6 +516,7 @@ export class CodexCliBuildExecutor {
         available,
         isolation: available ? "sandboxed" : "unavailable",
         runtimeVersion: this.runtimeVersion(),
+        providerError,
         capabilities: {
           commandExec: commandCompleted,
           threadStart: Boolean(toolResult.threadId) && Boolean(schemaResult.threadId),
@@ -514,9 +525,11 @@ export class CodexCliBuildExecutor {
           structuredOutput: schemaCompleted,
         },
         error: available ? null : bounded([
-          "NeuralDeep model did not pass the two-phase tool + structured-output capability probe.",
+          providerError ? "NeuralDeep build runtime probe stopped after a provider or adapter error; model capability is not established."
+            : "NeuralDeep model did not pass the two-phase tool + structured-output capability probe.",
+          ...(providerError ? [`provider_error=${providerError.code}`] : []),
           `tool_phase=${toolResult.code === 0 && commandCompleted ? "passed" : "failed"}`,
-          `schema_phase=${schemaResult.code === 0 && schemaCompleted ? "passed" : "failed"}`,
+          `schema_phase=${schemaResult.skipped ? "not_run" : schemaResult.code === 0 && schemaCompleted ? "passed" : "failed"}`,
           toolResult.stderr,
           schemaResult.stderr,
         ].filter(Boolean).join("\n"), 2_000),

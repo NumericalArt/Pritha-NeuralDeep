@@ -43,6 +43,39 @@ test('mislabelled output text waits for canonical terminal message and never use
   const texts=parse(chunks.join('')).filter(e=>e.type==='response.output_text.delta');assert.deepEqual(texts.map(e=>[e.item_id,e.delta]),[['msg_stream','RIGHT']]);
 });
 
+test('an unused message placeholder cannot reject canonical public output on another bridge identity',async()=>{
+  const {parser,chunks}=fixture();
+  await push(parser,{type:'response.output_item.added',output_index:0,item:{id:'r_1',type:'reasoning',summary:[]}},
+    {...added(message('', 'placeholder')),output_index:1},{...delta(''),item_id:'placeholder',output_index:1},
+    {...delta('public answer'),item_id:'r_1'});
+  assert.ok(!parse(chunks.join('')).some(event=>event.item?.type==='message'||event.type==='response.output_text.delta'));
+  await push(parser,completed([{id:'r_1',type:'reasoning',summary:[]},message('public answer','canonical')]));
+  await parser.flush(parser.finish());
+  const events=parse(chunks.join(''));
+  assert.equal(events.filter(event=>event.type==='response.output_item.added'&&event.item?.type==='message').length,1);
+  assert.equal(events.at(-1).response.output[1].id,'canonical');
+});
+
+for(const terminalId of ['bridge-final',null])test(`one exact public text can reconcile a terminal message alias: ${terminalId}`,async()=>{
+  const {parser,chunks}=fixture();await push(parser,added(),delta());
+  const final=message();if(terminalId)final.id=terminalId;else delete final.id;
+  await push(parser,completed([final]));await parser.flush(parser.finish());
+  const events=parse(chunks.join(''));
+  assert.equal(events.at(-1).response.output[0].id,'msg_stream');
+  assert.equal(events.filter(event=>event.type==='response.output_text.delta').map(event=>event.delta).join(''),'Привет');
+  assert.equal(events.filter(event=>event.type==='response.output_item.added').length,1);
+});
+
+test('renamed partial or ambiguous public text cannot authorize terminal identity repair',async()=>{
+  const changed=fixture();await push(changed.parser,added(),delta('При'),completed([message('Привет','renamed')]));
+  assert.throws(()=>changed.parser.finish(),error=>error.code==='neuraldeep_stream_identity');
+  const ambiguous=fixture();await push(ambiguous.parser,added(),delta(),
+    {...added(message('Привет','second')),output_index:1},{...delta(),item_id:'second',output_index:1},
+    completed([message('Привет','renamed-a'),message('Привет','renamed-b')]));
+  assert.throws(()=>ambiguous.parser.finish(),error=>error.code==='neuraldeep_stream_identity');
+  assert.ok(!ambiguous.chunks.join('').includes('response.completed'));
+});
+
 test('reasoning-only is an empty-response failure while its terminal usage remains available',async()=>{
   let terminal;const {parser,chunks}=fixture({onTerminal:event=>terminal=event});
   await push(parser,{type:'response.reasoning_text.delta',item_id:'r',delta:'private fixture'},completed([{type:'reasoning',id:'r',summary:[]}]));

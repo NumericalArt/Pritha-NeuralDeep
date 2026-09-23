@@ -70,6 +70,7 @@ if(signalDeskPreparation){
   product=[brief.goal,brief.user,...brief.successCriteria,...brief.coreFunctions,...brief.workflows,...brief.sources,...brief.constraints,...brief.nonGoals,...brief.permissions.network,...brief.permissions.filesystem,brief.permissions.authorization].join('\n');
 }
 let mode='brief',modeRequests=0,requests=[],turnNumber=0,lastSession=null,builds=0,currentResearch=null;
+const streamIdentityVariants=new Set();
 const sessions=[];
 function evidence(topics){const now=new Date().toISOString();return {backend:'manual',items:topics.map(topic=>({topic_id:topic.id,source_url:`https://example.test/official/${topic.id}`,source_type:'official-docs',source_updated:now,retrieved_at:now,
   claim:'Controlled primary fixture confirms the declared local runtime and bounded feed request contract.',confidence:'high'})),
@@ -150,6 +151,14 @@ globalThis.fetch=async(url,init)=>{
   if(command)middle=[{type:'response.output_item.added',output_index:0,item:{...output,status:'in_progress',arguments:''}},
     {type:'response.function_call_arguments.delta',item_id:output.id,output_index:0,delta:output.arguments},
     {type:'response.output_item.done',output_index:0,item:output}].map(event=>`data: ${JSON.stringify(event)}\n\n`).join('');
+  if(mode==='build'&&!command) {
+    const variant=builds===1?'unused-placeholder':'exact-text-alias';streamIdentityVariants.add(variant);
+    const id=`public_stream_${n}`,reasoning={id:`reasoning_${n}`,type:'reasoning',summary:[]};
+    const events=[{type:'response.output_item.added',output_index:0,item:{...output,id,status:'in_progress',content:[]}},
+      {type:'response.output_text.delta',item_id:variant==='unused-placeholder'?reasoning.id:id,output_index:0,content_index:0,delta:answer}];
+    if(variant==='unused-placeholder')response.output=[reasoning,output];
+    middle=events.map(event=>`data: ${JSON.stringify(event)}\n\n`).join('');
+  }
   return new Response(`data: ${JSON.stringify({type:'response.created',response:{...response,status:'in_progress',output:[]}})}\n\n${middle}data: ${JSON.stringify({type:'response.completed',response})}\n\ndata: [DONE]\n\n`,{headers:{'content-type':'text/event-stream'}});
 };
 async function prepRun(nextMode) {
@@ -274,11 +283,12 @@ try {
       return {status:'completed',thread_id:run.sessionId,turn_id:run.runId,tokens_used:run.usageRecord.usage.totalTokens};
     },{name:'stock-codex-cli-local-provider'})});
   assert.equal(builds,2,'stdout-only project must fail before actual source behavior passes');assert.equal(result.adopted,true,JSON.stringify(result.blocker));
+  assert.deepEqual([...streamIdentityVariants].sort(),['exact-text-alias','unused-placeholder']);
   assert.equal(new Set(sessions).size,hostResearchV2?4:5);
   const usage=creationPreparationUsage(store,job);assert.ok(usage.requests<=12);assert.ok(usage.total<=300000);assert.ok(usage.phase.brief<=100000);assert.ok(usage.phase.research<=200000);
   assert.ok([...history.audit({chatId})].some(row=>JSON.stringify(row).includes(hostResearchV2?'Current synthetic primary page':'OLD_LARGE_OUTPUT_')),'original research history is retained');
   const report={status:'pass',sha,cli:execFileSync(process.env.PRITHA_CODEX_BIN||'codex',['--version'],{encoding:'utf8'}).trim(),paidCalls:0,
-    nativeSessions:sessions.length,preparation:usage,requests,builds,zeroOutcomeRequests:true,reviewedRevision:true,checkpointRotation:!hostResearchV2,researchProtocolVersion:hostResearchV2?2:1,independentNegativeControl:true,adopted:true,acceptance:'not_accepted'};
+    nativeSessions:sessions.length,preparation:usage,requests,builds,streamIdentityVariants:[...streamIdentityVariants],zeroOutcomeRequests:true,reviewedRevision:true,checkpointRotation:!hostResearchV2,researchProtocolVersion:hostResearchV2?2:1,independentNegativeControl:true,adopted:true,acceptance:'not_accepted'};
   if(reportPath){mkdirSync(path.dirname(reportPath),{recursive:true});writeFileSync(reportPath,JSON.stringify(report,null,2),{mode:0o600});}
   console.error(JSON.stringify(report));passed=true;
   }

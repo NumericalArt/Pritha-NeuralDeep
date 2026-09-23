@@ -30,6 +30,32 @@ function context(f) {
     beforeDispatch:()=>{const available=deliveryTokenPreflight(readDeliveryLedger(f.runRoot).budget).available; if(available===null)throw Object.assign(new Error('unknown'),{code:'goal_usage_unavailable'});if(available<1)throw Object.assign(new Error('limit'),{code:'token_budget_exhausted'});}};
 }
 
+test('a provider failure after the probe tool preserves its charge and prevents a second paid probe',async t=>{
+ const f=fixture(t),executor=new CodexCliBuildExecutor();executor.runtimeVersion=()=> 'fixture';let calls=0;
+ executor.run=async()=>{calls++;return {code:1,tokensUsed:23,usageKnown:true,processExited:true,threadId:'probe-tool',stderr:'',events:[
+  {type:'item.completed',item:{type:'command_execution',exit_code:0,aggregated_output:'PRITHA_NEURALDEEP_TOOL_OK'}},
+  {type:'pritha.provider_error',error:{code:'neuraldeep_stream_identity',status:502,message:'private response must not persist'}}]};};
+ const input=context(f),receipts=[];
+ const result=await executor.probe({...input,onCheckpoint:receipt=>{receipts.push(structuredClone(receipt));return input.onCheckpoint(receipt);}});
+ assert.equal(calls,1);assert.equal(result.available,false);assert.equal(result.capabilities.commandExec,true);
+ assert.match(result.error,/provider_error=neuraldeep_stream_identity/);assert.match(result.error,/schema_phase=not_run/);
+ assert.doesNotMatch(JSON.stringify(result),/private response/);
+ const ledger=readDeliveryLedger(f.runRoot);assert.equal(ledger.budget.tokens_used,23);assert.equal(ledger.budget.accounted_turns.length,1);
+ assert.deepEqual(receipts.at(-1).provider_error,{code:'neuraldeep_stream_identity',status:502});
+});
+
+test('a successful tool probe still requires a separate successful schema probe',async t=>{
+ const f=fixture(t),executor=new CodexCliBuildExecutor();executor.runtimeVersion=()=> 'fixture';let calls=0;
+ executor.run=async options=>{
+  calls++;
+  if(calls===2)writeFileSync(options.outputPath,JSON.stringify({summary:'PRITHA_NEURALDEEP_PROBE_OK',changed_files:[],remaining_risks:[]}));
+  return {code:0,tokensUsed:11,usageKnown:true,processExited:true,threadId:'probe-'+calls,stderr:'',events:calls===1
+   ?[{type:'item.completed',item:{type:'command_execution',exit_code:0,aggregated_output:'PRITHA_NEURALDEEP_TOOL_OK'}}]:[]};
+ };
+ const result=await executor.probe(context(f));assert.equal(calls,2);assert.equal(result.available,true);
+ assert.equal(result.capabilities.structuredOutput,true);assert.equal(readDeliveryLedger(f.runRoot).budget.tokens_used,22);
+});
+
 test('pre-dispatch abort issues no attempt receipt or model call',async t=>{
  const f=fixture(t),executor=new CodexCliBuildExecutor(),controller=new AbortController();let calls=0;
  controller.abort();executor.run=async()=>{calls++;throw Error('must not run');};

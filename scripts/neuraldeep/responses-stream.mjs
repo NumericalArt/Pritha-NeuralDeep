@@ -69,9 +69,12 @@ export class ResponsesStreamNormalizer {
     if(event.type==='response.output_item.added' && event.item?.type==='message') {
       if(!Number.isSafeInteger(event.output_index) || event.output_index<0 || this.messages.has(event.output_index))fail('neuraldeep_stream_identity','Ambiguous public message identity.');
       const id=typeof event.item.id==='string'?event.item.id:`msg_nd_${createHash('sha256').update(JSON.stringify([this.responseId,event.output_index,'stream'])).digest('hex').slice(0,24)}`;
-      const message={id,originalId:event.item.id,parts:new Map(),index:event.output_index};
+      const message={id,originalId:event.item.id,item:event.item,parts:new Map(),index:event.output_index};
       this.messages.set(event.output_index,message);
-      await this.emit({...event,item:{...event.item,id,status:'in_progress',content:[]}});return;
+      // A bridge may add an empty placeholder, then attach public text to a
+      // reasoning item and replace the placeholder in its terminal snapshot.
+      // Do not publish a message identity until explicit matching text exists.
+      return;
     }
     if(event.type.startsWith('response.output_text.') || event.type.startsWith('response.content_part.') || event.type==='response.output_item.done' && event.item?.type==='message') {
       this.source.push(event);
@@ -83,6 +86,9 @@ export class ResponsesStreamNormalizer {
           if(typeof event.delta!=='string')fail('neuraldeep_stream_malformed','Invalid public text delta.');
           const index=event.content_index ?? 0;
           if(!Number.isSafeInteger(index) || index<0 || index>255)fail('neuraldeep_stream_identity','Invalid message content index.');
+          if(!event.delta)return;
+          if(!message.parts.size)await this.emit({type:'response.output_item.added',output_index:message.index,
+            item:{...message.item,id:message.id,status:'in_progress',content:[]}});
           if(!message.parts.has(index)) {
             message.parts.set(index,'');
             await this.emit({type:'response.content_part.added',item_id:message.id,output_index:message.index,content_index:index,part:{type:'output_text',text:'',annotations:[],logprobs:[]}});
@@ -115,14 +121,27 @@ export class ResponsesStreamNormalizer {
     // A bridge may omit tool output from the terminal snapshot, too. Only a
     // complete done item is recoverable; deltas alone cannot authorize a tool.
     for(const event of this.source)if(event.type==='response.output_item.done' && toolTypes.has(event.item?.type) && !output.some(item=>item.id===event.item.id))output.push(event.item);
-    const result=[],seen=new Set();
+    const result=[],seen=new Set(),streamed=[...this.messages.values()].filter(message=>message.parts.size);
+    const publicOutput=output.filter(item=>item?.type==='message'),terminalIds=new Set(publicOutput.map(item=>item.id));
+    const exactPublicText=(message,item)=>{
+      const parts=outputTextParts(item);
+      return parts.length===message.parts.size && parts.length===item.content?.length
+        && parts.every((part,index)=>message.parts.get(index)===part.text);
+    };
     for(const [index,item] of output.entries()) {
       if(item?.type==='message') {
-        const message=[...this.messages.values()].find(value=>value.id===item.id) || this.messages.get(index);
+        let message=streamed.find(value=>value.id===item.id);
+        if(!message) {
+          // Preserve the already-published ID only for a unique, complete text
+          // match in both directions. Position or a shared prefix alone cannot
+          // repair an identity; exact IDs always keep priority over aliases.
+          const aliases=streamed.filter(value=>!seen.has(value.index) && !terminalIds.has(value.id)
+            && exactPublicText(value,item) && publicOutput.filter(other=>exactPublicText(value,other)).length===1);
+          if(aliases.length===1)message=aliases[0];
+        }
         if(message) {
           if(seen.has(message.index))fail('neuraldeep_stream_identity','Duplicate terminal public message.');
           seen.add(message.index);
-          if(message.originalId && item.id!==message.originalId)fail('neuraldeep_stream_identity','Terminal message identity differs from the streamed message.');
           const parts=outputTextParts(item);
           for(const [contentIndex,text] of message.parts)if(!parts[contentIndex]?.text.startsWith(text))fail('neuraldeep_stream_text_changed','Terminal message differs from its public partial text.');
           output[index]={...item,id:message.id};
@@ -154,7 +173,7 @@ export class ResponsesStreamNormalizer {
         result.push({type:'response.output_item.done',output_index:index,item});
       }
     }
-    for(const [index] of this.messages)if(!seen.has(index))fail('neuraldeep_stream_identity','A streamed message is missing from the completed result.');
+    for(const message of streamed)if(!seen.has(message.index))fail('neuraldeep_stream_identity','A streamed message is missing from the completed result.');
     result.push({...terminal,response:{...terminal.response,output}});return result;
   }
   async flush(events) {for(const event of events)await this.emit(event);await this.write('data: [DONE]\n\n');}

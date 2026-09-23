@@ -1,7 +1,7 @@
 ---
 id: neuraldeep-agent-creation-reliability-implementation
 type: review
-status: in-progress
+status: implemented-pending-release
 created: 2026-09-23
 updated: 2026-09-23
 topics: [neuraldeep, agent-creation, reliability, recovery]
@@ -17,7 +17,7 @@ subject:
   id: neuraldeep-agent-creation
 privacy: internal
 retention: durable
-review_status: implementation-in-progress
+review_status: implementation-pending-release
 confidence: high
 ---
 
@@ -38,7 +38,7 @@ confidence: high
 | WP6: независимые Trials | Реализован, проверен локально | Реальный stock sandbox network-denial; независимые negative controls; host verifier copy вне product worktree |
 | WP7: интерфейс и инструкции | Реализован, локальные проверки пройдены | 37/37 gateway/UI tests, TypeScript; браузерные recovery fixtures подготовлены для общей проверки |
 | WP8: incremental SSE | Реализован отдельным изменением | Bounded UTF-8/CRLF parser, публичный incremental текст, отложенные tools, backpressure, metadata heartbeat; targeted transport tests |
-| Общая проверка и реальный corpus | Synthetic проверка выполнена; real corpus идёт с сохранением неуспехов | 1337/1337 unit на MacBook для ревизии be82911; production build, 12 desktop/mobile scenarios, stock CLI 0.153/0.154. Первые реальные случаи обнаружили bootstrap и output-limit дефекты; успешное создание ещё не подтверждено |
+| Общая проверка и реальный corpus | Шесть исходных случаев закрыты; готовых продуктов 0/6 | 1370/1370 unit на MacBook для 56ef520, 14 desktop/mobile scenarios, stock CLI 0.153/0.154. Шестой случай прошёл research с первого ответа, но выявил отказ stream identity на build probe. Последняя поправка проходит отдельную проверку; реальные неуспехи не заменены |
 
 ## WP0
 
@@ -138,6 +138,37 @@ host operations: скрывает конфликтующие действия, �
 Tool events удерживаются до EOF, complete terminal и проверки целых аргументов. Host accounting записывается до выдачи завершённого инструмента. При неполном ответе tool completion не выпускается. Parser обрабатывает разрезанный UTF-8/CRLF, размер кадра, нарушенный порядок, backpressure и disconnect. После начала потока ошибка приходит как response.failed; нет автоматического replay. Полученный final usage сохраняется даже при ошибке формата, отсутствующий остаётся unknown. Ошибки протокола отделены от outage, чтобы форматный отказ не вызывал автоматический повтор.
 
 Tool-free brief/research v2 сохраняют буферизацию для проверки всего ответа до доступа executor. Host heartbeat показывает только время/байты/состояние; reasoning и приватный ответ не входят в progress receipt. Stock-CLI совместимость проверяется отдельно перед выпуском.
+
+### Совместимость идентификаторов потока
+
+Шестой реальный случай получил completed ответы с public text и final usage,
+но incremental adapter отверг две квитанции как `neuraldeep_stream_identity`.
+Перед этим native command probe выполнил требуемую команду. Это локальная
+ошибка нормализации, не output cap и не доказанное отсутствие tools у модели.
+Сырые SSE этих ephemeral probes не сохранялись: точный вариант расхождения
+ID по старому журналу восстановить нельзя. Известны слой, код, завершённый
+upstream response, количество элементов, usage и отсутствие timeout.
+
+Детерминированно воспроизведены два отвергавшихся случая: пустой message
+placeholder перед каноническим terminal message с другим ID; и переименованный
+terminal message с тем же полным публичным текстом. Теперь пустой placeholder
+не выдаётся как начавшееся сообщение. Для уже переданного текста сохраняется
+его ID только при взаимно однозначном полном совпадении всех текстовых частей.
+Общий префикс, позиция, изменённый текст или неоднозначность не дают права
+исправить ID. Reasoning не превращается в публичный ответ; инструменты всё ещё
+ждут полного terminal/EOF и записи usage. Stock fixture включает оба варианта.
+
+Build probe сохраняет безопасный код provider/adapter error в phase receipt и
+показывает его в причине остановки. Если первая фаза не прошла, вторая платная
+schema-фаза больше не отправляется. Успешный tool probe по-прежнему требует
+отдельной успешной проверки schema. Исправленная совместимость не проверялась
+скрытым повтором шестого реального случая.
+
+На созданном scaffold также обнаружен macOS `.DS_Store`: это единственное
+незарегистрированное изменение исходного каталога, из-за которого recovery
+показывал `creation_source_changed`. Новые scaffolds включают `.DS_Store` в
+обычный Git ignore. Старые child files и approvals не изменены; остальные
+изменения source по-прежнему блокируют adoption.
 
 ## Замечания общей проверки
 
