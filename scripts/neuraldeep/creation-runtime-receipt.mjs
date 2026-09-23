@@ -11,6 +11,7 @@ export function creationRuntimeReceipt(coordination,turnId,{dispatched=true}={})
     const receipt=JSON.parse(row.receipt),usage=receipt.usage_record;
     if(receipt.budget_blocker)blocker={code:receipt.budget_blocker.code,message:dispatchBlockerMessage(receipt.budget_blocker.code)};
     const noDispatch=receipt.exit_evidence==='no_stock_dispatch' && receipt.dispatch_authorized===false;
+    if(noDispatch && receipt.bootstrap_error?.code)blocker={code:receipt.bootstrap_error.code,message:dispatchBlockerMessage(receipt.bootstrap_error.code)};
     const exited=receipt.process_exited===true && receipt.process_tree_exited===true && receipt.adapter_closed===true;
     processExited &&= exited;
     const delta=usage?.usageKnown===true ? usage.usage?.totalTokens : noDispatch ? 0 : null;

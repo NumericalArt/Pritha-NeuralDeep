@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {spawnSync} from 'node:child_process';
 import {processSnapshot,processTreeExited} from '../scripts/neuraldeep/process-snapshot.mjs';
 
 const rows=[{pid:40,parent:1,group:40,session:40,state:'S',started:'exact fixture start'}];
@@ -29,4 +30,16 @@ test('malformed ownership data fails closed without accepting another snapshot',
   let calls=0;
   assert.throws(()=>processSnapshot({runProbe(){calls++;return {status:0,stdout:'[]'};}}),/process_snapshot_invalid/);
   assert.equal(calls,1);
+});
+
+test('localized macOS dates cannot discard process ownership rows',{skip:process.platform!=='darwin'},()=>{
+  const snapshot=processSnapshot({runProbe(command,args,options){
+    return spawnSync(command,args,{...options,encoding:'utf8',env:{...process.env,LC_ALL:'ru_RU.UTF-8',LANG:'ru_RU.UTF-8'}});
+  }});
+  assert.ok(snapshot.some(row=>row.pid===process.pid),'The caller must remain present under Russian locale');
+  assert.equal(processTreeExited({version:1,session:snapshot.find(row=>row.pid===process.pid).session,escaped:[]},snapshot),false);
+});
+
+test('a malformed ps row invalidates the complete ownership snapshot',()=>{
+  assert.throws(()=>processSnapshot({runProbe(){return {status:72};}}),/process_snapshot_invalid/);
 });

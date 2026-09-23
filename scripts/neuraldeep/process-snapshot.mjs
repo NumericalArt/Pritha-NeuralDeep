@@ -4,16 +4,19 @@ import { runSyncProbe } from "../lib/sync-probe.mjs";
 // macOS ps "sess" is zero on current hosts, so use the POSIX getsid syscall.
 const PROBE = String.raw`import json, os, subprocess, sys
 try:
-    result = subprocess.run(['/bin/ps', '-axo', 'pid=,ppid=,pgid=,stat=,lstart='], capture_output=True, text=True, timeout=3)
+    result = subprocess.run(['/bin/ps', '-axo', 'pid=,ppid=,pgid=,stat=,lstart='], capture_output=True, text=True, timeout=3,
+                            env={**os.environ, 'LC_ALL': 'C', 'LANG': 'C'})
 except subprocess.TimeoutExpired:
     sys.exit(70)
 if result.returncode != 0:
     sys.exit(71)
 rows = []
 for line in result.stdout.splitlines():
+    if not line.strip():
+        continue
     parts = line.split()
     if len(parts) != 9:
-        continue
+        sys.exit(72)
     pid, parent, group = map(int, parts[:3])
     if pid == os.getpid():
         continue
@@ -35,6 +38,7 @@ export function processSnapshot({ runProbe = runSyncProbe } = {}) {
     if (result.status === 0) break;
   }
   if (result.status !== 0) {
+    if (result.status === 72) throw new Error('process_snapshot_invalid');
     throw new Error(result.status === 70 || result.error?.code === "ETIMEDOUT"
       ? "process_snapshot_timeout" : "process_snapshot_unavailable");
   }

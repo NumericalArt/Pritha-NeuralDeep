@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { NeuralDeepCoordinationStore, neuralDeepCoordinationPaths } from "../scripts/neuraldeep/coordination-store.mjs";
 import { processSnapshot } from "../scripts/neuraldeep/process-snapshot.mjs";
+import { creationRuntimeReceipt } from '../scripts/neuraldeep/creation-runtime-receipt.mjs';
 import path from "node:path";
 import test from "node:test";
 import {
@@ -123,6 +124,31 @@ test("NeuralDeep API request timeout aborts the in-flight request", async () => 
     }),
     (error) => error?.name === "AbortError" || /abort/i.test(String(error)),
   );
+});
+
+test('a failed ownership probe records authoritative no-dispatch before any network or stock CLI', async () => {
+  const stateRoot=mkdtempSync(path.join(os.tmpdir(),'pritha-preflight-receipt-'));
+  const bin=path.join(stateRoot,'bin');mkdirSync(bin);
+  writeFileSync(path.join(bin,'python3'),`#!${process.execPath}\nprocess.stdout.write('[]');\n`,{mode:0o700});
+  const previousPath=process.env.PATH,previousFetch=globalThis.fetch;
+  const runtime=neuralDeepRuntimeConfig({PRITHA_STATE_ROOT:stateRoot,PRITHA_CODEX_BIN:path.join(stateRoot,'must-not-launch'),PRITHA_NEURALDEEP_KEYCHAIN_SERVICE:'pritha-test-none'});
+  let store;
+  try {
+    process.env.PATH=bin+path.delimiter+previousPath;
+    globalThis.fetch=async()=>{throw Error('preflight must stop before network');};
+    await assert.rejects(runCodexWithNeuralDeep(runtime,['exec'],{input:'fixture',runId:'failed-probe',workloadId:'fixture_probe_turn'}),/process_snapshot_invalid/);
+    store=new NeuralDeepCoordinationStore(neuralDeepCoordinationPaths(stateRoot,runtime.projectRoot));
+    const receipt=store.runtimeRun('failed-probe');
+    assert.equal(receipt.worker_started,null);
+    assert.equal(receipt.dispatch_authorized,false);assert.equal(receipt.exit_evidence,'no_stock_dispatch');
+    const usage=creationRuntimeReceipt(store,'fixture_probe_turn');
+    assert.equal(usage.tokens,0);assert.equal(usage.processExited,true);assert.equal(usage.coverage,'complete');
+    assert.equal(usage.blocker.code,'process_snapshot_invalid');
+    assert.equal(store.db.prepare('SELECT COUNT(*) AS count FROM provider_dispatches').get().count,0);
+  } finally {
+    globalThis.fetch=previousFetch;if(previousPath===undefined)delete process.env.PATH;else process.env.PATH=previousPath;
+    store?.close();rmSync(stateRoot,{recursive:true,force:true});
+  }
 });
 
 test("records a finished provenance event when the Codex binary cannot launch", async () => {

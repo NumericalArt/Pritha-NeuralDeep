@@ -323,6 +323,17 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
   let attachmentDispatch;
   let receiptCreated = false;
   try {
+  // Record the host-owned no-dispatch boundary before probes can fail. Missing
+  // process identity still forbids launch, but must not invent unknown billing.
+  journal.beginRuntimeRun({ runId,
+    requestHash: createHash("sha256").update(JSON.stringify([codexArgs, options.input ?? null, options.cwd || runtime.projectRoot, options.model || runtime.model])).digest("hex"),
+    receipt: { model: options.model || runtime.model, provider: "neuraldeep", workload_id: safeMetadataId(options.workloadId),
+      model_profile:neuralDeepExecutionProfile(options.model || runtime.model),requested_effort:options.effort||null,
+      effective_effort:effectiveNeuralDeepEffort(options.model || runtime.model,options.effort),
+      ...(options.deadline ? {execution_deadline:options.deadline} : {}),
+      resumed_session: options.resume || null, worker_pid: process.pid, worker_started: null,
+      process_protocol: 1, dispatch_authorized: false, process_exited: false, usage_ledger_recorded: false } });
+  receiptCreated = true;
   const creation = await assertCreationExecutionRoot(journal, runtime, options);
   attachmentDispatch = loadAttachmentDispatch(runtime, options);
   if(options.resume) {
@@ -333,15 +344,7 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
   }
   const worker = processSnapshot().find(row => row.pid === process.pid);
   if (!worker) throw new Error("process_worker_identity_unavailable");
-  journal.beginRuntimeRun({ runId,
-    requestHash: createHash("sha256").update(JSON.stringify([codexArgs, options.input ?? null, options.cwd || runtime.projectRoot, options.model || runtime.model])).digest("hex"),
-    receipt: { model: options.model || runtime.model, provider: "neuraldeep", workload_id: safeMetadataId(options.workloadId),
-      model_profile:neuralDeepExecutionProfile(options.model || runtime.model),requested_effort:options.effort||null,
-      effective_effort:effectiveNeuralDeepEffort(options.model || runtime.model,options.effort),
-      ...(options.deadline ? {execution_deadline:options.deadline} : {}),
-      resumed_session: options.resume || null, worker_pid: process.pid, worker_started: worker.started,
-      process_protocol: 1, dispatch_authorized: false, process_exited: false, usage_ledger_recorded: false } });
-  receiptCreated = true;
+  journal.updateRuntimeRun(runId,{worker_started:worker.started});
   const temporaryParent = resolveTemporaryParent(runtime, process.env);
   for (const directory of [path.dirname(temporaryParent), temporaryParent]) {
     if(existsSync(directory) && (lstatSync(directory).isSymbolicLink() || !lstatSync(directory).isDirectory()))throw new Error("runtime_temporary_root_unverified");
@@ -592,6 +595,12 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
   }
   if (launchError) throw launchError;
   return { ...result, ...(budgetBlocker || terminationReason ? {code:1} : {}), runId, sessionId, child, usageRecord, providerError };
+  } catch(error) {
+    const code=String(error?.code || error?.message || '');
+    if(receiptCreated && !spawned && /^process_(?:snapshot_(?:invalid|timeout|unavailable)|worker_identity_unavailable)$/.test(code)) {
+      journal.updateRuntimeRun(runId,{bootstrap_error:{code}});
+    }
+    throw error;
   } finally {
     try {
       if (server) await closeNeuralDeepAdapter(server);
