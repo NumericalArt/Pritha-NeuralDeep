@@ -130,6 +130,17 @@ Terminal cleanup never deletes the delivery branch or verified checkpoint.
 
 ## Runtime Evidence, Goals, And Budgets
 
+In the NeuralDeep edition, builds use the registered `codex-cli` executor through
+a loopback Responses adapter. Provider requests are bound to job, delivery,
+iteration and launcher before dispatch. Final usage settles the request; a
+missing final receipt remains unknown and prevents new inference. Verified local
+recovery is separate from spending permission. Network-denied Trial execution is
+probed against a live host control server. See the [operator guide](agent-creation-operator-guide.md)
+and [implementation record](agent-creation-reliability.md).
+
+The following App Server / Goal description records the canonical predecessor
+architecture. It is not the NeuralDeep execution or accounting contract:
+
 Trial execution, the build executor, and Codex Goal support are probed
 separately before first use for the current runtime identity. The append-only
 ledger records backend, runtime version, isolation, command/exec, thread/start,

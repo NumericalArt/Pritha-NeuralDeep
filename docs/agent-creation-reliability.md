@@ -36,7 +36,7 @@ confidence: high
 | WP4: применимое исследование | Реализован, проверен локально | 57/57 targeted tests; v2 новых jobs, primary Search/Read, immutable page hashes, точные выдержки и host publication; legacy policy сохранена |
 | WP5: effective settings | Реализован, 39/39 tests | Profile distinguishes provider declarations, transport verification, ignored Qwen effort, pinned model/context/output/application caps |
 | WP6: независимые Trials | Реализован, проверен локально | Реальный stock sandbox network-denial; независимые negative controls; host verifier copy вне product worktree |
-| WP7: интерфейс и инструкции | Запланирован | — |
+| WP7: интерфейс и инструкции | Реализован, локальные проверки пройдены | 37/37 gateway/UI tests, TypeScript; браузерные recovery fixtures подготовлены для общей проверки |
 | WP8: incremental SSE | Запланирован отдельным изменением | — |
 | Общая проверка и реальный corpus | Не выполнены | Локальные тесты не означают создание реального продукта |
 
@@ -79,3 +79,9 @@ Versioned profile закрепляет provider-declared context (Qwen 262144), 
 Installed stock Codex sandbox проверен реальным отрицательным тестом против доступного host loopback server. Даже при `network_access=true` в тестовом config команда с явной host policy получает EPERM/EACCES. Исправлен устаревший plural `--permissions-profile` на поддерживаемый `--permission-profile`; Network denial входит в probe. Без успешного probe sandbox Trial не исполняется. Local backend по-прежнему не считается доказательством отсутствия inference.
 
 Locked host-template verifier запускается из созданной хостом копии вне writable product worktree; SHA-256 сверяется с approved Outcome. Контрольные неправильные продукты отвергнуты: smoke stub, fabricated digest, потерянные ссылки, неправильный язык, игнорирование scoped bearer и потеря persistence. Source errors, provider 429/malformed/disabled, восстановление и restart проверяются контролируемыми upstream fixtures. 43/43 targeted tests пройдены, включая installed stock sandbox. Эти проверки не закрывают operator-judged Trials и не доказывают качество реального LLM ответа.
+
+## WP7
+
+Оператор видит доступное локальное восстановление отдельно от новых запросов модели. Unknown usage не превращается в обещание успешной сверки. Сообщения объясняют изменённый source, устаревшие Trials, незавершённый процесс и недоказанное отсутствие inference. Typed delivery conflict сохраняет свой HTTP status/code.
+
+После перезапуска research v2 сначала публикует ответ из сохранённого history, затем вычисляет semantic progress. Crash до очистки activeTurnId и между очисткой и публикацией не вызывает преждевременного no-progress. GET не отправляет model request и не запускает repair; paused сохраняется. Инструкция оператора, архитектура, provider/Settings guide и основной workflow разделяют ND CLI от исторических App Server Goals. Recovery с потерей browser acknowledgement включён в desktop/mobile browser corpus.

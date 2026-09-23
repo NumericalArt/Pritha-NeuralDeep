@@ -17,6 +17,19 @@ const idleStatuses = new Set(["ready", "completed", "cancelled", "failed", "paus
 export const creationPhaseLabel = (phase: string) => phases[phase] || "Текущий этап";
 export const creationStatusLabel = (status: string) => statuses[status] || "Обновление состояния";
 export const creationShouldPoll = (status: string) => !idleStatuses.has(status);
+export function creationRecoveryExplanation(reason: string | undefined) {
+  const reasons: Record<string,string> = {
+    'verified-candidate-preserved': 'Проверенный результат сохранён. Его перенос не запускает модель и не означает приёмку пользователем.',
+    'sandbox-verification-available': 'Сохранённый проект можно проверить в изоляции без сетевого доступа. Новый запрос модели не запускается.',
+    creation_execution_unconfirmed: 'Сначала нужно подтвердить завершение предыдущего процесса. Повторный запуск пока недоступен.',
+    creation_preparation_usage_unknown: 'Не подтверждён расход подготовки. Сверка использует сохранённые квитанции и может оставить расход неизвестным.',
+    creation_scaffold_baseline_changed: 'Исходная версия проекта изменилась. Нужна проверка сохранённых версий перед переносом.',
+    creation_source_changed: 'В каталоге результата появились изменения. Автоматический перенос остановлен, чтобы сохранить их.',
+    creation_candidate_evidence_stale: 'Проверки не подтверждают текущую версию результата. Требуется восстановить связь с согласованным заданием и повторить допустимые проверки.',
+    trial_model_usage_unknown: 'Проверяющие команды могут обращаться к модели. Их повтор остановлен до проверки способа выполнения и бюджета.',
+  };
+  return reason ? reasons[reason] || 'Для восстановления требуется проверить сохранённые версии и квитанции.' : null;
+}
 export function creationResultPresentation(job: Pick<CreationJobView, "status" | "delivery" | "agentCardUrl">) {
   const verified = job.status === "ready" && job.delivery?.adopted === true;
   return {

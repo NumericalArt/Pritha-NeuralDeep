@@ -422,6 +422,7 @@ export class CodexChatGateway {
         budget:{...current.budget,tokensUsed:result.usage.knownTotalTokens,activeMs:result.usage.activeMs,
           unknownAttempts:result.usage.coverage==='complete'?current.budget.unknownAttempts.filter((id:string)=>id!==result.runId):[...new Set([...current.budget.unknownAttempts,result.runId])]}})));
     } catch(error) {
+      if(error instanceof TaskDeliveryError)throw new CodexChatGatewayError(error.code,error.message,error.status);
       if(error instanceof CreationDeliveryError)throw new AgentCreationError(error.code,error.message);
       throw error;
     } finally {this.creationDeliveries.delete(chatId);this.creationAdvances.delete(chatId);}
@@ -455,6 +456,11 @@ export class CodexChatGateway {
             status:['cancelled','paused'].includes(current.status)?current.status:'paused'}, {root:this.root,stateRoot:this.store.stateRoot});
           if(job.preparationPolicyVersion===2) {
             if(turn?.status==='completed' && ['interview','contract'].includes(job.phase))next.preparation={...next.preparation,pendingProposalTurnId:job.activeTurnId};
+            // Publish the saved selection before measuring research progress. A
+            // completed model response is not itself a published source report.
+            if(turn?.status==='completed' && job.phase==='research' && job.researchProtocolVersion===2) {
+              return {...next,preparation:{...next.preparation,pendingResearchTurnId:job.activeTurnId}};
+            }
             next=settleCreationPreparation(next,receipt,{root:turn?.executionIntent?.executionCodeRoot || this.root,stateRoot:this.store.stateRoot,phase:job.phase});
           }
           return next;
@@ -463,16 +469,25 @@ export class CodexChatGateway {
       if(turn && !['completed','failed','interrupted'].includes(turn.status))await this.updateTurn(chatId,turn.turnId,current=>({...current,status:'interrupted',completedAt:new Date().toISOString(),
         error:{code:'creation_recovered',message:'Процесс остановлен; checkpoint сохранён в этой задаче.'}}));
       job=this.withCreationStore(store=>store.get(chatId));
-      if(job.preparationPolicyVersion===2 && job.preparation?.pendingProposalTurnId && receipt.tokens!==null) {
-        await this.completeCreationProposal(chatId,job.preparation.pendingProposalTurnId);
-        job=this.withCreationStore(store=>store.get(chatId));
-      }
     }
     for(const turnId of job.budget.unknownAttempts as string[]) {
       if(!job.budget.turns[turnId])continue;
       const receipt=this.withCreationStore(store=>creationRuntimeReceipt(store.store,turnId));
       if(receipt.processExited && receipt.tokens!==null && receipt.receiptId)this.withCreationStore(store=>store.reconcileTurnUsage(chatId,
         {receiptId:receipt.receiptId!,source:'neuraldeep-runtime',chatId,turnId,tokens:receipt.tokens!,processExited:true}));
+    }
+    // Also recover a crash after clearing activeTurnId but before publication.
+    // These operations consume only persisted responses; GET must not dispatch.
+    job=this.withCreationStore(store=>store.get(chatId));
+    for(const [key,complete] of [
+      ['pendingProposalTurnId',this.completeCreationProposal.bind(this)],
+      ['pendingResearchTurnId',this.completeCreationResearch.bind(this)],
+    ] as const) {
+      const turnId=job.preparationPolicyVersion===2 && job.preparation?.[key];
+      if(!turnId)continue;
+      const receipt=this.withCreationStore(store=>creationRuntimeReceipt(store.store,turnId));
+      if(receipt.processExited && receipt.tokens!==null && !receipt.blocker)await complete(chatId,turnId);
+      job=this.withCreationStore(store=>store.get(chatId));
     }
     if(job.deliveryRunId && binding.nativeThreadId) {
       const result=readCreationDelivery(job,{root:this.root,stateRoot:this.store.stateRoot,task:{chatId,nativeThreadId:binding.nativeThreadId,providerId:'neuraldeep_cli',stateIdentityHash:binding.stateIdentityHash}});

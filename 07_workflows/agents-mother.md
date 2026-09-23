@@ -83,6 +83,12 @@ superseded_by: []
 
 Status: experimental
 
+Для NeuralDeep текущие действия оператора, закрепление модели, ограничения
+подготовки и восстановление описаны в [инструкции](../docs/agent-creation-operator-guide.md).
+Данная редакция исполняет build через Codex CLI и локальный Responses adapter;
+упоминания App Server Goals ниже относятся к историческому/выбранному runtime,
+а не означают наличие Goals в NeuralDeep. Старые jobs не мигрируют автоматически.
+
 ## Goal
 
 Use Pritha as an outcome-driven agent factory: jointly define the desired

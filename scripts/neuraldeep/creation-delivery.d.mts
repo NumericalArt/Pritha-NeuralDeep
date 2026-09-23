@@ -10,6 +10,7 @@ export type CreationDeliveryResult = {
   runId: string; runRoot: string; status: string; blocker: any; adopted: boolean; head: string | null; acceptance: "not_accepted";
   usage: { preparationTokens: number; deliveryTokens: number; knownTotalTokens: number; coverage: string; activeMs: number; iterations: number; maxTokens: number; scope: string };
   taskDelivery: TaskDeliveryView;
+  recovery: {verifySaved:boolean;adoptVerified:boolean;evidenceFresh:boolean;modelUse:string;reason:string};
 };
 export function creationDeliveryRunId(job: any): string;
 export function readCreationDelivery(job: any, options: CreationDeliveryOptions): CreationDeliveryResult | null;

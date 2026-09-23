@@ -12,6 +12,7 @@ import * as creation from '../scripts/neuraldeep/agent-creation.mjs';
 import * as runtimeReceipt from '../scripts/neuraldeep/creation-runtime-receipt.mjs';
 import * as creationRevision from '../scripts/neuraldeep/creation-revision.mjs';
 import * as creationDelivery from '../scripts/neuraldeep/creation-delivery.mjs';
+import * as taskDelivery from '../scripts/agents-mother/task-delivery.mjs';
 import * as targetManifest from '../scripts/neuraldeep/target-file-manifest.mjs';
 import * as creationPreflight from '../scripts/neuraldeep/creation-preflight.mjs';
 import * as preparationControl from '../scripts/neuraldeep/creation-preparation-control.mjs';
@@ -40,7 +41,7 @@ function load(file, dependencies = {}) {
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-function fixture(t, { hostStep } = {}) {
+function fixture(t, { hostStep, recoverDelivery, settlePreparation, preparationV2=false } = {}) {
   const temporary = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'pritha-creation-gateway-')));
   t.after(() => rmSync(temporary, { recursive: true, force: true }));
   const root = path.join(temporary, 'code'), stateRoot = path.join(temporary, 'state'), target = path.join(temporary, 'children', 'alpha');
@@ -58,7 +59,7 @@ function fixture(t, { hostStep } = {}) {
   new NeuralDeepExecutionWorkspaces(journal, { stateRoot });
   journal.db.prepare('INSERT INTO execution_agent_targets(owner,path,state) VALUES(?,?,?)').run(chatId, target, 'ready');
   const jobs = new creationStore.AgentCreationStore(journal);
-  jobs.create({ chatId, instanceId, agentId: 'alpha', releaseSha: 'a'.repeat(40), target, draftRoot });
+  jobs.create({ chatId, instanceId, agentId: 'alpha', releaseSha: 'a'.repeat(40), target, draftRoot, ...(preparationV2?{preparationPolicyVersion:2,researchProtocolVersion:2}:{}) });
   jobs.update(chatId, job => creation.reconcileCreationArtifacts({ ...job, autoContinue: false }, options));
   const dispatches = [], unexpected = () => assert.fail('creation API tests must never dispatch a real model or delivery');
   let gateway;
@@ -68,10 +69,11 @@ function fixture(t, { hostStep } = {}) {
     '../../../../../scripts/neuraldeep/agent-creation.mjs': { ...creation, creationHostStep: hostStep || unexpected },
     '../../../../../scripts/neuraldeep/creation-runtime-receipt.mjs': runtimeReceipt,
     '../../../../../scripts/neuraldeep/creation-revision.mjs': creationRevision,
-    '../../../../../scripts/neuraldeep/creation-delivery.mjs': { ...creationDelivery, runCreationDelivery: unexpected },
+    '../../../../../scripts/neuraldeep/creation-delivery.mjs': { ...creationDelivery, runCreationDelivery: unexpected, ...(recoverDelivery?{recoverCreationDelivery:recoverDelivery}:{}) },
+    '../../../../../scripts/agents-mother/task-delivery.mjs': taskDelivery,
     '../../../../../scripts/neuraldeep/target-file-manifest.mjs': targetManifest,
     '../../../../../scripts/neuraldeep/creation-preflight.mjs': creationPreflight,
-    '../../../../../scripts/neuraldeep/creation-preparation-control.mjs': preparationControl,
+    '../../../../../scripts/neuraldeep/creation-preparation-control.mjs': {...preparationControl,...(settlePreparation?{settleCreationPreparation:settlePreparation}:{})},
     '@/lib/pritha-paths': { resolvePrithaAgentParent: () => path.dirname(target) },
   });
   function restart() {
@@ -343,3 +345,46 @@ for (const action of ['pause', 'cancel']) {
     assert.equal(f.dispatches.length, 0, 'a late host result must not start another model turn');
   });
 }
+
+for (const crashPoint of ['before-clearing-active-turn','before-publication']) {
+  test(`restart finishes saved research locally ${crashPoint} without a premature no-progress stop`,async t=>{
+    const f=fixture(t,{preparationV2:true,settlePreparation:()=>assert.fail('research must be published before its progress is settled')}),turnId='turn_research_saved';
+    for(const kind of ['contract','outcome']) {
+      if(kind==='outcome')f.outcome();
+      const approved=creation.approveCreationDocument(f.jobs.get(f.chatId),kind,f.request(`approve_${kind}`),f.options);
+      f.jobs.update(f.chatId,()=>approved);
+    }
+    f.jobs.update(f.chatId,j=>({...j,preparationPolicyVersion:2,researchProtocolVersion:2,phase:'research',status:'paused',autoContinue:false,
+      activeTurnId:crashPoint==='before-clearing-active-turn'?turnId:null,
+      preparation:crashPoint==='before-publication'?{pendingResearchTurnId:turnId}:undefined}));
+    f.journal.beginRuntimeRun({runId:'run_research_saved',requestHash:'d'.repeat(64),receipt:{workload_id:turnId}});
+    f.journal.updateRuntimeRun('run_research_saved',{process_exited:true,process_tree_exited:true,adapter_closed:true,usage_record:{usageKnown:true,usage:{totalTokens:123}}});
+    f.restart();
+    f.gateway.store.getTurn=async()=>({turnId,status:'completed',items:[],executionIntent:{dispatchState:'dispatched'}});
+    f.gateway.admission.reconcileWorkload=()=>{};
+    let publications=0;
+    f.gateway.completeCreationResearch=async(_chat,id)=>{
+      assert.equal(id,turnId);assert.equal(f.jobs.get(f.chatId).preparation.pendingResearchTurnId,id);publications++;
+      f.jobs.update(f.chatId,j=>({...j,preparation:{...j.preparation,pendingResearchTurnId:null,researchTurnId:id}}));
+    };
+    await f.gateway.reconcileCreationExecution(f.chatId,f.binding);
+    for(let n=0;n<2;n++){const response=await f.get();assert.equal(response.status,200,JSON.stringify(response.body));}
+    assert.equal(publications,1);assert.equal(f.jobs.get(f.chatId).status,'paused');
+    assert.equal(f.jobs.get(f.chatId).autoContinue,false);assert.equal(f.dispatches.length,0);
+  });
+}
+
+test('saved research is not published from an unsettled receipt and GET never dispatches a repair',async t=>{
+  const f=fixture(t,{preparationV2:true}),turnId='turn_research_unknown';
+  f.jobs.update(f.chatId,j=>({...j,preparationPolicyVersion:2,researchProtocolVersion:2,status:'paused',preparation:{pendingResearchTurnId:turnId},
+    budget:{...j.budget,unknownAttempts:[turnId]}}));
+  f.gateway.completeCreationResearch=async()=>assert.fail('usage remains unknown');
+  assert.equal((await f.get()).status,200);
+  assert.deepEqual(f.jobs.get(f.chatId).budget.unknownAttempts,[turnId]);assert.equal(f.dispatches.length,0);
+});
+
+test('recovery preserves a typed delivery conflict instead of returning a generic server error',async t=>{
+  const f=fixture(t,{recoverDelivery:async()=>{throw new taskDelivery.TaskDeliveryError('delivery_evidence_stale','The saved trial no longer matches this commit.',409);}});
+  await assert.rejects(()=>f.gateway.applyCreationRecovery(f.chatId,f.binding,f.request('adopt_verified')),error=>error.code==='delivery_evidence_stale'&&error.status===409);
+  assert.equal(f.gateway.creationDeliveries.size,0);assert.equal(f.dispatches.length,0);
+});

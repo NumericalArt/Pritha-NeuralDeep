@@ -46,7 +46,15 @@ async function fixture(page: Page, job = proposal(), loseFirstApproval = false) 
       if (applied.has(body.requestId)) return send({ job: applied.get(body.requestId) });
       expect(body.expectedRevision).toBe(job.revision);
       const kind = body.action === 'approve_contract' ? 'contract' : body.action === 'approve_outcome' ? 'outcome' : null;
-      if (!kind) throw new Error(`Unexpected fixture action: ${body.action}`);
+      if (!kind) {
+        if(body.action!=='adopt_verified')throw new Error(`Unexpected fixture action: ${body.action}`);
+        job.delivery={...job.delivery!,adopted:true,acceptance:'not_accepted'};
+        job.status='ready';job.phase='finish';job.revision++;
+        job.actions.adopt_verified=false;job.actions.verify_saved=false;
+        applied.set(body.requestId,structuredClone(job));
+        if(loseFirstApproval && requests.length===1)return route.abort('failed');
+        return send({job});
+      }
       job.approvals[kind] = { hash: job[kind]!.hash, actor: body.actor!, approvedAt: now, authorizationBasis: body.authorizationBasis };
       job.revision++;
       job.actions.approve_contract = false;
@@ -205,5 +213,28 @@ for (const width of [1440, 390]) {
     await expect(f.card.getByRole('button', { name: 'Пересмотреть предложение', exact: true })).toHaveCount(0);
     await page.reload(); await expect(f.card).toContainText('Previous usage is not confirmed.');
     expect(f.requests).toEqual([]);
+  });
+
+  test(`verified result can be adopted with unknown spend and a lost acknowledgement at ${width}px`,async({page})=>{
+    await page.setViewportSize({width,height:900});
+    const job=proposal();job.status='paused';job.phase='verify';job.deliveryRunId='saved-delivery';
+    job.budget.unknownAttempts=['saved-delivery'];
+    job.actions={verify_saved:true,adopt_verified:true,reconcile_usage:true,approve_contract:false,approve_outcome:false,continue:false,pause:false,cancel:true,revise_proposal:false};
+    job.delivery={adopted:false,acceptance:'not_accepted',recovery:{verifySaved:true,adoptVerified:true,evidenceFresh:true,modelUse:'unknown',reason:'verified-candidate-preserved'}};
+    const f=await fixture(page,job,true);
+    await expect(f.card).toContainText('Его перенос не запускает модель');
+    await expect(f.card).toContainText('Сверка может оставить его неизвестным');
+    await expect(f.card.getByRole('button',{name:'Продолжить создание'})).toHaveCount(0);
+    await f.card.getByLabel('Кто выполняет действие').selectOption('codex-operator');
+    await f.card.getByLabel('Основание поручения').fill('User delegated recovery of this verified fixture.');
+    await f.card.getByRole('button',{name:'Завершить перенос проверенного результата',exact:true}).click();
+    await expect(f.card).toContainText('Ответ не подтверждён');const original=structuredClone(f.requests[0]);
+    await page.reload();
+    await f.card.getByRole('button',{name:'Проверить сохранённое действие'}).click();
+    await expect.poll(()=>f.requests.length).toBe(2);expect(f.requests[1]).toEqual(original);
+    await expect(f.card).toContainText('Результат проверен; приёмка пользователя ожидается.');
+    await expect(f.card).toContainText('Итоговый расход неизвестен');
+    expect(job.revision).toBe(8);expect(job.delivery?.acceptance).toBe('not_accepted');
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   });
 }
