@@ -483,7 +483,17 @@ export class CodexChatGateway {
         return;
       }
       // One UI task; internal sessions restart from verified context and artifacts.
-      await this.startTurn(chatId,{clientMessageId:`creation_${job.jobId.slice(-24)}_${job.revision}`,input:[{type:'text',text:'Продолжи создание агента по согласованному заданию и сохранённому состоянию.'}]},true);
+      const outageContinuation = job.checkpoint?.providerOutage?.continued === true;
+      if (outageContinuation) {
+        job = this.withCreationStore(store => store.update(chatId, current => ({
+          ...current,
+          checkpoint: { ...current.checkpoint, providerOutage: undefined },
+        })));
+      }
+      const continuation = outageContinuation
+        ? 'Сеть оборвалась после команд. Продолжи с сохранённого checkpoint. Уже выполненные команды не повторяй.'
+        : 'Продолжи создание агента по согласованному заданию и сохранённому состоянию.';
+      await this.startTurn(chatId,{clientMessageId:`creation_${job.jobId.slice(-24)}_${job.revision}`,input:[{type:'text',text:continuation}]},true);
     } catch(error) {
       const code=error && typeof error==='object' && 'code' in error ? String(error.code) : 'creation_step_failed';
       this.withCreationStore(store=>store.update(chatId,current=>({...current,status:['paused','cancelled'].includes(current.status)?current.status:'blocked',
@@ -1551,6 +1561,16 @@ export class CodexChatGateway {
       });
       return;
     }
+    if (failure.kind === "outage") {
+      const outageBinding = await this.requireBinding(chatId);
+      if (outageBinding.creationWorkflowVersion === 1) {
+        await this.finishAttempt(chatId, "failed", {
+          code: "neuraldeep_unavailable",
+          message: "NeuralDeep оборвал запрос после уже выполненных команд. Хост продолжит с checkpoint и не повторит эти команды.",
+        });
+        return;
+      }
+    }
     if ((failure.kind === "rate_limited" || failure.kind === "outage") && failure.retryableBeforeToolActivity) {
       this.runtime.invalidateProbe();
       const probe = await this.runtime.probe(true).catch(() => ({
@@ -1697,14 +1717,22 @@ export class CodexChatGateway {
           if(status==='completed' && creation.preparationPolicyVersion===2 && ['interview','contract'].includes(creation.phase)) {
             next.preparation={...next.preparation,pendingProposalTurnId:active.turnId};
           } else if(status==='completed' && !next.contract && next.status==='pending')next.status='waiting_input';
-          return creation.preparationPolicyVersion===2 ? settleCreationPreparation(next,receipt,{root:active.intent?.executionCodeRoot || this.root,
+          const settledReceipt = error?.code === "neuraldeep_unavailable" && !receipt.blocker
+            ? { ...receipt, blocker: { code: "neuraldeep_unavailable", message: error.message || "" } }
+            : receipt;
+          return creation.preparationPolicyVersion===2 ? settleCreationPreparation(next,settledReceipt,{root:active.intent?.executionCodeRoot || this.root,
             stateRoot:this.store.stateRoot,phase:creation.phase}) : next;
         });
       });
       if(status==='completed' && creation.preparationPolicyVersion===2 && ['interview','contract'].includes(creation.phase)) {
         await this.completeCreationProposal(chatId,active.turnId);
       }
-      if(status==='completed' || creation.preparationPolicyVersion===2 && this.withCreationStore(store=>store.get(chatId))?.status==='pending')void this.advanceCreation(chatId);
+      const settledCreation = this.withCreationStore(store=>store.get(chatId));
+      if (status === "failed" && error?.code === "neuraldeep_unavailable") {
+        try { this.admission.reconcileWorkload(active.turnId, "cancelled"); }
+        catch { /* The failed slot stays closed until the process exit is confirmed. */ }
+      }
+      if(status==='completed' || creation.preparationPolicyVersion===2 && settledCreation?.status==='pending')void this.advanceCreation(chatId);
     }
   }
 

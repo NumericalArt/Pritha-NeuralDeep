@@ -1616,7 +1616,7 @@ export function CodexChatPage() {
                         <a href="https://neuraldeep.ru/app/billing" target="_blank" rel="noreferrer">Plan &amp; payment</a>
                       </div>
                     ) : null}
-                    {turnNeedsRecovery(turn) && !turn.taskId ? (
+                    {turnNeedsRecovery(turn) && !turn.taskId && turn.error?.code !== "neuraldeep_unavailable" ? (
                       <div className="codex-turn-recovery-actions" aria-label="Turn recovery actions">
                         {turn.error?.code === "turn_step_timeout" ? <>
                           <span role="status">{turn.error.message}</span>

@@ -132,3 +132,37 @@ test('local read allowance survives a new native session and resets only with ve
   f.dispatch([read('different-page.md','c'),read('new-evidence.md','d')]);
   assert.equal(creationPreparationUsage(f.store,f.jobs.get(f.initial.chatId)).confirmedTotal,600);
 });
+
+test('unused brief allowance can fund research without raising the job cap or the delivery reserve',t=>{
+  const f=setup(t);
+  const job=f.jobs.update(f.initial.chatId,current=>({...current,phase:'research',budget:{...current.budget,turns:{
+    turn_brief:{tokens:0,activeMs:0,dispatched:true,phase:'interview',policyVersion:2}}}}));
+  const usage=creationPreparationUsage(f.store,job);
+  assert.equal(usage.phaseRemaining.brief,100000);
+  assert.equal(usage.phaseRemaining.research,300000);
+  assert.equal(usage.deliveryProtected,700000);
+  assert.equal(job.budget.maxTokens,1000000);
+  const spent=f.jobs.update(f.initial.chatId,current=>({...current,budget:{...current.budget,turns:{
+    ...current.budget.turns,turn_brief:{...current.budget.turns.turn_brief,tokens:100000}}}}));
+  assert.equal(creationPreparationUsage(f.store,spent).phaseRemaining.research,200000);
+});
+
+test('one settled provider outage reopens the phase from checkpoint and the second does not',t=>{
+  const f=setup(t);
+  f.start(1);f.complete(100);
+  const blocked=f.jobs.update(f.initial.chatId,current=>({...current,status:'blocked',autoContinue:false,blocker:{code:'neuraldeep_unavailable',message:'network'}}));
+  const options={root:f.options.root,stateRoot:f.options.stateRoot,phase:'interview'};
+  const receipt={processExited:true,tokens:100,blocker:{code:'neuraldeep_unavailable',message:'network'}};
+  const first=settleCreationPreparation(blocked,receipt,options);
+  assert.equal(first.status,'pending');
+  assert.equal(first.autoContinue,true);
+  assert.equal(first.blocker,null);
+  assert.equal(first.providerOutageContinuations.brief,1);
+  assert.equal(first.checkpoint.providerOutage.continued,true);
+  assert.equal(first.budget.maxTokens,blocked.budget.maxTokens);
+  const second=settleCreationPreparation({...first,status:'blocked',autoContinue:false},receipt,options);
+  assert.equal(second.status,'blocked');
+  assert.equal(second.autoContinue,false);
+  assert.match(second.blocker.message,/checkpoint/);
+  assert.equal(second.budget.maxTokens,1_000_000);
+});

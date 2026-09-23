@@ -17,6 +17,26 @@ export function settleCreationPreparation(job,receipt,options) {
   const progressHash=creationSemanticProgress(job,research);
   if(research)next.researchProgress={checked:research.checked,remaining:research.remaining};
   const progress=progressHash!==job.contextPacket?.progressHash;
+  if(receipt.blocker?.code==='neuraldeep_unavailable') {
+    const phaseKey=phase || 'brief';
+    const used=job.providerOutageContinuations?.[phaseKey] || 0;
+    const settled=receipt.processExited && receipt.tokens!==null && !job.budget.unknownAttempts.length;
+    if(settled && used<1) {
+      next.providerOutageContinuations={...job.providerOutageContinuations,[phaseKey]:used+1};
+      next.preparationStop=null;
+      next.checkpoint={...next.checkpoint,progressHash,providerOutage:{phase:phaseKey,continued:true}};
+      if(!['paused','cancelled'].includes(next.status)){next.status='pending';next.autoContinue=true;next.blocker=null;}
+      return next;
+    }
+    if(!['paused','cancelled'].includes(next.status)) {
+      next.status='blocked';
+      next.autoContinue=false;
+      next.blocker={code:'neuraldeep_unavailable',message:settled
+        ? 'Сеть NeuralDeep оборвалась повторно на этом шаге. Хост уже продолжил один раз с checkpoint и не повторял команды. Можно продолжить создание с карточки, приостановить или отменить. Общий лимит токенов не увеличивается.'
+        : 'Сеть NeuralDeep оборвалась, но расход или завершение процесса ещё не подтверждены. Продолжение откроется после сверки, без повтора команд и без увеличения лимита.'};
+    }
+    return next;
+  }
   if(!receipt.blocker && phase==='research' && receipt.processExited && receipt.tokens!==null) {
     next.researchAttemptCompleted=research?.gate.ok===true;
     if(!next.researchAttemptCompleted && !progress)receipt={...receipt,blocker:{code:'provider_budget_no_progress'}};

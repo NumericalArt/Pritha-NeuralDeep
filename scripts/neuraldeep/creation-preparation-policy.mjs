@@ -38,7 +38,9 @@ export function creationPreparationUsage(store,job) {
     if(!Number.isSafeInteger(job.budget.turns[turnId]?.tokens))unsettledKnown+=entry.tokens;
   }
   const total=phase.brief+phase.research,policy=job.preparationPolicy;
-  return {version:2,phase,phaseRemaining:{brief:Math.max(0,policy.briefTokens-phase.brief),research:Math.max(0,policy.researchTokens-phase.research)},
+  const unusedBrief=Math.max(0,policy.briefTokens-phase.brief);
+  const researchCeiling=Math.min(policy.researchTokens+unusedBrief,policy.totalTokens-phase.brief);
+  return {version:2,phase,phaseRemaining:{brief:unusedBrief,research:Math.max(0,researchCeiling-phase.research)},
     total,remaining:Math.max(0,policy.totalTokens-total),requests:rows.length,requestsRemaining:Math.max(0,policy.maxRequests-rows.length),
     pendingRequests:pending,unknownRequests:unknown,unsettledKnown,confirmedTotal:job.budget.tokensUsed+unsettledKnown,
     deliveryProtected:policy.deliveryTokens,availableForDelivery:pending||unknown?null:Math.max(0,job.budget.maxTokens-total)};

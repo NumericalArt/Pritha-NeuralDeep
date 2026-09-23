@@ -180,7 +180,7 @@ export function AgentsOperatorExperience({ status, agents }: { status: ControlCe
   const [selectedAction, setSelectedAction] = useState<ControlCenterOperatorAction>("check");
   const [panel, setPanel] = useState<PanelState>({ loading: false, running: false });
   const [confirmationInput, setConfirmationInput] = useState("");
-  const [agentView, setAgentView] = useState<AgentView>("active");
+  const [agentView, setAgentView] = useState<AgentView>("all");
   const [createPlanOpen, setCreatePlanOpen] = useState(false);
   const [createPlanCopyStatus, setCreatePlanCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [credentialsAgentId, setCredentialsAgentId] = useState<string | null>(null);

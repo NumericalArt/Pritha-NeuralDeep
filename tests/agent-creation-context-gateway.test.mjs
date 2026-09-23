@@ -92,6 +92,9 @@ async function fixture(t,preparationVersion) {
     '@/lib/pritha-paths': { resolvePrithaAgentParent: () => agentParent, resolvePrithaAgentMemoryRoot: () => path.join(stateRoot, 'agents') },
     '@/lib/realtime/pritha-runtime': { getPrithaRuntimeSettings: () => ({ codexSandbox: 'workspace-write', codexNetworkAccess: false, codexTimeoutMs: 10000, updatedAt: new Date().toISOString() }) },
     '@/lib/private-user-context': { privateUserContextFor: () => '' },
+    './neuraldeep-cli-runner': { classifyNeuralDeepRunnerFailure: result => result.providerError?.class === 'outage'
+      ? { kind: 'outage', code: 'neuraldeep_unavailable', retryableBeforeToolActivity: false }
+      : { kind: 'runtime_failed', code: 'codex_cli_failed', retryableBeforeToolActivity: false } },
     './attachment-store': { AttachmentError: class AttachmentError extends Error {} },
     './admission-coordinator': { AdmissionCancelledError: class AdmissionCancelledError extends Error {}, AdmissionBlockedError: class AdmissionBlockedError extends Error {} },
   };
@@ -257,6 +260,43 @@ test('a changed queued product request fails its saved context hash before provi
   assert.equal(f.launches.length, 0);
   assert.equal(f.jobs.get(f.chatId).budget.tokensUsed, 0);
   assert.deepEqual(f.jobs.get(f.chatId).budget.unknownAttempts, []);
+});
+
+test('a settled NeuralDeep outage continues creation from checkpoint instead of stopping for Resume', async t => {
+  const f = await fixture(t, 2);
+  await f.gateway.startTurn(f.chatId, { clientMessageId: 'initial', input: [{ type: 'text', text: 'Produce a local report without external access.' }] });
+  f.journal.updateRuntimeRun('synthetic-run-1', { status: 'failed', process_exited: true, process_tree_exited: true, adapter_closed: true,
+    usage_record: { usageKnown: true, usage: { totalTokens: 40 } } });
+  const active = f.gateway.activeTurns.get(f.chatId);
+  active.toolStarted = true;
+  await f.gateway.handleRunnerComplete(f.chatId, active, { code: 1, signal: null, stderrTail: 'unexpected status 502 Bad Gateway', timedOut: false,
+    interrupted: false, toolActivity: true, threadId: 'synthetic-session-1', failedEvent: true, completedEvent: false, malformedEventCount: 0,
+    handlerErrorCode: null, providerError: { class: 'outage', code: 'neuraldeep_unavailable' } });
+  for (let n = 0; n < 2000 && f.gateway.creationAdvances.size; n++) await tick();
+  const failed = f.history.turn(f.chatId, 'turn_context_1');
+  assert.equal(failed.error.code, 'neuraldeep_unavailable');
+  assert.doesNotMatch(failed.error.message, /Resume|replayed/i);
+  const continued = f.jobs.get(f.chatId);
+  assert.equal(continued.status, 'running', JSON.stringify(continued.blocker));
+  assert.equal(continued.autoContinue, true);
+  assert.equal(continued.providerOutageContinuations.brief, 1);
+  assert.equal(continued.budget.maxTokens, 1_000_000);
+  assert.equal(f.launches.length, 2);
+  assert.match(f.history.turn(f.chatId, 'turn_context_2').userMessage.markdown, /checkpoint/);
+  assert.match(f.history.turn(f.chatId, 'turn_context_2').userMessage.markdown, /не повторяй/);
+  f.journal.updateRuntimeRun('synthetic-run-2', { status: 'failed', process_exited: true, process_tree_exited: true, adapter_closed: true,
+    usage_record: { usageKnown: true, usage: { totalTokens: 40 } } });
+  const second = f.gateway.activeTurns.get(f.chatId);
+  second.toolStarted = true;
+  await f.gateway.handleRunnerComplete(f.chatId, second, { code: 1, signal: null, stderrTail: 'unexpected status 502 Bad Gateway', timedOut: false,
+    interrupted: false, toolActivity: true, threadId: 'synthetic-session-2', failedEvent: true, completedEvent: false, malformedEventCount: 0,
+    handlerErrorCode: null, providerError: { class: 'outage', code: 'neuraldeep_unavailable' } });
+  const stopped = f.jobs.get(f.chatId);
+  assert.equal(stopped.status, 'blocked');
+  assert.equal(stopped.autoContinue, false);
+  assert.equal(stopped.blocker.code, 'neuraldeep_unavailable');
+  assert.equal(f.launches.length, 2);
+  assert.equal(f.history.turn(f.chatId, 'turn_context_2').error.code, 'neuraldeep_unavailable');
 });
 
 test('typing another creation message cannot bypass unsettled process or unknown usage gates', async t => {
