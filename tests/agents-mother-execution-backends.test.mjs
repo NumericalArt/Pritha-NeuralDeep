@@ -80,3 +80,13 @@ test("historical App Server backend names are read-only aliases to Codex CLI san
   assert.ok(createExecutionBackend("codex-app-server-command") instanceof CodexCliSandboxBackend);
   assert.throws(() => createExecutionBackend("unknown"), (error) => error.code === "backend_unknown");
 });
+
+test('installed stock sandbox denies a reachable loopback server before any offline Trial',async t=>{
+ const {spawnSync}=await import('node:child_process');const {rmSync,mkdirSync,writeFileSync}=await import('node:fs');
+ if(process.platform!=='darwin' || spawnSync(process.env.PRITHA_CODEX_BIN||'codex',['sandbox','--help'],{encoding:'utf8'}).status!==0){t.skip('requires installed macOS stock sandbox');return;}
+ const root=mkdtempSync(path.join(os.tmpdir(),'pritha-sandbox-denial-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+ const codexHome=path.join(root,'codex');mkdirSync(codexHome);
+ writeFileSync(path.join(codexHome,'config.toml'),'[sandbox_workspace_write]\nnetwork_access = true\n');
+ const backend=new CodexCliSandboxBackend({codexHome});
+ const probe=await backend.probe({cwd:root});assert.equal(probe.available,true,JSON.stringify(probe));assert.equal(probe.capabilities.networkDenied,true);
+});

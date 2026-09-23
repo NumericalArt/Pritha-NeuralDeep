@@ -34,8 +34,8 @@ confidence: high
 | WP2: безопасное восстановление | Реализован, проверен локально | 8/8 recovery tests; freshness, task/spec identity, process-tree exit, adoption без новых команд; неизвестный расход сохраняется |
 | WP3: deadlines | Реализован, проверен локально | 63/63 targeted tests: общий срок фаз, soft admission до reservation, медленный ответ с final usage, зависание с unknown, suspend, неизменность policy |
 | WP4: применимое исследование | Реализован, проверен локально | 57/57 targeted tests; v2 новых jobs, primary Search/Read, immutable page hashes, точные выдержки и host publication; legacy policy сохранена |
-| WP5: effective settings | Реализован, проверяется | Profile distinguishes provider declarations, transport verification, ignored Qwen effort, pinned model/context/output/application caps |
-| WP6: независимые Trials | Запланирован | — |
+| WP5: effective settings | Реализован, 39/39 tests | Profile distinguishes provider declarations, transport verification, ignored Qwen effort, pinned model/context/output/application caps |
+| WP6: независимые Trials | Реализован, проверен локально | Реальный stock sandbox network-denial; независимые negative controls; host verifier copy вне product worktree |
 | WP7: интерфейс и инструкции | Запланирован | — |
 | WP8: incremental SSE | Запланирован отдельным изменением | — |
 | Общая проверка и реальный corpus | Не выполнены | Локальные тесты не означают создание реального продукта |
@@ -73,3 +73,9 @@ confidence: high
 Повторно проверена документация NeuralDeep от 2026-09-23: `https://neuraldeep.ru/llms-full.txt`. Для Qwen 3.8/3.6 `reasoning_effort` не управляет thinking. Каталог теперь отделяет advertised reasoning от действующего effort; Qwen получает «не применяется». Это не переключение на noreason. Неверифицированные `chat_template_kwargs` в Responses не внедряются. Default model не подменяет выбранный model ID при невалидном значении.
 
 Versioned profile закрепляет provider-declared context (Qwen 262144), application output cap 8192, requested/effective effort и статус transport verification. CLI получает context declaration, а reservation проверяется отдельно. Byte reserve остаётся консервативной оценкой; tokenizer не заявлен. Все фазы новой job используют её model ID и timeout, а не последующие изменения Settings. UI показывает configured prompt budget как настройку общего чата, отдельно от preparation caps. Research v2 передаёт один context packet без coding prompt и дублированной tool history. 39/39 профильных тестов пройдены.
+
+## WP6
+
+Installed stock Codex sandbox проверен реальным отрицательным тестом против доступного host loopback server. Даже при `network_access=true` в тестовом config команда с явной host policy получает EPERM/EACCES. Исправлен устаревший plural `--permissions-profile` на поддерживаемый `--permission-profile`; Network denial входит в probe. Без успешного probe sandbox Trial не исполняется. Local backend по-прежнему не считается доказательством отсутствия inference.
+
+Locked host-template verifier запускается из созданной хостом копии вне writable product worktree; SHA-256 сверяется с approved Outcome. Контрольные неправильные продукты отвергнуты: smoke stub, fabricated digest, потерянные ссылки, неправильный язык, игнорирование scoped bearer и потеря persistence. Source errors, provider 429/malformed/disabled, восстановление и restart проверяются контролируемыми upstream fixtures. 43/43 targeted tests пройдены, включая installed stock sandbox. Эти проверки не закрывают operator-judged Trials и не доказывают качество реального LLM ответа.

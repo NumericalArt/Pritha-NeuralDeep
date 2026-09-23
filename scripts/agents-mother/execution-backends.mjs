@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import {createServer} from 'node:net';
 import { existsSync, lstatSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -251,20 +252,26 @@ export class CodexCliSandboxBackend {
 
   async probe(options = {}) {
     const cwd = validatedCwd(options.cwd || process.cwd());
-    const result = await this.execute({
-      argv: [process.execPath, "-e", "process.stdout.write('SANDBOX_OK')"],
+    const server=createServer(socket=>socket.destroy());
+    await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
+    const port=server.address().port;
+    let result;
+    try {
+    result = await this.execute({
+      argv: [process.execPath, "-e", `const net=require('node:net');const s=net.connect({host:'127.0.0.1',port:${port}});s.on('connect',()=>{s.destroy();process.exit(2);});s.on('error',e=>{if(['EPERM','EACCES'].includes(e.code))process.stdout.write('SANDBOX_NETWORK_DENIED');else process.exitCode=3;});setTimeout(()=>{s.destroy();process.exit(4);},2000).unref();`],
       cwd,
       timeoutMs: positiveInteger(options.timeoutMs, 10_000, 30_000),
       outputBytesCap: 16_384,
       sandbox: { required: true, type: "workspaceWrite", writableRoots: [cwd], networkAccess: false },
     }).catch((error) => ({ exitCode: 127, stderr: error instanceof Error ? error.message : String(error) }));
-    const available = result.exitCode === 0 && result.stdout === "SANDBOX_OK";
+    } finally {await new Promise(resolve=>server.close(resolve));}
+    const available = result.exitCode === 0 && result.stdout === "SANDBOX_NETWORK_DENIED";
     return {
       backend: this.name,
       available,
       isolation: available ? "sandboxed" : "unavailable",
       runtimeVersion: available ? "codex-cli/sandbox" : "unknown",
-      capabilities: { structuredArgv: true, commandExec: available, sandbox: available },
+      capabilities: { structuredArgv: true, commandExec: available, sandbox: available, networkDenied:available },
       error: available ? null : result.stderr || "Codex CLI sandbox probe failed.",
     };
   }
@@ -277,7 +284,8 @@ export class CodexCliSandboxBackend {
     const workspace = validatedCwd(request.sandbox.writableRoots[0] || request.cwd);
     const args = [
       "sandbox",
-      "--permissions-profile", ":workspace",
+      "--permission-profile", ":workspace",
+      "-c", "sandbox_workspace_write.network_access=false",
       "-C", workspace,
       "--",
       "/usr/bin/env", "-C", request.cwd,

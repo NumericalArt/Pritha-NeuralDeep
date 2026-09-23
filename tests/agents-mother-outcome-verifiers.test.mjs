@@ -146,3 +146,13 @@ test("process healthcheck reads live /health without refreshing or running smoke
   assert.equal(code, 0);
   assert.deepEqual(requests, ["/health"]);
 });
+
+for(const [name,expression] of [
+ ['fabricated digest',"'Подставная сводка без обращения к источникам.'"],
+ ['missing source links',"markdown.replace(/https:\\/\\/[^ ]+/g,'')"],
+ ['wrong output language',"markdown.replace('Сводка','Summary')"],
+])test(`host product verifier rejects ${name}`,async t=>{
+ const root=project(t,'llm-http-app-v1');
+ writeFileSync(path.join(root,'scripts/server.mjs'),appImplementation.replace('const item={id:String(state.digests.length+1),markdown};',`const item={id:String(state.digests.length+1),markdown:${expression}};`));
+ const result=await run(root,'llm-http-app-v1');assert.notEqual(result.code,0,result.output);assert.match(result.output,/Digest must contain the provider/);
+});

@@ -8,6 +8,7 @@ import { contractData, validateContract } from "../agents-mother/contract.mjs";
 import { outcomeSpecFile } from "../agents-mother/outcome-spec.mjs";
 import { scaffoldCapability } from "../agents-mother/scaffold/capabilities.mjs";
 import { apiProcessManifest } from "../agents-mother/scaffold/api-process.mjs";
+import {neuralDeepExecutionProfile} from './model-execution-profile.mjs';
 
 const SHA = text => createHash("sha256").update(text).digest("hex");
 const SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
@@ -54,7 +55,8 @@ export async function preflightAgentCreation(input, { portProbe = probeCreationP
   const providerState = ["available", "rate_limited", "unavailable", "auth_required", "billing_required", "access_denied"].includes(providerStatus?.providerState) ? providerStatus.providerState : "unavailable";
   const model = providerStatus?.models?.find(item => item.id === providerStatus?.selected?.modelId);
   const provider = { localReady: providerStatus?.availability === "ready" && providerStatus?.effectiveProvider === "neuraldeep_cli", state: providerState,
-    modelAllowed: Boolean(model && (!providerStatus?.selected?.effortId || model.effortIds?.includes(providerStatus.selected.effortId))) };
+    modelAllowed: Boolean(model && (!providerStatus?.selected?.effortId || model.effortIds?.includes(providerStatus.selected.effortId)
+      || neuralDeepExecutionProfile(model.id).effortControl==='ignored')) };
   // A host document approval has no provider dispatch. Its configuration checks
   // still run; every model-launch caller retains the default provider check.
   if (input.checkProvider !== false) {

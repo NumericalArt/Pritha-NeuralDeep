@@ -294,3 +294,14 @@ test("legacy Trial evidence with a v1 nested execution result remains self-verif
   assert.equal(verifyTrialResultFreshness(result, project).ok, true);
   assert.equal(JSON.stringify(result), before, "legacy evidence is verified in place and is not rewritten or upgraded");
 });
+
+test('locked host templates execute from a host copy outside the product worktree',async t=>{
+ const root=projectFixture();t.after(()=>rmSync(root,{recursive:true,force:true}));
+ const rel='scripts/trial.mjs',content=readFileSync(path.join(root,rel)),digest='sha256:'+createHash('sha256').update(content).digest('hex');let dispatched;
+ const backend={name:'fixture',probe:async()=>({available:true}),execute:async request=>{
+  dispatched=request.argv[1];assert.ok(path.isAbsolute(dispatched));assert.ok(!dispatched.startsWith(root+path.sep));assert.deepEqual(readFileSync(dispatched),content);
+  return {exitCode:0,stdout:'READY',stderr:'',durationMs:1,isolation:'none'};
+ }};
+ const trial=automated({argv:['node',rel],verifierInputs:[{path:rel,hash:digest,provenance:'host-template:fixture-v1'}],thenStdoutContains:[],thenStderrContains:[],thenArtifacts:[],thenArtifactContains:[]});
+ const result=await runTrialPlan(plan([trial]),{projectPath:root,backend});assert.equal(result.result.counts.failed,0,JSON.stringify(result.result.trials));assert.ok(dispatched);
+});

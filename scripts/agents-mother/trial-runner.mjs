@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, mkdtempSync,rmSync } from "node:fs";
+import os from 'node:os';
 import path from "node:path";
 import { atomicWriteFile } from "../lib/atomic-file.mjs";
 import { parseBoundedJson } from "../lib/bounded-json.mjs";
@@ -253,7 +254,7 @@ async function runAutomatedTrial(trial, context) {
     recordUsage("dispatching");
     dispatched = true;
     const execution = await context.backend.execute({
-      argv: trial.argv,
+      argv: context.hostVerifier ? [trial.argv[0],context.hostVerifier,...trial.argv.slice(2)] : trial.argv,
       cwd,
       timeoutMs: trial.timeoutMs,
       outputBytesCap: context.outputBytesCap,
@@ -321,11 +322,12 @@ export async function runTrialPlan(planOrPath, options = {}) {
     runId: options.runId || path.basename(options.runRoot || (loaded.planPath ? path.dirname(loaded.planPath) : "unbound")),
     attemptId: randomUUID(), planLock: sha256(JSON.stringify(plan)), options: { root: options.root, stateRoot: options.stateRoot } };
   const trials = [];
+  const verifierCopies=mkdtempSync(path.join(os.tmpdir(),'pritha-host-verifiers-'));
   const redaction = { projectRoot, stateRoot: options.stateRoot, root: options.root };
   let runtimeProbe;
   try {
     runtimeProbe = typeof backend.probe === "function"
-      ? await backend.probe({ timeoutMs: options.probeTimeoutMs })
+      ? await backend.probe({ cwd:projectRoot,timeoutMs: options.probeTimeoutMs })
       : {
           backend: backend.name || "custom-trial-backend",
           available: true,
@@ -347,6 +349,15 @@ export async function runTrialPlan(planOrPath, options = {}) {
           error: null,
         });
       } else {
+        // Host templates have no project-relative imports. Run their locked
+        // bytes outside the executor worktree, prepared only after it exits.
+        const template=(trial.verifierInputs||[]).find(input=>input.path===trial.argv?.[1] && input.provenance?.startsWith('host-template:'));
+        let hostVerifier=null;
+        if(template && ['node',process.execPath].includes(trial.argv[0])) {
+          const content=readFileSync(projectPath(projectRoot,template.path));
+          if(sha256(content)!==template.hash)throw new Error('Host verifier changed before execution');
+          hostVerifier=path.join(verifierCopies,template.hash.slice(7)+'.mjs');atomicWriteFile(hostVerifier,content);
+        }
         trials.push(await runAutomatedTrial(trial, {
           projectRoot,
           backend,
@@ -355,11 +366,13 @@ export async function runTrialPlan(planOrPath, options = {}) {
           maxArtifactBytes: options.maxArtifactBytes || MAX_ARTIFACT_BYTES,
           redaction,
           usage,
+          hostVerifier,
         }));
       }
     }
   } finally {
     if (options.closeBackend !== false) backend.close?.();
+    rmSync(verifierCopies,{recursive:true,force:true});
   }
   const after = workspaceRevision(projectRoot, options.workspaceRevisionOptions);
   if (protectedInputs && !verifyProtectedTrialInputs(protectedInputs, projectRoot).ok) {
