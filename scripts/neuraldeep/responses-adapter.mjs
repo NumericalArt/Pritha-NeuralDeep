@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { RESPONSES_REQUEST_LIMIT } from "./attachment-policy.mjs";
 import { classifyNeuralDeepProviderError, parseProviderErrorPayload } from "./provider-error.mjs";
 import { neuralDeepUsageKnown, normalizeNeuralDeepUsage } from "./usage-ledger.mjs";
+import { requestDeadlineWindow } from './creation-execution-policy.mjs';
 
 const { Agent } = createRequire(new URL("../../interfaces/control-center/package.json", import.meta.url))("undici");
 const DEFAULT_UPSTREAM = "https://api.neuraldeep.ru";
@@ -297,18 +298,24 @@ export function createNeuralDeepAdapter(options = {}) {
 
     const controller = new AbortController();
     const timings = { upstreamStartedAt: null, firstByteMs: null, lastByteMs: null, responseCompletedMs: null, responseBytes: 0, timedOut: false };
-    const timeout = setTimeout(() => {
-      timings.timedOut = true;
-      controller.abort(new Error("NeuralDeep upstream request timed out"));
-    }, upstreamTimeoutMs);
+    let timeout, cancellationReason=null;
+    const abort = (code,message) => {
+      cancellationReason ||= code;
+      controller.abort(Object.assign(new Error(message),{code}));
+    };
     const abortIfClientLeaves = () => {
-      if (!response.writableEnded) controller.abort(new Error("Codex disconnected from the adapter"));
+      if (!response.writableEnded) abort('client_disconnect','Codex disconnected from the adapter');
     };
     response.once("close", abortIfClientLeaves);
     let upstreamAttempted = false;
     let requestHash = null;
     let providerUsage = null;
     try {
+      const window=requestDeadlineWindow(options.deadline);
+      timeout=setTimeout(()=>{
+        timings.timedOut=true;
+        abort(window!==null && window<upstreamTimeoutMs?'iteration_deadline':'provider_timeout','Provider response did not finish in the permitted request window');
+      },Math.min(upstreamTimeoutMs,window ?? upstreamTimeoutMs));
       if(options.responsesOnly && requestUrl.pathname !== '/v1/responses')throw Object.assign(new Error('This budgeted adapter accepts only Responses requests.'),{code:'provider_budget_endpoint',statusCode:409});
       let body = await readNodeBody(request, requestLimit);
       if (requestUrl.pathname === "/v1/responses") {
@@ -323,6 +330,8 @@ export function createNeuralDeepAdapter(options = {}) {
         requestHash = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
         if (options.prepareResponsesRequest) payload = await options.prepareResponsesRequest(payload);
         body = Buffer.from(JSON.stringify(payload));
+        requestDeadlineWindow(options.deadline);
+        if(controller.signal.aborted) throw controller.signal.reason;
         await options.beforeResponsesDispatch?.({ requestHash, model: payload.model, bytes: body.length, payload });
       }
       const target = new URL(`${requestUrl.pathname}${requestUrl.search}`, upstreamOrigin);
@@ -361,6 +370,7 @@ export function createNeuralDeepAdapter(options = {}) {
         status: upstream.status,
         durationMs: Date.now() - startedAt,
         timings: { ...timings },
+        cancellationReason,
         requestHash,
         upstreamAttempted,
         usage: providerUsage,
@@ -383,12 +393,13 @@ export function createNeuralDeepAdapter(options = {}) {
         status: statusCode,
         durationMs: Date.now() - startedAt,
         timings: { ...timings },
+        cancellationReason: cancellationReason || (error?.code==='provider_iteration_deadline'?'iteration_deadline':null),
         requestHash,
         upstreamAttempted,
         usage: providerUsage,
         error: classifyNeuralDeepProviderError({
           status: Number.isInteger(error?.statusCode) ? error.statusCode : null,
-          transportCode: error?.name === "AbortError" ? "timeout" : error?.code,
+          transportCode: cancellationReason || (error?.name === "AbortError" ? "provider_timeout" : error?.code),
         }),
       });
     } finally {

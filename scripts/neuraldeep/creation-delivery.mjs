@@ -179,7 +179,10 @@ export async function runCreationDelivery(job, options = {}) {
     };
     const input = { ...options, runId, creationJobId: job.jobId, beforeDispatch, shouldContinue: mayContinue,
       buildExecutorOptions: { model: options.model, effort: options.effort },
-      executorTimeoutMs: Math.min(12 * 60_000, remainingMs),
+      // Legacy jobs retain their original executor policy. New jobs pin the
+      // configured limit and give every phase the same enclosing deadline.
+      executorTimeoutMs: Math.min(job.executionPolicy?.iterationTimeoutMs || 12 * 60_000, remainingMs),
+      ...(job.executionPolicy ? {executionPolicy:job.executionPolicy,jobDeadlineAt:start+remainingMs} : {}),
       budget: { maxTokens: remainingTokens, maxElapsedMs: remainingMs, maxIterations: receipt.maxIterations,
         repeatedFailureThreshold: receipt.repeatedFailureThreshold, tokenBudgetSource: "creation-job-remaining", goalEnforcement: "not-applicable" },
       onLedgerReady: async () => { await bindToTask(runId, options.task, options); await options.onRunId?.(runId); } };

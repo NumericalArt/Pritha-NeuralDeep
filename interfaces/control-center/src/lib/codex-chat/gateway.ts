@@ -273,7 +273,9 @@ export class CodexChatGateway {
       const versions=creationReleaseIdentity(this.root);
       if(versions.sourceDirty || !versions.source || versions.source!==versions.runtime)throw new AgentCreationError('creation_release_mismatch');
       const instanceId=this.store.stateIdentityHash;
+      const settings=getPrithaRuntimeSettings();
       return store.create({chatId:binding.chatId,instanceId,agentId:binding.subject!.subjectId,releaseSha:versions.source,
+        executionSettings:{modelId:binding.modelId,effortId:binding.effortId,timeoutMs:settings.codexTimeoutMs,promptTokenBudget:settings.codexPromptTokenBudget},
         tokenBudget:binding.subject!.tokenBudget,preparationPolicyVersion:2,briefProtocolVersion:1,researchProtocolVersion:1,
         target:path.join(resolvePrithaAgentParent(this.root),binding.subject!.subjectId!),draftRoot:creationDraftRoot(this.store.stateRoot,instanceId,binding.chatId)});
     });
@@ -1314,7 +1316,9 @@ export class CodexChatGateway {
         const versions=creationReleaseIdentity(this.root);
         if(versions.sourceDirty || !versions.source || versions.source!==versions.runtime)throw new AgentCreationError('creation_release_mismatch');
         const instanceId=this.store.stateIdentityHash;
+        const settings=getPrithaRuntimeSettings();
         creation=creations!.create({chatId,instanceId,agentId:initial.subject!.subjectId,releaseSha:versions.source,
+          executionSettings:{modelId:initial.modelId,effortId:initial.effortId,timeoutMs:settings.codexTimeoutMs,promptTokenBudget:settings.codexPromptTokenBudget},
           tokenBudget:initial.subject!.tokenBudget,preparationPolicyVersion:2,briefProtocolVersion:1,researchProtocolVersion:1,
           target:path.join(resolvePrithaAgentParent(this.root),initial.subject!.subjectId!),draftRoot:creationDraftRoot(this.store.stateRoot,instanceId,chatId)});
       }

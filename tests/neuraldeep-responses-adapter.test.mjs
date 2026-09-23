@@ -380,3 +380,35 @@ test("rejects an oversized request before contacting NeuralDeep", async () => {
     await closeNeuralDeepAdapter(server);
   }
 });
+
+test('soft deadline refuses a new request before reserving or contacting provider',async t=>{
+ t.mock.timers.enable({apis:['setTimeout','Date'],now:2000});
+ let claims=0,calls=0;const observed=[];
+ const {response,finished}=invokeAdapter({deadline:{version:1,hardDeadlineAt:5000,softDeadlineAt:1000,requestTimeoutMs:3000,settlementGraceMs:1000},
+  beforeResponsesDispatch:()=>claims++,fetchImpl:()=>{calls++;throw Error('not reached');},onRequest:event=>observed.push(event)});
+ await finished;assert.equal(response.status,409);assert.equal(claims,0);assert.equal(calls,0);
+ assert.equal(observed[0].upstreamAttempted,false);assert.equal(observed[0].error.code,'provider_iteration_deadline');
+});
+
+test('an admitted response may finish after soft deadline with final usage inside the hard deadline',async t=>{
+ t.mock.timers.enable({apis:['setTimeout','Date'],now:1000});
+ const observed=[];const body=JSON.stringify({usage:{input_tokens:20,output_tokens:3,total_tokens:23}});
+ const {response,finished}=invokeAdapter({deadline:{version:1,hardDeadlineAt:6000,softDeadlineAt:2000,requestTimeoutMs:3000,settlementGraceMs:1000},
+  fetchImpl:async()=>({status:200,ok:true,headers:new Headers({'content-type':'application/json'}),body:(async function*(){
+   t.mock.timers.tick(1000);yield Buffer.from(body.slice(0,10));t.mock.timers.tick(1500);yield Buffer.from(body.slice(10));
+  })()}),onRequest:event=>observed.push(event)});
+ await finished;assert.equal(response.status,200);assert.equal(observed[0].usage.totalTokens,23);
+ assert.equal(observed[0].timings.responseCompletedMs,2500);assert.equal(observed[0].cancellationReason,null);
+});
+
+test('deadline abort preserves partial byte evidence and never invents usage',async t=>{
+ t.mock.timers.enable({apis:['setTimeout','Date'],now:1000});
+ const read=Promise.withResolvers(),observed=[];
+ const {finished}=invokeAdapter({deadline:{version:1,hardDeadlineAt:6000,softDeadlineAt:2000,requestTimeoutMs:3000,settlementGraceMs:1000},
+  fetchImpl:async(_url,{signal})=>({body:(async function*(){yield Buffer.from('partial');read.resolve();
+   await new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}));})()}),onRequest:event=>observed.push(event)});
+ await read.promise;t.mock.timers.tick(3000);await finished;
+ assert.equal(observed[0].cancellationReason,'iteration_deadline');assert.equal(observed[0].error.class,'control');
+ assert.equal(observed[0].timings.responseBytes,7);assert.equal(observed[0].usage,null);
+ assert.equal(observed[0].timings.responseCompletedMs,null);
+});

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { creationDocumentIdentity } from './creation-generation.mjs';
 import { creationPreparationPolicy } from './creation-preparation-policy.mjs';
+import { creationExecutionPolicy } from './creation-execution-policy.mjs';
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -76,6 +77,7 @@ export class AgentCreationStore {
       }
       if (input.briefProtocolVersion === 1) record.briefProtocolVersion = 1;
       if (input.researchProtocolVersion === 1) record.researchProtocolVersion = 1;
+      if (input.executionSettings) record.executionPolicy=creationExecutionPolicy(input.executionSettings);
       this.db.prepare('INSERT INTO agent_creation_jobs VALUES(?,?,?,?,?)').run(input.chatId,input.instanceId,input.agentId,1,JSON.stringify(record));
       return record;
     });
@@ -88,6 +90,7 @@ export class AgentCreationStore {
       const changed = update(structuredClone(current));
       if (changed.briefProtocolVersion !== current.briefProtocolVersion) throw new AgentCreationError('creation_policy_immutable');
       if (changed.researchProtocolVersion !== current.researchProtocolVersion) throw new AgentCreationError('creation_policy_immutable');
+      if (JSON.stringify(changed.executionPolicy)!==JSON.stringify(current.executionPolicy)) throw new AgentCreationError('creation_policy_immutable');
       if (changed.chatId !== current.chatId || changed.agentId !== current.agentId || changed.instanceId !== current.instanceId || changed.releaseSha !== current.releaseSha) {
         throw new AgentCreationError('creation_identity_immutable');
       }

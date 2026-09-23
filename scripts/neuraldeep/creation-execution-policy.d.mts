@@ -1,0 +1,2 @@
+export type CreationExecutionPolicy={schema:'pritha-creation-execution-policy-v1';version:1;modelId:string;effortId:string|null;iterationTimeoutMs:number;requestTimeoutMs:number;settlementGraceMs:number;configuredPromptTokenBudget:number;appliesTo:string};
+export function creationExecutionPolicy(input:{modelId:string;effortId?:string|null;timeoutMs?:number;promptTokenBudget?:number}):CreationExecutionPolicy;

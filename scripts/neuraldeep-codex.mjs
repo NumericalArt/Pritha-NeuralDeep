@@ -24,6 +24,7 @@ import { acquireRuntimeAdmission } from "./neuraldeep/runtime-admission.mjs";
 import { assertNeuralDeepDispatchAllowed } from "./neuraldeep/release-maintenance.mjs";
 import { assertCreationExecutionRoot } from "./neuraldeep/creation-execution-root.mjs";
 import { providerBudgetGate } from "./neuraldeep/provider-budget.mjs";
+import { requestDeadlineWindow } from './neuraldeep/creation-execution-policy.mjs';
 
 import { flattenSearchTools, restoreSearchToolsStream } from "./search/responses-bridge.mjs";
 import { searchMcpConfig, searchMcpArgs, searchRuntimeContext } from "./search/runtime-config.mjs";
@@ -303,6 +304,7 @@ export function buildCodexExecArgs(options = {}) {
 }
 
 export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
+  requestDeadlineWindow(options.deadline);
   assertNeuralDeepDispatchAllowed(runtime.stateRoot);
   const runId = options.runId || `nd_${randomUUID()}`;
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(runId)) throw new Error("neuraldeep_run_id_invalid");
@@ -330,6 +332,7 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
   journal.beginRuntimeRun({ runId,
     requestHash: createHash("sha256").update(JSON.stringify([codexArgs, options.input ?? null, options.cwd || runtime.projectRoot, options.model || runtime.model])).digest("hex"),
     receipt: { model: options.model || runtime.model, provider: "neuraldeep", workload_id: safeMetadataId(options.workloadId),
+      ...(options.deadline ? {execution_deadline:options.deadline} : {}),
       resumed_session: options.resume || null, worker_pid: process.pid, worker_started: worker.started,
       process_protocol: 1, dispatch_authorized: false, process_exited: false, usage_ledger_recorded: false } });
   receiptCreated = true;
@@ -362,6 +365,7 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
     }
   };
   server = await listenNeuralDeepAdapter({ host: runtime.host, port: 0,
+    deadline:options.deadline,
     responsesOnly: Boolean(budgetGate),
     transformResponsesRequest: flattenSearchTools, transformResponsesStream: restoreSearchToolsStream,
     upstreamOrigin: runtime.upstreamOrigin,
@@ -376,7 +380,7 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
       providerRequests = budgetGate ? budgetAction(()=>budgetGate.claim(event)) : journal.claimProviderRequest(runId, event.requestHash, { model:event.model, bytes:event.bytes });
     },
     onRequest: (requestEvent) => {
-      if(budgetGate && requestEvent.upstreamAttempted === false && /^provider_(?:token_budget|budget_|usage_unconfirmed)/.test(requestEvent.error?.code || '')) {
+      if(requestEvent.upstreamAttempted === false && /^provider_(?:token_budget|budget_|usage_unconfirmed|iteration_deadline)/.test(requestEvent.error?.code || '')) {
         budgetBlocker ||= {code:requestEvent.error.code,message:'Budgeted dispatch was refused before the provider call.'};
         journal.updateRuntimeRun(runId,{budget_blocker:budgetBlocker});
       }
@@ -387,6 +391,7 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
           appendProvenance(runtime, { event: "provider_request_finished", run_id: runId,
             request_hash: requestEvent.requestHash, status: requestEvent.status, duration_ms: requestEvent.durationMs,
             timings: requestEvent.timings, error_code: requestEvent.error?.code || null,
+            cancellation_reason: requestEvent.cancellationReason || null,
           }, { includeCodexVersion: false });
         } catch {
           // Diagnostics must not turn a received provider response into a failed request.
@@ -490,7 +495,10 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
     else process.stdin.pipe(child.stdin);
   }
 
-  const forwardSignal = (signal) => owned.stop(signal);
+  const forwardSignal = (signal) => {
+    journal.updateRuntimeRun(runId,{termination_reason:'host_signal',termination_signal:signal,termination_at:new Date().toISOString()});
+    owned.stop(signal);
+  };
   const forwardSigint = () => forwardSignal("SIGINT");
   const forwardSigterm = () => forwardSignal("SIGTERM");
   process.once("SIGINT", forwardSigint);
@@ -540,7 +548,8 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
   const notDispatchedForBudget=Boolean(budgetBlocker && !providerRequests);
   const accountedUsage=useRequestUsage || notDispatchedForBudget ? requestUsage.usage:latestUsage;
   const accountedKnown=useRequestUsage?requestUsage.usageKnown && !providerAccountingError:notDispatchedForBudget || neuralDeepUsageKnown(latestUsage);
-  outcome = launchError || budgetBlocker ? "failed" : result.signal ? "cancelled" : result.code === 0 ? "completed" : "failed";
+  const terminationReason=providerError?.class==='control' ? providerError.code : result.signal ? 'host_signal' : null;
+  outcome = launchError || budgetBlocker || terminationReason ? "failed" : result.signal ? "cancelled" : result.code === 0 ? "completed" : "failed";
   const usageEvent = {
     profileIdentity: neuralDeepRuntimeIdentity(runtime.stateRoot, { PRITHA_NEURALDEEP_CODEX_HOME: runtime.codexHome, PRITHA_NEURALDEEP_UPSTREAM_ORIGIN: runtime.upstreamOrigin }).profileIdentity,
     stateRoot: runtime.stateRoot, runId, source: usageSource, workloadId, model: selectedModel, sessionId,
@@ -553,6 +562,7 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
   journal.updateRuntimeRun(runId, { status: processExited ? usageEvent.status : "resume_confirmation_required", session_id: sessionId,
     process_exited: processExited && adapterClosed, process_tree_exited: processExited, adapter_closed: adapterClosed, process_evidence: processEvidence,
     exit_code: result.code, signal: result.signal, supervisor_error: result.error || null,
+    termination_reason:terminationReason,
     usage_status: usageEvent.usageKnown ? "measured" : "unknown", usage_event: usageEvent,
     provider_usage:requestUsage, ...(providerAccountingError?{accounting_error:providerAccountingError}:{}) });
   try {
@@ -565,10 +575,10 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
   if (options.emitProviderEvents === true && options.passthrough !== "inherit") {
     process.stdout.write(`${JSON.stringify({ type: "pritha.run_finished", run_id: runId, session_id: sessionId,
       process_exited: processExited && adapterClosed, usage_ledger_recorded: Boolean(usageRecord), usage_known: usageRecord?.usageKnown === true,
-      usage: usageRecord?.usage || null })}\n`);
+      usage: usageRecord?.usage || null, termination_reason:terminationReason })}\n`);
   }
   if (launchError) throw launchError;
-  return { ...result, ...(budgetBlocker ? {code:1} : {}), runId, sessionId, child, usageRecord, providerError };
+  return { ...result, ...(budgetBlocker || terminationReason ? {code:1} : {}), runId, sessionId, child, usageRecord, providerError };
   } finally {
     try {
       if (server) await closeNeuralDeepAdapter(server);
@@ -634,7 +644,7 @@ function parseExecJsonOptions(args) {
   for (let index = 0; index < args.length; index += 1) {
     const flag = args[index];
     if (flag === "--ephemeral") options.ephemeral = true;
-    else if (["--model", "--effort", "--sandbox", "--cwd", "--resume", "--output-schema", "--output-last-message", "--network", "--add-dir", "--usage-source", "--workload-id", "--run-id", "--image", "--attachment-manifest", "--execution-code-root", "--token-budget"].includes(flag)) {
+    else if (["--model", "--effort", "--sandbox", "--cwd", "--resume", "--output-schema", "--output-last-message", "--network", "--add-dir", "--usage-source", "--workload-id", "--run-id", "--image", "--attachment-manifest", "--execution-code-root", "--token-budget", "--deadline-policy"].includes(flag)) {
       const value = args[index + 1];
       if (!value) throw new Error(`Missing value for ${flag}`);
       if (flag === "--add-dir") options.add_dirs.push(value);
@@ -646,6 +656,7 @@ function parseExecJsonOptions(args) {
   return {
     runId: options.run_id,
     tokenBudget: options.token_budget === undefined ? undefined : Number(options.token_budget),
+    deadline: options.deadline_policy === undefined ? undefined : JSON.parse(options.deadline_policy),
     model: options.model,
     effort: options.effort,
     sandbox: options.sandbox,

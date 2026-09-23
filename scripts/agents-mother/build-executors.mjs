@@ -11,6 +11,7 @@ import { atomicWriteFile } from "../lib/atomic-file.mjs";
 import { NeuralDeepCoordinationStore, neuralDeepCoordinationPaths } from "../neuraldeep/coordination-store.mjs";
 import { recordNeuralDeepRun } from "../neuraldeep/usage-ledger.mjs";
 import { approvedBuildContext } from "./outcome-spec.mjs";
+import { requestDeadlineWindow } from '../neuraldeep/creation-execution-policy.mjs';
 
 export const BUILD_EXECUTOR_RESULT_SCHEMA = "pritha-build-executor-result-v1";
 const processReceiptFields = (runtime) => Object.fromEntries([
@@ -277,6 +278,8 @@ export class CodexCliBuildExecutor {
     if (tokenBudget !== undefined && (!Number.isSafeInteger(tokenBudget) || tokenBudget < 1))
       throw new ExecutionBackendError('token_budget_exhausted', 'No measured budget remains for this phase');
     const attemptId = `nd_${randomUUID()}`;
+    const deadline=input.deadline || null;
+    requestDeadlineWindow(deadline);
     let receipt = {
       schema: BUILD_EXECUTOR_RESULT_SCHEMA, provider: "neuraldeep", executor: this.name,
       run_id: input.runId || null, attempt_id: attemptId, launcher_run_id: attemptId, phase,
@@ -285,6 +288,7 @@ export class CodexCliBuildExecutor {
       goal_enforcement: "not-applicable", usage_source: "neuraldeep-provider-ledger",
       model_requested: this.model, effort_requested: this.effort, runtime_version: this.runtimeVersion(),
       token_budget: tokenBudget ?? null, started_at: new Date().toISOString(),
+      ...(deadline ? {deadline} : {}),
     };
     const checkpoint = async () => {
       if (input.onCheckpoint) await input.onCheckpoint(receipt);
@@ -303,13 +307,14 @@ export class CodexCliBuildExecutor {
           deliveryRunId: input.runId, iteration: input.iteration, phase, workloadId: options.workloadId }); }
         finally { store.close(); }
       }
-      const result = await this.run({ ...options, tokenBudget, runId: attemptId, signal: input.signal });
+      const result = await this.run({ ...options, tokenBudget, runId: attemptId, signal: input.signal, deadline });
       const measured = result.usageKnown !== false && Number.isSafeInteger(result.tokensUsed) && result.tokensUsed >= 0;
       receipt = { ...receipt, status: result.timedOut || result.aborted ? "interrupted" : result.code === 0 ? "completed" : "failed",
         thread_id: result.threadId || null, turn_id: null,
         usage_status: measured ? "measured" : "unknown", tokens_used: measured ? result.tokensUsed : null,
         process_exited: result.processExited !== false, finished_at: new Date().toISOString(),
         ...this.savedProcessReceipt(input, attemptId),
+        termination_reason: result.timedOut ? 'iteration_deadline' : result.aborted ? 'operator_cancel' : result.terminationReason || null,
         usage_ledger_recorded: result.usageLedgerRecorded ?? null };
       await checkpoint();
       return { ...result, receipt };
@@ -347,7 +352,7 @@ export class CodexCliBuildExecutor {
     } finally { store.close(); }
   }
 
-  run({ cwd, prompt, sandbox, timeoutMs, outputSchemaPath, outputPath, usageSource = "agent-mother", workloadId, runId, tokenBudget, signal: abortSignal }) {
+  run({ cwd, prompt, sandbox, timeoutMs, outputSchemaPath, outputPath, usageSource = "agent-mother", workloadId, runId, tokenBudget, signal: abortSignal, deadline }) {
     if (abortSignal?.aborted) return Promise.reject(new ExecutionBackendError("build_executor_aborted", "Build dispatch was cancelled before starting"));
     const args = [
       this.runner,
@@ -362,6 +367,7 @@ export class CodexCliBuildExecutor {
       ...(runId ? ["--run-id", runId] : []),
       ...(workloadId ? ["--workload-id", String(workloadId)] : []),
       ...(tokenBudget !== undefined ? ["--token-budget", String(tokenBudget)] : []),
+      ...(deadline ? ['--deadline-policy',JSON.stringify(deadline)] : []),
       ...(outputSchemaPath ? ["--output-schema", outputSchemaPath] : []),
       ...(outputPath ? ["--output-last-message", outputPath] : []),
     ];
@@ -380,11 +386,13 @@ export class CodexCliBuildExecutor {
         stdio: ["pipe", "pipe", "pipe"],
       });
       let killTimer;
+      const killGrace=deadline ? Math.max(1,Math.min(5000,Math.floor(deadline.settlementGraceMs/2))) : 5000;
       const stopOwnedWrapper = () => {
         // Only this ChildProcess handle is addressed. The runner's supervisor
         // still owns descendant teardown and its durable process proof.
         child.kill("SIGTERM");
-        killTimer = setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); }, 5000);
+        if (killTimer) return;
+        killTimer = setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); }, killGrace);
         killTimer.unref();
       };
       const abort = () => { aborted = true; stopOwnedWrapper(); };
@@ -410,7 +418,7 @@ export class CodexCliBuildExecutor {
       const timer = setTimeout(() => {
         timedOut = true;
         stopOwnedWrapper();
-      }, timeoutMs);
+      }, deadline ? Math.max(1,deadline.hardDeadlineAt-Date.now()-killGrace) : timeoutMs);
       child.once("error", reject);
       child.once("close", (code, signal) => {
         clearTimeout(timer);
@@ -443,6 +451,7 @@ export class CodexCliBuildExecutor {
           tokensUsed: usageKnown ? usage.inputTokens + usage.outputTokens : null,
           usageKnown, usageLedgerRecorded: finished?.usage_ledger_recorded === true,
           processExited: finished?.process_exited === true,
+          terminationReason: finished?.termination_reason || null,
         });
       });
     });

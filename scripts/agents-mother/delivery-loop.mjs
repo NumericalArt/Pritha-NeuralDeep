@@ -8,6 +8,7 @@ import { redactFilesystemPaths } from "../lib/redaction.mjs";
 import { slug } from "../lib/slug.mjs";
 import { writeLifecycleReport } from "./lifecycle-report.mjs";
 import { createBuildExecutor } from "./build-executors.mjs";
+import { executionDeadline } from '../neuraldeep/creation-execution-policy.mjs';
 import {
   accountDeliveryExecutorResult as accountExecutorResult,
   deliveryUsageStatus,
@@ -760,6 +761,8 @@ async function runDeliveryLoopLocked(input = {}) {
       const phaseContext = {
         runId: state.run_id, iteration: state.iteration, stateRoot: input.stateRoot,
         creationJobId: input.creationJobId,
+        ...(input.executionPolicy ? {deadline:executionDeadline({hardDeadlineAt:Math.min(input.jobDeadlineAt,Date.now()+input.executorTimeoutMs),
+          requestTimeoutMs:input.executionPolicy.requestTimeoutMs,settlementGraceMs:input.executionPolicy.settlementGraceMs})} : {}),
         signal: input.signal,
         tokenBudget: deliveryTokenPreflight(state.budget).available,
         beforeDispatch: async () => {

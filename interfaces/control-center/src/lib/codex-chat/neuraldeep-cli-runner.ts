@@ -4,7 +4,7 @@ import { appendPrivateText } from "@/lib/private-json";
 import { NeuralDeepCliRuntime, type CliTurnOptions } from "./cli-runtime";
 
 export type NeuralDeepProviderError = {
-  class: "credentials" | "billing" | "rate_limit" | "outage" | "model_unavailable" | "access_denied" | "request" | "input";
+  class: "credentials" | "billing" | "rate_limit" | "outage" | "model_unavailable" | "access_denied" | "request" | "input" | "control";
   code: string;
   status: number | null;
   retryAfter: string | null;
@@ -83,7 +83,7 @@ function providerErrorFromEvent(event: Record<string, unknown>): NeuralDeepProvi
   if (event.type !== "pritha.provider_error") return null;
   const raw = asRecord(event.error) || {};
   const errorClass = String(raw.class || "request");
-  if (!["credentials", "billing", "rate_limit", "outage", "model_unavailable", "access_denied", "request", "input"].includes(errorClass)) {
+  if (!["credentials", "billing", "rate_limit", "outage", "model_unavailable", "access_denied", "request", "input", "control"].includes(errorClass)) {
     return null;
   }
   return {
@@ -217,6 +217,7 @@ export function classifyNeuralDeepRunnerFailure(result: NeuralDeepCliRunResult):
   }
   if (result.timedOut) return { kind: "timeout", code: "codex_cli_timeout", retryableBeforeToolActivity: false };
   if (result.providerError?.class === "input") return { kind: "input_rejected", code: result.providerError.code, retryableBeforeToolActivity: false };
+  if (result.providerError?.class === "control") return { kind: "interrupted", code: result.providerError.code, retryableBeforeToolActivity: false };
   if (result.code === 0 && !result.failedEvent && result.completedEvent && result.threadId) {
     return { kind: "none", code: null, retryableBeforeToolActivity: false };
   }
