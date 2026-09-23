@@ -35,9 +35,11 @@ test('each request consumes the current host remainder before fetch; blocked req
   assert.deepEqual(f.store.providerUsageSummary('run-budget').usage.totalTokens,22000);
   assert.equal(f.store.providerUsageSummary('run-budget').usageKnown,true);
   assert.equal(f.jobs.get(f.job.chatId).budget.tokensUsed,0,'the completed-step ledger is not charged a second time');
-  assert.deepEqual(creationObservedUsage(f.store,f.jobs.get(f.job.chatId)),{knownMinimumTokens:22000,unfinalizedTokens:22000,unknownRequests:0});
+  const pending=creationObservedUsage(f.store,f.jobs.get(f.job.chatId));
+  assert.equal(pending.knownMinimumTokens,22000);assert.equal(pending.unfinalizedTokens,22000);assert.equal(pending.unknownRequests,0);
   f.jobs.recordTurn(f.job.chatId,{turnId:'turn-budget',tokens:22000,ok:false,dispatched:true});
-  assert.deepEqual(creationObservedUsage(f.store,f.jobs.get(f.job.chatId)),{knownMinimumTokens:22000,unfinalizedTokens:0,unknownRequests:0});
+  const settled=creationObservedUsage(f.store,f.jobs.get(f.job.chatId));
+  assert.equal(settled.knownMinimumTokens,22000);assert.equal(settled.unfinalizedTokens,0);assert.equal(settled.coverage,'complete');
 });
 
 test('the transaction rechecks pause, generation, limits and unresolved concurrent requests',t=>{
@@ -55,7 +57,7 @@ test('the transaction rechecks pause, generation, limits and unresolved concurre
   const other=providerBudgetGate(f.store,{runId:'other',workloadId:'turn-budget',creation:f.creation});
   assert.throws(()=>other.prepare({model:'fixture',input:'other worker'}),{code:'provider_usage_unconfirmed'});
   f.jobs.recordTurn(f.job.chatId,{turnId:'turn-budget',tokens:null,ok:false,dispatched:true});
-  assert.equal(creationObservedUsage(f.store,f.jobs.get(f.job.chatId)).unknownRequests,1);
+  assert.equal(creationObservedUsage(f.store,f.jobs.get(f.job.chatId)).pendingRequests,1);
 });
 
 test('text reserve cannot authorize opaque media, server-side history or hosted tools',()=>{

@@ -30,6 +30,7 @@ export class NeuralDeepCoordinationStore {
   reconcileWorkload(workload: string, outcome?: "failed" | "cancelled"): number;
   reconcileStoppedTaskChats(): number;
   beginRuntimeRun(input: { runId: string; requestHash: string; receipt: Record<string, unknown> }): Record<string, unknown>;
+  bindRuntimeLineage(input:{runId:string;creationJobId:string;deliveryRunId:string;workloadId:string;iteration:number;phase:string}):Record<string,unknown>;
   updateRuntimeRun(runId: string, update: Record<string, unknown>): Record<string, unknown>;
   claimProviderRequest(runId: string, requestHash: string, metadata?: Record<string, unknown>, beforeClaim?:()=>Record<string,unknown>): number;
   recordProviderResponse(runId: string, response: { requestHash?: string | null; status: number; usage?: unknown; upstreamAttempted: boolean }): boolean;

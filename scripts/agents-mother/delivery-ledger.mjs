@@ -644,6 +644,7 @@ export function accountDeliveryExecutorResult(runRoot, result, executorPath) {
     if (result.process_exited === false || result.process_protocol === 1 &&
       (result.process_tree_exited !== true || result.adapter_closed !== true)) reason ||= "process_exit_unconfirmed";
     if (reason) unresolved.push({ ...priorAttempt,
+      ...(attemptId ? { attempt_id: attemptId, launcher_run_id: attemptId } : {}),
       ...Object.fromEntries(["worker_pid", "worker_started", "process_evidence", "process_protocol", "process_tree_exited", "adapter_closed"]
         .filter((field) => result[field] !== undefined).map((field) => [field, result[field]])),
       executor_result: executorPath, thread_id: threadId || null, turn_id: turnId || null, phase: "build-executor", reason,

@@ -25,17 +25,38 @@ export function creationRuntimeReceipt(coordination,turnId,{dispatched=true}={})
 /** A read-only lower bound: never settles an unknown turn or charges it twice. */
 export function creationObservedUsage(coordination,job) {
   const turnIds=[...new Set([job.activeTurnId,...job.budget.unknownAttempts].filter(Boolean))];
-  let unfinalizedTokens=0,unknownRequests=0;
+  const binding = job.delivery?.runtimeAccounting?.deliveryRunId === job.deliveryRunId ? job.delivery.runtimeAccounting : null;
+  const runs = new Set(), accounted = new Set(binding?.accountedRunIds || []);
+  let unboundAttempts = binding?.unboundAttempts?.length || 0;
   for(const turnId of turnIds) {
     if(Number.isSafeInteger(job.budget.turns?.[turnId]?.tokens))continue;
     const rows=coordination.db.prepare("SELECT id FROM runtime_receipts WHERE json_extract(receipt,'$.workload_id')=?").all(turnId);
-    for(const row of rows) {
-      const summary=coordination.providerUsageSummary(row.id);
-      unfinalizedTokens+=summary.usage.totalTokens;unknownRequests+=summary.unknownRequests;
-      if(!Number.isSafeInteger(unfinalizedTokens))throw new Error('creation_usage_overflow');
+    for(const row of rows) runs.add(row.id);
+    if (!rows.length && (turnId !== job.deliveryRunId || !binding)) unboundAttempts++;
+  }
+  if (binding?.deliveryRunId === job.deliveryRunId) for (const id of binding.unsettledRunIds) runs.add(id);
+  if (job.jobId && job.deliveryRunId) {
+    for (const row of coordination.db.prepare('SELECT run_id FROM runtime_lineage WHERE creation_job_id=? AND delivery_run_id=?').all(job.jobId,job.deliveryRunId)) runs.add(row.run_id);
+  }
+  let unfinalizedTokens=0,unknownRequests=0,pendingRequests=0,reservedTokens=0;
+  const provenance = [];
+  for (const id of runs) {
+    if (accounted.has(id)) continue;
+    const receipt = coordination.runtimeRun(id);
+    if (!receipt) { unboundAttempts++; continue; }
+    const summary=coordination.providerUsageSummary(id);
+    const exited=receipt.process_exited===true && receipt.process_tree_exited===true && receipt.adapter_closed===true;
+    unfinalizedTokens+=summary.usage.totalTokens;
+    if (exited) unknownRequests+=summary.unknownRequests;
+    else pendingRequests+=summary.unknownRequests;
+    for (const row of coordination.db.prepare('SELECT metadata FROM provider_dispatches WHERE run_id=?').all(id)) {
+      const metadata=JSON.parse(row.metadata);
+      if (!metadata.completion?.usage && Number.isSafeInteger(metadata.budget?.reservation)) reservedTokens+=metadata.budget.reservation;
     }
+    provenance.push({runId:id,measuredTokens:summary.usage.totalTokens,unresolvedRequests:summary.unknownRequests,processExited:exited});
   }
   const knownMinimumTokens=job.budget.tokensUsed+unfinalizedTokens;
-  if(!Number.isSafeInteger(knownMinimumTokens))throw new Error('creation_usage_overflow');
-  return {knownMinimumTokens,unfinalizedTokens,unknownRequests};
+  if (![knownMinimumTokens,unfinalizedTokens,unknownRequests,pendingRequests,reservedTokens].every(Number.isSafeInteger))throw new Error('creation_usage_overflow');
+  return {finalizedTokens:job.budget.tokensUsed,knownMinimumTokens,unfinalizedTokens,unknownRequests,pendingRequests,reservedTokens,unboundAttempts,
+    coverage:unknownRequests || pendingRequests || unboundAttempts || job.budget.unknownAttempts.length ? 'partial' : 'complete',provenance};
 }

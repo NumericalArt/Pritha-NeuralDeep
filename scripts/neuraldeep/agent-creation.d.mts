@@ -8,7 +8,7 @@ export type CreationJobView = {
   approvals:Record<string,{hash:string;actor:string;approvedAt:string;authorizationBasis?:string}>;
   blocker:{code:string;message:string}|null;checkpoint:unknown;
   budget:{tokensUsed:number;maxTokens:number;activeMs:number;maxActiveMs:number;unknownAttempts:string[];maxIterations:number;repeatedFailures:number};
-  observedUsage?:{knownMinimumTokens:number;unfinalizedTokens:number;unknownRequests:number};
+  observedUsage?:import('./creation-runtime-receipt.mjs').CreationObservedUsage;
   preparation?:{phase:{brief:number;research:number};phaseRemaining:{brief:number;research:number};total:number;remaining:number;
     requests:number;requestsRemaining:number;pendingRequests:number;unknownRequests:number;deliveryProtected:number;availableForDelivery:number|null;
     limits:{briefTokens:number;researchTokens:number;totalTokens:number;maxRequests:number};research:{checked:string[];remaining:string[]}|null};

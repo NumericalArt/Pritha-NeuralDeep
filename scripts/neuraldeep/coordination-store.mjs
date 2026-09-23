@@ -78,6 +78,8 @@ export class NeuralDeepCoordinationStore {
         CREATE TABLE IF NOT EXISTS logical_owners(scope TEXT PRIMARY KEY, owner TEXT NOT NULL, generation INTEGER NOT NULL, held INTEGER NOT NULL DEFAULT 1);
         CREATE TABLE IF NOT EXISTS attempt_logical_owners(attempt_id TEXT NOT NULL,scope TEXT NOT NULL,owner TEXT NOT NULL,generation INTEGER NOT NULL,PRIMARY KEY(attempt_id,scope));
         CREATE TABLE IF NOT EXISTS runtime_receipts(id TEXT PRIMARY KEY,request_hash TEXT NOT NULL,receipt TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS runtime_lineage(run_id TEXT PRIMARY KEY,creation_job_id TEXT NOT NULL,delivery_run_id TEXT NOT NULL,record TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS runtime_lineage_creation ON runtime_lineage(creation_job_id,delivery_run_id);
         CREATE TABLE IF NOT EXISTS runtime_owners(admission_id TEXT PRIMARY KEY,run_id TEXT UNIQUE NOT NULL);
         CREATE TABLE IF NOT EXISTS provider_dispatches(run_id TEXT NOT NULL,request_hash TEXT NOT NULL,created_at TEXT NOT NULL,metadata TEXT NOT NULL,PRIMARY KEY(run_id,request_hash));
         CREATE TABLE IF NOT EXISTS session_controls(scope TEXT PRIMARY KEY,owner TEXT NOT NULL,worker_pid INTEGER NOT NULL);
@@ -356,12 +358,28 @@ export class NeuralDeepCoordinationStore {
       return rows.length;
   }
 
+  /** Host-written before dispatch; never infer ownership from an ID prefix. */
+  bindRuntimeLineage(input) {
+    if (![input.runId, input.creationJobId, input.deliveryRunId, input.workloadId, input.phase].every(value => ID.test(value || ''))
+      || !Number.isSafeInteger(input.iteration) || input.iteration < 0) throw new Error('runtime_lineage_invalid');
+    const record = JSON.stringify({ schema: 'pritha-runtime-lineage-v1', ...input });
+    return this.transaction(() => {
+      const previous = this.db.prepare('SELECT record FROM runtime_lineage WHERE run_id=?').get(input.runId);
+      if (previous && previous.record !== record) throw new Error('runtime_lineage_conflict');
+      if (!previous) this.db.prepare('INSERT INTO runtime_lineage VALUES(?,?,?,?)').run(input.runId, input.creationJobId, input.deliveryRunId, record);
+      return JSON.parse(record);
+    });
+  }
+
   beginRuntimeRun({ runId, requestHash, receipt }) {
     if (!ID.test(runId) || !/^[a-f0-9]{64}$/.test(requestHash)) throw new Error("runtime_receipt_identity_invalid");
     return this.transaction(() => {
       const previous = this.db.prepare("SELECT request_hash FROM runtime_receipts WHERE id=?").get(runId);
       if (previous) throw new Error(previous.request_hash === requestHash ? "neuraldeep_run_already_dispatched" : "neuraldeep_run_identity_conflict");
-      const value = { ...receipt, run_id: runId, status: "dispatching", usage_status: "unknown", created_at: new Date().toISOString() };
+      const bound = this.db.prepare('SELECT record FROM runtime_lineage WHERE run_id=?').get(runId);
+      const lineage = bound ? JSON.parse(bound.record) : null;
+      if (lineage && lineage.workloadId !== receipt.workload_id) throw new Error('runtime_lineage_workload_mismatch');
+      const value = { ...receipt, ...(lineage ? { lineage } : {}), run_id: runId, status: "dispatching", usage_status: "unknown", created_at: new Date().toISOString() };
       this.db.prepare("INSERT INTO runtime_receipts(id,request_hash,receipt) VALUES(?,?,?)").run(runId, requestHash, JSON.stringify(value));
       return value;
     });
@@ -387,7 +405,7 @@ export class NeuralDeepCoordinationStore {
         throw Object.assign(new Error("A possibly dispatched provider request cannot be replayed automatically."), { code: "provider_request_replay_blocked", statusCode: 409 });
       }
       // A budget/owner check and its reservation share the dispatch transaction.
-      metadata = { ...metadata, ...(beforeClaim?.() || {}) };
+      metadata = { ...metadata, ...(beforeClaim?.() || {}), ...(this.runtimeRun(runId).lineage ? { lineage: this.runtimeRun(runId).lineage } : {}) };
       this.db.prepare("INSERT INTO provider_dispatches VALUES(?,?,?,?)").run(runId, requestHash, new Date().toISOString(), JSON.stringify(metadata));
       return this.db.prepare("SELECT count(*) AS count FROM provider_dispatches WHERE run_id=?").get(runId).count;
     });

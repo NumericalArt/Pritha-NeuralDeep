@@ -10,6 +10,7 @@ import { readDeliveryWorktree } from "../agents-mother/delivery-worktree.mjs";
 import { performTaskDeliveryAction, readTaskDelivery } from "../agents-mother/task-delivery.mjs";
 import { verifyTrialResultFreshness } from "../agents-mother/trial-runner.mjs";
 import { workspaceRevision } from "../agents-mother/workspace-revision.mjs";
+import { deliveryAccountingLineage } from "./creation-usage-lineage.mjs";
 
 const digest = value => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const taskHash = task => digest([task?.chatId, task?.providerId, task?.stateIdentityHash, task?.nativeThreadId]);
@@ -41,6 +42,7 @@ export function readCreationDelivery(job, options) {
   if (!receipt || !runRoot) return null;
   const state = readDeliveryLedger(runRoot), coverage = deliveryUsageStatus(state.budget);
   return { runId: state.run_id, runRoot, status: state.status, blocker: state.blockers?.[0] || null,
+    runtimeAccounting: deliveryAccountingLineage(state, runRoot),
     adopted: Boolean(receipt.adoptedHead), head: receipt.adoptedHead || null, acceptance: "not_accepted",
     usage: { preparationTokens: receipt.preparationTokens, deliveryTokens: state.budget.tokens_used,
       knownTotalTokens: receipt.preparationTokens + state.budget.tokens_used, coverage,
@@ -130,7 +132,7 @@ export async function runCreationDelivery(job, options = {}) {
       if (!await mayContinue()) fail("creation_paused");
       if (Date.now() - start >= remainingMs) fail("elapsed_budget_exhausted");
     };
-    const input = { ...options, runId, beforeDispatch, shouldContinue: mayContinue,
+    const input = { ...options, runId, creationJobId: job.jobId, beforeDispatch, shouldContinue: mayContinue,
       buildExecutorOptions: { model: options.model, effort: options.effort },
       executorTimeoutMs: Math.min(12 * 60_000, remainingMs),
       budget: { maxTokens: remainingTokens, maxElapsedMs: remainingMs, maxIterations: receipt.maxIterations,

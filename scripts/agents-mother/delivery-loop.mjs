@@ -755,6 +755,7 @@ async function runDeliveryLoopLocked(input = {}) {
 
       const phaseContext = {
         runId: state.run_id, iteration: state.iteration, stateRoot: input.stateRoot,
+        creationJobId: input.creationJobId,
         signal: input.signal,
         tokenBudget: deliveryTokenPreflight(state.budget).available,
         beforeDispatch: async () => {

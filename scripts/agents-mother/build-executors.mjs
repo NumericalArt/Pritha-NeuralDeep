@@ -297,6 +297,12 @@ export class CodexCliBuildExecutor {
     // This checkpoint must finish before invoking a runner, including a capability probe.
     await checkpoint();
     try {
+      if (input.creationJobId) {
+        const store = new NeuralDeepCoordinationStore(neuralDeepCoordinationPaths(input.stateRoot, this.projectRoot));
+        try { store.bindRuntimeLineage({ runId: attemptId, creationJobId: input.creationJobId,
+          deliveryRunId: input.runId, iteration: input.iteration, phase, workloadId: options.workloadId }); }
+        finally { store.close(); }
+      }
       const result = await this.run({ ...options, tokenBudget, runId: attemptId, signal: input.signal });
       const measured = result.usageKnown !== false && Number.isSafeInteger(result.tokensUsed) && result.tokensUsed >= 0;
       receipt = { ...receipt, status: result.timedOut || result.aborted ? "interrupted" : result.code === 0 ? "completed" : "failed",
