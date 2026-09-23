@@ -172,3 +172,12 @@ test('host research rejects snippets and preserves retry limits through reload',
  for(let i=0;i<2;i++)await assert.rejects(collectCreationSources(f.job,research,{...f.options,search}),{code:'creation_research_source_unavailable'});
  await assert.rejects(collectCreationSources(f.job,research,{...f.options,search}),{code:'creation_research_source_limit'});assert.equal(calls,2);
 });
+
+
+test('host research refuses a future retrieval timestamp instead of accepting it as fresh',async t=>{
+ const {collectCreationSources}=await import('../scripts/neuraldeep/creation-source-research.mjs');
+ const f=fixture(t,{researchProtocolVersion:2}),research=await prepareCreationResearch(f.job,{...f.options,command:f.command});
+ const search={search:async input=>({ok:true,sources:[{url:`https://${input.domains[0]}/docs`}]}),
+  readPage:async input=>({ok:true,sources:[{url:input.url,read:true,text:'Current official Node.js runtime documentation with bounded requests, explicit status and preservation of saved product records.',retrieved_at:new Date(Date.now()+86400000).toISOString()}]})};
+ await assert.rejects(collectCreationSources(f.job,research,{...f.options,search}),{code:'creation_research_source_stale'});
+});

@@ -36,7 +36,7 @@ export function sourceExcerpt(text,query,maxBytes=2400) {
 }
 export function readCreationSources(job,options) {
  const {state}=load(job,options);
- for(const source of state.sources)if(hash(source.text)!==source.contentHash || !Number.isFinite(Date.parse(source.retrievedAt)) || Date.now()-Date.parse(source.retrievedAt)>30*86400000)fail('creation_research_source_stale');
+ for(const source of state.sources)if(hash(source.text)!==source.contentHash || !Number.isFinite(Date.parse(source.retrievedAt)) || Date.now()-Date.parse(source.retrievedAt)>30*86400000 || Date.parse(source.retrievedAt)-Date.now()>300000)fail('creation_research_source_stale');
  return state.sources.map(({text,...source})=>source);
 }
 
@@ -112,8 +112,9 @@ export function validateResearchSelection(value,sources,topics) {
 
 /** Host validates the model's choices against immutable read pages before writing report/checkpoint. */
 export function completeCreationSourceResearch(job,answer,research,options) {
- const {file,state}=load(job,options);
+ const file=location(job,options);
  return withFileLock(file,()=>{
+  const {state}=load(job,options);
   recoverPublication(job,research,options,state,file);
   if(state.completedTurn===options.turnId)return;
   const blocks=[...String(answer).matchAll(/```pritha-research-json\s*\n([\s\S]*?)\n```/g)];

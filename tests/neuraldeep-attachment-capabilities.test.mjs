@@ -9,7 +9,7 @@ import { runSyncProbe } from "../scripts/lib/sync-probe.mjs";
 import { attachmentSupport, assertAttachmentSupport, attachmentModelEvidenceHash, ATTACHMENT_TRANSPORT_VERSION } from "../scripts/neuraldeep/attachment-policy.mjs";
 
 const source = readFileSync("interfaces/control-center/src/lib/settings/codex-model-catalog.ts", "utf8");
-const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText.replace('"../../../../../scripts/neuraldeep/model-input-capabilities.mjs"', JSON.stringify(pathToFileURL(path.resolve("scripts/neuraldeep/model-input-capabilities.mjs")).href));
+const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/scripts\/neuraldeep\/([^"]+)"/g, (_match,name)=>JSON.stringify(pathToFileURL(path.resolve('scripts/neuraldeep',name)).href));
 const { normalizeNeuralDeepModelList, mergeNeuralDeepModelCatalog } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
 function context() {
   const model = normalizeNeuralDeepModelList({ data: [{ id: "fixture-vision", type: "chat", capabilities: { vision: true, tools: true }, modalities: { input: ["text", "image"] } }] })[0];

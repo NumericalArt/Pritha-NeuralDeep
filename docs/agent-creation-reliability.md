@@ -93,3 +93,9 @@ Locked host-template verifier запускается из созданной х�
 Tool events удерживаются до EOF, complete terminal и проверки целых аргументов. Host accounting записывается до выдачи завершённого инструмента. При неполном ответе tool completion не выпускается. Parser обрабатывает разрезанный UTF-8/CRLF, размер кадра, нарушенный порядок, backpressure и disconnect. После начала потока ошибка приходит как response.failed; нет автоматического replay. Полученный final usage сохраняется даже при ошибке формата, отсутствующий остаётся unknown. Ошибки протокола отделены от outage, чтобы форматный отказ не вызывал автоматический повтор.
 
 Tool-free brief/research v2 сохраняют буферизацию для проверки всего ответа до доступа executor. Host heartbeat показывает только время/байты/состояние; reasoning и приватный ответ не входят в progress receipt. Stock-CLI совместимость проверяется отдельно перед выпуском.
+
+## Замечания общей проверки
+
+Production build, 12 desktop/mobile browser scenarios и installed CLI synthetic transport/legacy creation прошли на первом кандидате. Первый полный unit run: 1328/1329; единственный отказ — тестовый TS-loader не разрешал новый model-execution-profile import. Fixture исправлен, полный suite повторяется на окончательном кандидате.
+
+Stock-CLI receipt также выявил расхождение между показанным profile output cap 8192 и прежним общим build cap 16384. Допуск build теперь использует profile cap, отдельно от preparation caps; меньший явный лимит сохраняется. Добавлен stock acceptance нового research v2, включая host page collection, точные excerpts и единственный model selection без shell. Host source publication читает журнал внутри lock; retrieval date из будущего отклоняется с допуском на пять минут расхождения часов.

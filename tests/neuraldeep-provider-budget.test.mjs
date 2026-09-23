@@ -23,7 +23,7 @@ test('each request consumes the current host remainder before fetch; blocked req
     onRequest:e=>f.store.recordProviderResponse('run-budget',e),
     fetchImpl:async(_url,options)=>{
       calls++;const payload=JSON.parse(options.body);
-      assert.ok(payload.max_output_tokens>0 && payload.max_output_tokens<=16384);
+      assert.ok(payload.max_output_tokens>0 && payload.max_output_tokens<=8192);
       return Response.json({usage:{input_tokens:21800,output_tokens:200,total_tokens:22000}});
     }});t.after(()=>closeNeuralDeepAdapter(server));
   const send=async i=>{const r=await fetch(`http://127.0.0.1:${server.address().port}/v1/responses`,{method:'POST',body:JSON.stringify({model:'fixture',input:'x'.repeat(20_000)+i})});await r.text();return r.status;};
@@ -80,7 +80,7 @@ test('CLI tool schemas and namespaces remain bounded text, including media-shape
       {type:'custom',name:'apply_patch',format:{type:'text'}},
     ]}]};
   const bounded=prepareBudgetedRequest(payload,100_000);
-  assert.equal(bounded.max_output_tokens,16384);
+  assert.equal(bounded.max_output_tokens,8192);
   assert.deepEqual(bounded.tools,payload.tools);assert.deepEqual(bounded.input,payload.input);
   for (const input of [
     [{type:'message',role:'user',content:[{type:'input_image',image_url:'https://example.invalid/image'}]}],
@@ -101,4 +101,12 @@ test('shrinking the response cap cannot disguise an exact request replay',async 
   const send=async()=>{const r=await fetch(`http://127.0.0.1:${server.address().port}/v1/responses`,{method:'POST',body:JSON.stringify({model:'fixture',input:'same caller request'})});await r.text();return r.status;};
   assert.equal(await send(),200);assert.equal(await send(),409);assert.equal(calls,1);
   assert.equal(f.store.providerUsageSummary('run-budget').usage.totalTokens,20000);
+});
+
+
+test('build requests honor the execution profile output cap independently of the preparation phase',()=>{
+  for(const model of ['qwen3.8-27b','gpt-oss-120b']) {
+    assert.equal(prepareBudgetedRequest({model,input:'Implement the approved product',max_output_tokens:65536},200000).max_output_tokens,8192);
+    assert.equal(prepareBudgetedRequest({model,input:'Implement the approved product',max_output_tokens:2048},200000).max_output_tokens,2048);
+  }
 });

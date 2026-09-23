@@ -60,8 +60,9 @@ export function prepareBudgetedRequest(payload, available) {
   if (payload.max_output_tokens !== undefined && (!count(payload.max_output_tokens) || payload.max_output_tokens < 1))
     fail('provider_budget_invalid', 'Invalid response token limit.');
   const inputReservation = Buffer.byteLength(JSON.stringify(payload)) + FRAMING_RESERVE;
-  const output = Math.min(payload.max_output_tokens ?? OUTPUT_LIMIT, OUTPUT_LIMIT, available - inputReservation - 64);
-  const context=neuralDeepExecutionProfile(String(payload.model||'')).declaredContextTokens;
+  const profile=neuralDeepExecutionProfile(String(payload.model||''));
+  const output = Math.min(payload.max_output_tokens ?? OUTPUT_LIMIT, profile.applicationOutputCap, OUTPUT_LIMIT, available - inputReservation - 64);
+  const context=profile.declaredContextTokens;
   if(context && inputReservation+output>context)fail('provider_budget_model_context','Conservative request reserve exceeds the declared model context.');
   if (output < Math.min(payload.max_output_tokens ?? OUTPUT_LIMIT,1_024)) fail('provider_token_budget', 'The remaining token budget cannot cover this request and a bounded response.');
   return { ...payload, max_output_tokens: output };
