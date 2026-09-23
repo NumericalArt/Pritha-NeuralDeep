@@ -28,7 +28,8 @@ import { creationRuntimeReceipt, creationObservedUsage } from "../../../../../sc
 import { dispatchBlockerMessage } from "../../../../../scripts/neuraldeep/dispatch-blocker-message.mjs";
 import { reviseCreationProposal, creationRevisionPending } from "../../../../../scripts/neuraldeep/creation-revision.mjs";
 import { completeCreationBrief, prepareCreationOutcome } from "../../../../../scripts/neuraldeep/creation-preparation.mjs";
-import { prepareCreationResearch } from "../../../../../scripts/neuraldeep/creation-research-context.mjs";
+import { prepareCreationResearch,readCreationResearch } from "../../../../../scripts/neuraldeep/creation-research-context.mjs";
+import { collectCreationSources,completeCreationSourceResearch } from "../../../../../scripts/neuraldeep/creation-source-research.mjs";
 import { prepareCreationContextPacket, readCreationContextPacket } from "../../../../../scripts/neuraldeep/creation-context-packet.mjs";
 import { acceptVerifiedResearchProgress, settleCreationPreparation, creationPreparationView } from "../../../../../scripts/neuraldeep/creation-preparation-control.mjs";
 import { preflightAgentCreation } from "../../../../../scripts/neuraldeep/creation-preflight.mjs";
@@ -276,7 +277,7 @@ export class CodexChatGateway {
       const settings=getPrithaRuntimeSettings();
       return store.create({chatId:binding.chatId,instanceId,agentId:binding.subject!.subjectId,releaseSha:versions.source,
         executionSettings:{modelId:binding.modelId,effortId:binding.effortId,timeoutMs:settings.codexTimeoutMs,promptTokenBudget:settings.codexPromptTokenBudget},
-        tokenBudget:binding.subject!.tokenBudget,preparationPolicyVersion:2,briefProtocolVersion:1,researchProtocolVersion:1,
+        tokenBudget:binding.subject!.tokenBudget,preparationPolicyVersion:2,briefProtocolVersion:1,researchProtocolVersion:2,
         target:path.join(resolvePrithaAgentParent(this.root),binding.subject!.subjectId!),draftRoot:creationDraftRoot(this.store.stateRoot,instanceId,binding.chatId)});
     });
   }
@@ -489,6 +490,11 @@ export class CodexChatGateway {
     try {
       let job=this.withCreationStore(store=>store.get(chatId));
       if(!job || !job.autoContinue || job.status!=='pending')return;
+      if(job.preparation?.pendingResearchTurnId) {
+        await this.completeCreationResearch(chatId,job.preparation.pendingResearchTurnId);
+        job=this.withCreationStore(store=>store.get(chatId));
+        if(job.status!=='pending')return;
+      }
       if(job.preparationPolicyVersion===2 && job.preparation?.pendingProposalTurnId) {
         await this.completeCreationProposal(chatId,job.preparation.pendingProposalTurnId);
         job=this.withCreationStore(store=>store.get(chatId));
@@ -505,8 +511,18 @@ export class CodexChatGateway {
         return;
       }
       if(job.preparationPolicyVersion===2 && phase==='research') {
-        const research=await prepareCreationResearch(job,{root:binding.executionWorkspace?.cwd || this.root,stateRoot:this.store.stateRoot,model:binding.modelId,effort:binding.effortId});
-        job=this.withCreationStore(store=>store.update(chatId,current=>({...current,researchProgress:{checked:research.checked,remaining:research.remaining}})));
+        const researchOptions={root:binding.executionWorkspace?.cwd || this.root,stateRoot:this.store.stateRoot,model:binding.modelId,effort:binding.effortId};
+        let research=await prepareCreationResearch(job,researchOptions);
+        if(job.researchProtocolVersion===2 && !research.gate.ok) {
+          const controller=new AbortController(),started=Date.now();this.creationDeliveries.set(chatId,controller);
+          const timer=setTimeout(()=>controller.abort(),Math.max(1,Math.min(300_000,job.budget.maxActiveMs-job.budget.activeMs)));
+          try {await collectCreationSources(job,research,{...researchOptions,signal:controller.signal});research=readCreationResearch(job,researchOptions);}
+          finally {clearTimeout(timer);this.creationDeliveries.delete(chatId);
+            job=this.withCreationStore(store=>store.update(chatId,current=>({...current,budget:{...current.budget,activeMs:current.budget.activeMs+Date.now()-started}})));}
+        }
+        job=this.withCreationStore(store=>store.update(chatId,current=>({...current,
+          ...(job.researchProtocolVersion===2 && research.gate.ok?{researchAttemptCompleted:true}:{}),
+          researchProgress:{checked:research.checked,remaining:research.remaining}})));
       }
       if(phase==='research' && job.researchAttemptCompleted) {
         this.withCreationStore(store=>store.update(chatId,current=>({...current,status:'running',phase:'scaffold'})));
@@ -1319,7 +1335,7 @@ export class CodexChatGateway {
         const settings=getPrithaRuntimeSettings();
         creation=creations!.create({chatId,instanceId,agentId:initial.subject!.subjectId,releaseSha:versions.source,
           executionSettings:{modelId:initial.modelId,effortId:initial.effortId,timeoutMs:settings.codexTimeoutMs,promptTokenBudget:settings.codexPromptTokenBudget},
-          tokenBudget:initial.subject!.tokenBudget,preparationPolicyVersion:2,briefProtocolVersion:1,researchProtocolVersion:1,
+          tokenBudget:initial.subject!.tokenBudget,preparationPolicyVersion:2,briefProtocolVersion:1,researchProtocolVersion:2,
           target:path.join(resolvePrithaAgentParent(this.root),initial.subject!.subjectId!),draftRoot:creationDraftRoot(this.store.stateRoot,instanceId,chatId)});
       }
       if(creation) {
@@ -1755,13 +1771,17 @@ export class CodexChatGateway {
           if(!receipt.processExited) return {...next,activeTurnId:active.turnId,autoContinue:false,
             status:['paused','cancelled'].includes(next.status)?next.status:'blocked',
             blocker:{code:'creation_execution_unconfirmed',message:'Хост проверяет завершение предыдущего процесса. Повторный запуск пока недоступен.'}};
-          if(status==='completed' && creation.phase==='research')next.researchAttemptCompleted=true;
+          if(status==='completed' && creation.phase==='research' && creation.researchProtocolVersion!==2)next.researchAttemptCompleted=true;
           if(status==='completed' && creation.preparationPolicyVersion===2 && ['interview','contract'].includes(creation.phase)) {
             next.preparation={...next.preparation,pendingProposalTurnId:active.turnId};
           } else if(status==='completed' && !next.contract && next.status==='pending')next.status='waiting_input';
           const settledReceipt = error?.code === "neuraldeep_unavailable" && !receipt.blocker
             ? { ...receipt, blocker: { code: "neuraldeep_unavailable", message: error.message || "" } }
             : receipt;
+          if(status==='completed' && creation.phase==='research' && creation.researchProtocolVersion===2) {
+            next.preparation={...next.preparation,pendingResearchTurnId:active.turnId};
+            return next;
+          }
           return creation.preparationPolicyVersion===2 ? settleCreationPreparation(next,settledReceipt,{root:active.intent?.executionCodeRoot || this.root,
             stateRoot:this.store.stateRoot,phase:creation.phase}) : next;
         });
@@ -1769,12 +1789,39 @@ export class CodexChatGateway {
       if(status==='completed' && creation.preparationPolicyVersion===2 && ['interview','contract'].includes(creation.phase)) {
         await this.completeCreationProposal(chatId,active.turnId);
       }
+      if(status==='completed' && creation.phase==='research' && creation.researchProtocolVersion===2)await this.completeCreationResearch(chatId,active.turnId);
       const settledCreation = this.withCreationStore(store=>store.get(chatId));
       if (status === "failed" && error?.code === "neuraldeep_unavailable") {
         try { this.admission.reconcileWorkload(active.turnId, "cancelled"); }
         catch { /* The failed slot stays closed until the process exit is confirmed. */ }
       }
       if(status==='completed' || creation.preparationPolicyVersion===2 && settledCreation?.status==='pending')void this.advanceCreation(chatId);
+    }
+  }
+
+  private async completeCreationResearch(chatId:string,turnId:string) {
+    const job=this.withCreationStore(store=>store.get(chatId));
+    if(job.preparation?.researchTurnId===turnId)return;
+    try {
+      const receipt=this.withCreationStore(store=>creationRuntimeReceipt(store.store,turnId));
+      if(!receipt.processExited || receipt.tokens===null || receipt.blocker)throw new AgentCreationError('creation_execution_unconfirmed');
+      const answer=(await this.store.historyStore()).originalAssistantText(chatId,turnId);
+      const binding=await this.requireBinding(chatId),options={root:binding.executionWorkspace?.cwd || this.root,stateRoot:this.store.stateRoot,turnId};
+      const research=readCreationResearch(job,options);
+      completeCreationSourceResearch(job,answer,research,options);
+      this.withCreationStore(store=>store.update(chatId,current=>settleCreationPreparation({...current,
+        preparation:{...current.preparation,pendingResearchTurnId:null,researchTurnId:turnId}},receipt,{...options,phase:'research'})));
+    } catch(error) {
+      this.withCreationStore(store=>store.update(chatId,current=>{
+        const code=error instanceof AgentCreationError?error.code:'creation_research_failed';
+        const repair=['creation_research_selection_invalid','creation_research_quote_unbound'].includes(code)
+          && !current.budget.unknownAttempts.length && (current.preparation?.researchRepairCount||0)<1 && !['paused','cancelled'].includes(current.status);
+        return {...current,status:['paused','cancelled'].includes(current.status)?current.status:repair?'pending':'blocked',autoContinue:repair,
+          preparation:{...current.preparation,pendingResearchTurnId:repair?null:turnId,
+            researchRepairCount:(current.preparation?.researchRepairCount||0)+Number(repair),
+            researchError:error instanceof Error?error.message:code},
+          blocker:{code,message:error instanceof Error?error.message:'Не удалось подтвердить источники. Страницы и расход сохранены.'}};
+      }));
     }
   }
 

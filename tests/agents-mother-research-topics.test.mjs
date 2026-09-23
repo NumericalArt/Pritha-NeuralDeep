@@ -190,3 +190,20 @@ test("LLM process preset requires model API evidence even without repository dis
   assert.ok(topics.includes("node-http-runtime"));
   assert.ok(topics.includes("neuraldeep-model-api"));
 });
+
+test('v2 text Wikipedia app excludes negated Voice/OpenAI and advisory memory from required topics',()=>{
+ const topics=deriveExternalResearchTopics({fm:{research_topic_policy:2,interview_preset:'llm-app'},runtimeFamily:'api',serviceMode:'process',
+  primaryInterface:'web UI',secondaryInterfaces:'none; voice not needed; без голоса; Telegram не нужен',productDataSources:'Wikipedia API',
+  dependencies:'Node.js; SQLite',memoryModel:'SQLite; no RAG or embeddings'},
+  {patternPack:{externalResearchSeeds:['OpenAI Realtime WebRTC','MCP connector permissions','sqlite']}});
+ const required=topics.filter(t=>t.required).map(t=>t.id);
+ for(const id of ['wikipedia-api','neuraldeep-model-api','node-http-runtime','sqlite-storage'])assert.ok(required.includes(id),id);
+ for(const id of required)assert.doesNotMatch(id,/realtime|voice|telegram|mcp|memory-rag|pattern-/);
+ assert.ok(topics.filter(t=>t.id.startsWith('pattern-')).every(t=>t.status==='advisory' && !t.required));
+ assert.ok(topics.filter(t=>t.required).every(t=>t.required_by && t.applicability_reason && t.evidence_needed && t.freshness_rule));
+});
+test('v2 selected voice has voice evidence without inventing an OpenAI provider',()=>{
+ const base={fm:{research_topic_policy:2},primaryInterface:'web realtime voice',coreFunctions:['Use WebRTC microphone']};
+ assert.ok(ids(base).includes('voice-transport'));assert.ok(!ids(base).includes('openai-realtime'));
+ assert.ok(ids({...base,dependencies:'OpenAI gpt-realtime'}).includes('openai-realtime'));
+});

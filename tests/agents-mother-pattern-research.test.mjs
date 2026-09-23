@@ -6,6 +6,7 @@ import path from "node:path";
 
 import {
   extractKeywords,
+  extractPatternCandidates,
   logSemanticFailure,
   parsePatternPackSeeds,
   parseSemanticSearchOutput,
@@ -184,4 +185,9 @@ test("keyword extraction keeps technology phrases for external enrichment", () =
   assert.ok(keywords.some((keyword) => /mcp/i.test(keyword)));
   assert.ok(keywords.some((keyword) => /github|repository/i.test(keyword)));
   assert.ok(keywords.some((keyword) => /skill|eval/i.test(keyword)));
+});
+
+test('failed attempts contribute one lesson per document and cannot claim successful reuse',()=>{
+ const patterns=extractPatternCandidates({memoryResults:Array.from({length:8},(_,i)=>({path:'11_agents/reports/failed.md',heading:`section ${i}`,status:'failed',snippet:'Retain the approved requirements, but this build failed.'}))});
+ assert.equal(patterns.length,1);assert.equal(patterns[0].status,'lesson-only');assert.match(patterns[0].applicability,/never as evidence of a successful/);
 });

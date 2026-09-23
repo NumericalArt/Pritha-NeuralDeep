@@ -135,3 +135,40 @@ for(const protocol of [undefined,1])test(`research request protocol ${protocol |
   assert.equal(metadata.budget.reservation,bytes+8192+8192);
   assert.throws(()=>f.jobs.update(job.chatId,j=>({...j,researchProtocolVersion:undefined})),{code:'creation_policy_immutable'});
 });
+
+test('host research v2 checkpoints primary reads, binds quotes, preserves source counters and completes without shell edits',async t=>{
+ const {collectCreationSources,readCreationSources,completeCreationSourceResearch,validateResearchSelection}=await import('../scripts/neuraldeep/creation-source-research.mjs');
+ const {prepareCreationResearchRequest}=await import('../scripts/neuraldeep/creation-research-request.mjs');
+ const f=fixture(t,{researchProtocolVersion:2});const research=await prepareCreationResearch(f.job,{...f.options,command:f.command});
+ let searches=0,reads=0;
+ const text='Current official documentation for Node.js HTTP server lifecycle, browser API security and source preservation. The documented API uses bounded HTTP requests and returns an explicit error on failure; preserve successful local data. SQLite transactions commit atomically and retain persistent rows across process restarts.';
+ const search={search:async input=>{searches++;return {ok:true,status:'ok',id:`s${searches}`,sources:[{url:`https://${input.domains[0]}/documentation`,snippet:'not evidence'}]};},
+  readPage:async input=>{reads++;return {ok:true,status:'ok',id:`r${reads}`,sources:[{url:input.url,title:'Official fixture',read:true,text,retrieved_at:new Date().toISOString(),published_at:null}]};}};
+ const options={...f.options,search};
+ const sources=await collectCreationSources(f.job,research,options);
+ await collectCreationSources(f.job,research,options);assert.equal(searches,sources.length);assert.equal(reads,sources.length);
+ assert.ok(sources.length>0);assert.ok(sources.every(source=>source.contentHash && source.excerpt && !source.text));
+ const value={facts:sources.map(source=>({sourceId:source.id,topicId:source.topicId,quote:'The documented API uses bounded HTTP requests and returns an explicit error on failure; preserve successful local data.',
+  versionContext:'Current fixture documentation without a pinned version',compatibility:'The documented process APIs apply to the selected fixture Node runtime.',compatibilityStatus:'compatible'})),
+  synthesis:{relationship:'confirms',memory_comparison:'The primary fixture confirms the retained history rule.',summary:'Use bounded public requests and preserve the previous successful state.',architecture_decision:'Use the approved HTTP process, local storage and bound provider.',alternatives:['Defer the provider integration'],tradeoffs:['More source verification effort']}};
+ assert.throws(()=>validateResearchSelection({...value,facts:[{...value.facts[0],quote:'Invented source quote that does not appear anywhere in the read page.'}]},sources,research.topics),{code:'creation_research_quote_unbound'});
+ assert.throws(()=>validateResearchSelection({...value,facts:[{...value.facts[0],topicId:'other-topic'}]},sources,research.topics),{code:'creation_research_quote_unbound'});
+ const packetRef=prepareCreationContextPacket(f.job,{restart:true,text:JSON.stringify([{role:'user',text:'Preserve the whole product request.'}])},{...options,turnId:'v2'});
+ const packet=readCreationContextPacket({...f.job,contextPacket:packetRef},options);
+ const request=prepareCreationResearchRequest({model:'fixture',stream:true,instructions:'general large coding prompt',tools:[{type:'function'}],input:'duplicated history'},f.job,packet,f.options.root);
+ assert.deepEqual(request.tools,[]);assert.equal(request.tool_choice,'none');assert.ok(Buffer.byteLength(JSON.stringify(request))<64*1024);
+ assert.match(request.input[0].content[0].text,/Preserve the whole product request/);assert.doesNotMatch(JSON.stringify(request),/duplicated history|general large coding prompt/);
+ const answer='```pritha-research-json\n'+JSON.stringify(value)+'\n```';
+ completeCreationSourceResearch(f.job,answer,research,{...options,turnId:'v2'});
+ const complete=readCreationResearch(f.job,f.options);assert.deepEqual(complete.remaining,[]);assert.equal(complete.gate.ok,true,JSON.stringify(complete.gate));
+ completeCreationSourceResearch(f.job,answer,complete,{...options,turnId:'v2'});
+ assert.equal(readCreationSources(f.job,options).length,sources.length);
+});
+
+test('host research rejects snippets and preserves retry limits through reload',async t=>{
+ const {collectCreationSources}=await import('../scripts/neuraldeep/creation-source-research.mjs');
+ const f=fixture(t,{researchProtocolVersion:2}),research=await prepareCreationResearch(f.job,{...f.options,command:f.command});let calls=0;
+ const search={search:async input=>({ok:true,sources:[{url:`https://${input.domains[0]}/docs`}]}),readPage:async()=>{calls++;return {ok:true,sources:[{url:'https://nodejs.org/docs',read:false,snippet:'Long snippet is still not a read source.'}]};}};
+ for(let i=0;i<2;i++)await assert.rejects(collectCreationSources(f.job,research,{...f.options,search}),{code:'creation_research_source_unavailable'});
+ await assert.rejects(collectCreationSources(f.job,research,{...f.options,search}),{code:'creation_research_source_limit'});assert.equal(calls,2);
+});

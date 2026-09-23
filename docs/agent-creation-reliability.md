@@ -33,7 +33,7 @@ confidence: high
 | WP1: расход | Реализован, проверен локально | Явная host-owned lineage, legacy receipt binding, нижняя граница 208544 и unknown=1, без двойного начисления после settlement. 26/26 targeted tests |
 | WP2: безопасное восстановление | Реализован, проверен локально | 8/8 recovery tests; freshness, task/spec identity, process-tree exit, adoption без новых команд; неизвестный расход сохраняется |
 | WP3: deadlines | Реализован, проверен локально | 63/63 targeted tests: общий срок фаз, soft admission до reservation, медленный ответ с final usage, зависание с unknown, suspend, неизменность policy |
-| WP4: применимое исследование | Запланирован | — |
+| WP4: применимое исследование | Реализован, проверен локально | 57/57 targeted tests; v2 новых jobs, primary Search/Read, immutable page hashes, точные выдержки и host publication; legacy policy сохранена |
 | WP5: effective settings | Запланирован | — |
 | WP6: независимые Trials | Запланирован | — |
 | WP7: интерфейс и инструкции | Запланирован | — |
@@ -55,3 +55,15 @@ confidence: high
 ## Проверки и выпуск
 
 Журналы этапов и подтверждения состояния сохраняются в private implementation bundle. Полный suite, TypeScript, production build, transport/stock-CLI/browser acceptance и реальный ограниченный corpus ещё обязательны перед итоговым заключением. Приёмка человеком и settlement неизвестного расхода остаются отдельными действиями.
+
+## WP3
+
+Новая execution policy закрепляет модель, configured prompt budget и время итерации. Все фазы одной итерации используют абсолютные soft/hard deadlines. Admission после soft deadline отказывает до reservation; завершение уже начатого запроса разрешено до request deadline с отдельным settlement grace. Wrapper завершает только свой процесс. Причины остановки и transport timing записываются отдельно; потерянный final usage остаётся unknown. Legacy jobs сохраняют прежние 12 минут и закреплённый executor.
+
+## WP4
+
+Для новых chat jobs research protocol v2 и contract `research_topic_policy: 2` отделяют выбранные возможности от advisory memory seeds. Отрицательные требования не включают Voice, Telegram, RAG. Исторический failed/draft материал используется как урок; повторные разделы ограничены на документ.
+
+Хост выполняет не более 12 обязательных тем, по два последовательных Search/Read attempts на тему за generation; независимые лимиты Search Settings также сохраняются. Эти операции используют web/search quota, а не модельный token budget. Время операций входит в active-time budget. Exact topic, primary-domain list, search/read receipts, read page, excerpt и SHA-256 сохраняются до model selection. Reload не сбрасывает счётчики. Незавершённая операция не повторяется автоматически.
+
+Модель одним bounded запросом выбирает точные выдержки и объясняет совместимость; tools отключены. Хост проверяет topic/source identity, exact quote, поля, freshness/version rule, coverage и synthesis, затем публикует locked report с CAS. Это проверка происхождения и структурной полноты, а не математическое доказательство истинности интерпретации. Допустима одна оплаченная структурная коррекция из прежнего бюджета. Неизвестный usage не даёт права повторить запрос. Невыбранные/неподдержанные источники остаются явным блокером с возможностью пересмотра требования.

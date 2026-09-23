@@ -5,6 +5,7 @@ import {atomicWriteFile} from '../lib/atomic-file.mjs';
 import {readBoundedRegularFile} from '../lib/safe-file-read.mjs';
 import {creationHostDirectory} from './creation-research.mjs';
 import {readCreationResearch} from './creation-research-context.mjs';
+import {readCreationSources} from './creation-source-research.mjs';
 import {creationGeneration} from './creation-generation.mjs';
 import {creationPhase,AgentCreationError} from './agent-creation-store.mjs';
 import {assertPreparationPolicy,preparationPhase} from './creation-preparation-policy.mjs';
@@ -60,7 +61,9 @@ export function prepareCreationContextPacket(job,dialogue,options) {
     dialogue:JSON.parse(dialogue.text),brief:job.preparation?.brief||null,
     ...(job.proposalRevisionPending ? {proposalRevision:proposalRevision(job)} : {}),
     documents:{contract:evidenceRef(job.contract),outcome:evidenceRef(job.outcome)},approvals:job.approvals,
-    research:research?{topics:research.topics,facts:research.facts,rules,remaining:research.remaining,gate:research.gate}:null,
+    research:research?{topics:research.topics,facts:research.facts,
+      rules:job.researchProtocolVersion===2?research.rules.slice(0,8):rules,remaining:research.remaining,gate:research.gate,
+      ...(job.researchProtocolVersion===2?{sources:readCreationSources(job,options),previousValidationError:job.preparation?.researchError||null}:{})}:null,
     checkpoint:creationCheckpointSummary(job),limits:job.preparationPolicy,progressHash,
     artifacts:artifacts.map(({id,hash,bytes,contentHash})=>({id,hash,bytes,contentHash}))};
   const text=JSON.stringify(packet),bytes=Buffer.byteLength(text);

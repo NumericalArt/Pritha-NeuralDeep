@@ -390,12 +390,18 @@ export function extractPatternCandidates(inputs = {}, options = {}) {
   for (const row of inputs.semantic?.rows || []) rows.push({ ...row, sourceKind: "semantic", domain: "semantic" });
 
   const seen = new Set();
+  const documents = new Map();
   const candidates = [];
   for (const row of rows) {
     const key = [row.path, row.heading, compact(row.snippet, 120)].join("|");
     if (seen.has(key)) continue;
     seen.add(key);
     const kind = rowPatternKind(row, row.sourceKind);
+    const sourceStatus=String(row.status||'unknown').toLowerCase();
+    const lesson=/failed|draft|blocked|interrupted|rejected/.test(sourceStatus);
+    const count=documents.get(row.path)||0;
+    if(count >= (lesson?1:2))continue;
+    documents.set(row.path,count+1);
     const safePath = compact(row.path || "unknown", 500);
     const safeTitle = compact(row.title || row.path || "Memory pattern", 240);
     const safeHeading = compact(row.heading || "n/a", 240);
@@ -404,7 +410,7 @@ export function extractPatternCandidates(inputs = {}, options = {}) {
     const keywords = extractKeywords(text, 10);
     candidates.push({
       id: `pattern-${String(candidates.length + 1).padStart(2, "0")}`,
-      status: "selected",
+      status: lesson ? 'lesson-only' : "selected",
       sourceKind: row.sourceKind,
       memoryDomain: row.domain || "general",
       kind,
@@ -414,7 +420,7 @@ export function extractPatternCandidates(inputs = {}, options = {}) {
       heading: safeHeading,
       snippet: safeSnippet,
       score: row.score,
-      applicability: applicabilityFor(kind, row.sourceKind),
+      applicability: lesson ? `Historical ${sourceStatus} attempt: use its requirements and failure lessons, never as evidence of a successful implementation.` : applicabilityFor(kind, row.sourceKind),
       keywords,
       rationale: "Selected because it matched the agent-development task through memory, domain or semantic retrieval.",
     });
