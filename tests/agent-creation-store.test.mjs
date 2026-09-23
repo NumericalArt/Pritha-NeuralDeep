@@ -7,6 +7,18 @@ import { NeuralDeepCoordinationStore } from '../scripts/neuraldeep/coordination-
 import { AgentCreationStore, creationBudgetBlocker, creationPhase } from '../scripts/neuraldeep/agent-creation-store.mjs';
 const make=()=>{const coordination=new NeuralDeepCoordinationStore({databasePath:':memory:'});return {coordination,store:new AgentCreationStore(coordination)};};
 const input={chatId:'chat_test',instanceId:'test-instance',agentId:'sample-agent',releaseSha:'a'.repeat(40),target:'/tmp/test-agent',draftRoot:'/tmp/draft'};
+test('new research jobs pin topic policy 3, saved policy 2 survives replay, and updates cannot migrate either',()=>{
+ const {coordination,store}=make();try {
+  const modern=store.create({...input,preparationPolicyVersion:2,researchProtocolVersion:2});
+  assert.equal(modern.researchTopicPolicyVersion,3);
+  assert.throws(()=>store.update(modern.chatId,j=>({...j,researchTopicPolicyVersion:2})),{code:'creation_policy_immutable'});
+  const old={...input,chatId:'old_topic_chat',agentId:'old-topic-agent',preparationPolicyVersion:2,researchProtocolVersion:2,researchTopicPolicyVersion:2};
+  store.create(old);assert.equal(store.create({...old,researchTopicPolicyVersion:3}).researchTopicPolicyVersion,2);
+  assert.throws(()=>store.update(old.chatId,j=>({...j,researchTopicPolicyVersion:3})),{code:'creation_policy_immutable'});
+  for(const version of [0,1,4,'3',null])assert.throws(()=>store.create({...old,researchTopicPolicyVersion:version}),{code:'creation_policy_invalid'});
+  assert.throws(()=>store.create({...old,researchProtocolVersion:1}),{code:'creation_policy_invalid'});
+ }finally{coordination.close();}
+});
 test('one creation job owns an instance target across retries and chats',()=>{
  const {coordination,store}=make();try {
   const job=store.create(input);assert.equal(store.create(input).jobId,job.jobId);

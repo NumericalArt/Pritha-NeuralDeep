@@ -24,13 +24,14 @@ const brief={identity:{name:'Feed and digest'},goal:'Read public feeds and retai
   sources:['https://example.test/rss'],constraints:['No credentials in the browser'],nonGoals:['Automatic schedules'],
   permissions:{network:['Declared public feed and Pritha provider binding'],filesystem:['Own target only'],authorization:'Explicit operator UI actions'},
   technical:{preset:'llm-app',sourceFormat:'rss',repositoryResearchPolicy:'not-applicable',repositoryResearchWaiverReason:'No repository discovery; runtime, source and provider checks stay mandatory'}};
-function fixture(t,{researchProtocolVersion}={}) {
+function fixture(t,{researchProtocolVersion,researchTopicPolicyVersion=2}={}) {
   const stateRoot=mkdtempSync(path.join(os.tmpdir(),'creation-research-context-'));t.after(()=>rmSync(stateRoot,{recursive:true,force:true}));
   const options={root:process.cwd(),stateRoot,model:'fixture-model',effort:null};
   const store=new NeuralDeepCoordinationStore({databasePath:path.join(stateRoot,'coord.sqlite')});t.after(()=>store.close());
   const jobs=new AgentCreationStore(store),chatId='chat_research_context',draftRoot=creationDraftRoot(stateRoot,'fixture',chatId),target=path.join(stateRoot,'children','feed');
   mkdirSync(draftRoot,{recursive:true});mkdirSync(target,{recursive:true});
-  let job=jobs.create({chatId,instanceId:'fixture',agentId:'feed',target,draftRoot,releaseSha:'a'.repeat(40),preparationPolicyVersion:2,researchProtocolVersion});
+  let job=jobs.create({chatId,instanceId:'fixture',agentId:'feed',target,draftRoot,releaseSha:'a'.repeat(40),preparationPolicyVersion:2,researchProtocolVersion,
+   ...(researchProtocolVersion===2?{researchTopicPolicyVersion}:{})});
   const contract=prepareCreationContract(job,brief,options);job={...job,contract:contract.contract,preparation:{brief:contract.brief,briefHash:contract.briefHash}};
   const approve=kind=>{job=reconcileCreationArtifacts({...job,status:'pending'},options);job=approveCreationDocument(job,kind,{action:`approve_${kind}`,requestId:`approve_${kind}`,expectedRevision:job.revision,actor:'user'},options);};
   approve('contract');Object.assign(job,prepareCreationOutcome(job,options));approve('outcome');
@@ -136,17 +137,18 @@ for(const protocol of [undefined,1])test(`research request protocol ${protocol |
   assert.throws(()=>f.jobs.update(job.chatId,j=>({...j,researchProtocolVersion:undefined})),{code:'creation_policy_immutable'});
 });
 
-test('host research v2 checkpoints primary reads, binds quotes, preserves source counters and completes without shell edits',async t=>{
+for(const topicPolicy of [2,3])test(`host research v2/topic policy ${topicPolicy} checkpoints primary reads, binds quotes and completes without shell edits`,async t=>{
  const {collectCreationSources,readCreationSources,completeCreationSourceResearch,validateResearchSelection}=await import('../scripts/neuraldeep/creation-source-research.mjs');
  const {prepareCreationResearchRequest}=await import('../scripts/neuraldeep/creation-research-request.mjs');
- const f=fixture(t,{researchProtocolVersion:2});const research=await prepareCreationResearch(f.job,{...f.options,command:f.command});
+ const f=fixture(t,{researchProtocolVersion:2,researchTopicPolicyVersion:topicPolicy});const research=await prepareCreationResearch(f.job,{...f.options,command:f.command});
+ assert.equal(Number(contractData(f.job.contract.path,f.options).fm.research_topic_policy),topicPolicy);
  let searches=0,reads=0;
  const text='Current official documentation for Node.js HTTP server lifecycle, browser API security and source preservation. The documented API uses bounded HTTP requests and returns an explicit error on failure; preserve successful local data. SQLite transactions commit atomically and retain persistent rows across process restarts.';
  const search={search:async input=>{searches++;return {ok:true,status:'ok',id:`s${searches}`,sources:[{url:`https://${input.domains[0]}/documentation`,snippet:'not evidence'}]};},
   readPage:async input=>{reads++;return {ok:true,status:'ok',id:`r${reads}`,sources:[{url:input.url,title:'Official fixture',read:true,text,retrieved_at:new Date().toISOString(),published_at:null}]};}};
  const options={...f.options,search};
  const sources=await collectCreationSources(f.job,research,options);
- await collectCreationSources(f.job,research,options);assert.equal(searches,sources.length);assert.equal(reads,sources.length);
+ await collectCreationSources(f.job,research,options);assert.equal(searches,topicPolicy===2?sources.length:0);assert.equal(reads,sources.length);
  assert.ok(sources.length>0);assert.ok(sources.every(source=>source.contentHash && source.excerpt && !source.text));
  const value={facts:sources.map(source=>({sourceId:source.id,topicId:source.topicId,quote:'The documented API uses bounded HTTP requests and returns an explicit error on failure; preserve successful local data.',
   versionContext:'Current fixture documentation without a pinned version',compatibility:'The documented process APIs apply to the selected fixture Node runtime.',compatibilityStatus:'compatible'})),

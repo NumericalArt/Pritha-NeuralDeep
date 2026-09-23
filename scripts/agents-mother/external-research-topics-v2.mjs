@@ -1,13 +1,12 @@
 import {deriveExternalResearchTopics as legacyTopics} from './external-research-topics-v1.mjs';
-import {deriveExternalResearchTopics as versionTwoTopics} from './external-research-topics-v2.mjs';
 export {GENERIC_PROCESS_RESEARCH_TOPIC_IDS} from './external-research-topics-v1.mjs';
 
-// Versions 1 and 2 remain available for approved contracts and locked reports.
+// Version 1 remains available for already approved contracts and locked reports.
 // Only selected fields participate; examples, host capabilities and non-goals do not.
 const fields=['runtimeFamily','primaryInterface','secondaryInterfaces','telegramMode','serviceMode','autostart','proactiveMode','memoryModel','indexingSearchNeeds','toolSystem','inputDataTypes','dependencies','allowedNetworkAccess','providerBinding','productDataSources','coreFunctions','criticalWorkflows'];
 export function positiveCapabilityText(value) {
   return (Array.isArray(value)?value:[value]).flatMap(item=>String(item||'').split(/[;\n]+|,(?![^()]*\))/))
-    .map(clause=>clause.trim()).filter(clause=>clause && !/^(?:none|no\b|without\b|not[- ]applicable|disabled|(?:нет|без)(?=$|\s)|не\s|отсутствует)/i.test(clause)
+    .map(clause=>clause.trim()).filter(clause=>clause && !/^(?:none|no\b|without\b|not[- ]applicable|disabled|нет\b|без\b|не\s|отсутствует)/i.test(clause)
       && !/(?:\b(?:not required|not needed|out of scope|disabled|deferred)|не (?:нуж|требу|использ|предусмотр)|отключен)/i.test(clause)).join('\n');
 }
 const authority={
@@ -15,7 +14,7 @@ const authority={
  'openai-agents-sdk':['openai.github.io','platform.openai.com','developers.openai.com'],
  'openai-realtime':['platform.openai.com','developers.openai.com'], 'voice-transport':['developer.mozilla.org','w3.org'],
  'telegram-bot-api':['core.telegram.org'], 'mcp-connectors':['modelcontextprotocol.io'],
- 'interface-runtime-security':['developer.mozilla.org','owasp.org','nodejs.org'], 'untrusted-input-security':['owasp.org'],
+ 'interface-runtime-security':['developer.mozilla.org','owasp.org'], 'untrusted-input-security':['owasp.org'],
  'operations-deployment':['nodejs.org','developer.apple.com','freedesktop.org'],
  'wikipedia-api':['mediawiki.org','www.mediawiki.org','api.wikimedia.org','doc.wikimedia.org'],
  'sqlite-storage':['sqlite.org','www.sqlite.org','nodejs.org'],
@@ -23,22 +22,9 @@ const authority={
  'github-repository-review':['github.com'], 'local-inference-runtime':['docs.ollama.com','docs.vllm.ai','lmstudio.ai'],
  'memory-rag-storage':['qdrant.tech','docs.lancedb.com','neo4j.com'],
 };
-// Curated public entry points, never URLs copied from operator text or a search snippet.
-const primaryUrls={
- 'node-http-runtime':['https://nodejs.org/api/http.md','https://nodejs.org/api/http.html'],
- 'neuraldeep-model-api':['https://neuraldeep.ru/llms-full.txt'],
- 'interface-runtime-security':['https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html','https://developer.mozilla.org/en-US/docs/Web/Security/Attacks/XSS'],
- 'untrusted-input-security':['https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html'],
- 'wikipedia-api':['https://www.mediawiki.org/wiki/API:Search','https://www.mediawiki.org/wiki/API:Etiquette'],
- 'sqlite-storage':['https://sqlite.org/lang_transaction.html','https://nodejs.org/api/sqlite.html'],
-};
 export function deriveExternalResearchTopics(data={},options={}) {
- const version=Number(data.fm?.research_topic_policy || options.topicPolicyVersion);
- if(version===2)return versionTwoTopics(data,options);
- if(version!==3)return legacyTopics(data,options);
+ if(Number(data.fm?.research_topic_policy || options.topicPolicyVersion)!==2)return legacyTopics(data,options);
  const selected=Object.fromEntries(fields.map(key=>[key,positiveCapabilityText(data[key])]));
- // A template placeholder does not select a package or authorize installation.
- if(/^(?:minimal(?: until scaffold profile is selected)?|tbd|unknown|(?:only )?(?:node(?:\.js)? )?(?:built[- ]ins?(?: modules)?|standard (?:modules|library))(?: only)?)[.\s]*$/i.test(selected.dependencies))selected.dependencies='';
  // Legacy extractor expects arrays for these two fields.
  selected.coreFunctions=[selected.coreFunctions];selected.criticalWorkflows=[selected.criticalWorkflows];
  for(const [key,value] of Object.entries({telegramMode:'none',serviceMode:'none',autostart:'disabled',proactiveMode:'none'}))selected[key] ||=value;
@@ -46,25 +32,13 @@ export function deriveExternalResearchTopics(data={},options={}) {
  const topics=legacyTopics({...selected,fm:data.fm,repositoryAdoptionMode:data.repositoryAdoptionMode,selectedGitHubRepositories:data.selectedGitHubRepositories},{})
   .filter(topic=>topic.id!=='openai-agents-sdk' || /\b(?:openai agents sdk|agents sdk)\b/i.test(text));
  const add=(id,topic,query,reason)=>{if(!topics.some(item=>item.id===id))topics.push({id,topic,query,reason,required:true,preferredSources:['official-docs'],freshnessWindowDays:30});};
- if(/\bnode(?:\.js|:|js)?\b/i.test(text))add('node-http-runtime','Selected Node.js runtime and built-in APIs','Node.js HTTP server listen request response fetch filesystem official documentation','The product explicitly selects Node.js; creating it through Codex does not change its runtime.');
- if(/wikipedia|wikimedia|mediawiki|википеди/i.test(text))add('wikipedia-api','Wikipedia API, source URLs and usage limits','MediaWiki Action API query list search srlimit snippet title URL API etiquette documentation','Product data sources explicitly select Wikipedia.');
+ if(/wikipedia|wikimedia|mediawiki|википеди/i.test(text))add('wikipedia-api','Wikipedia API, source URLs and usage limits','MediaWiki REST API Wikipedia search page content rate limits documentation','Product data sources explicitly select Wikipedia.');
  if(/\bsqlite\b/i.test(text))add('sqlite-storage','Selected SQLite storage and persistence','SQLite transactions persistence Node.js sqlite documentation','The selected storage or dependency requires SQLite.');
  for(const topic of topics)if(topic.id==='openai-realtime' && !/\b(?:openai|gpt-realtime)\b/i.test(text)) {
   topic.id='voice-transport';topic.topic='Selected browser audio and WebRTC transport';topic.query='WebRTC microphone permission audio browser official documentation';
  }
- for(const topic of topics) {
-  if(topic.id==='interface-runtime-security')topic.query='HTML external content output encoding cross site scripting prevention browser security';
-  if(topic.id==='operations-deployment' && ['process','manual'].includes(selected.serviceMode) && ['disabled','optional'].includes(selected.autostart) && ['none','manual'].includes(selected.proactiveMode)) {
-   topic.query='Node.js manual process shutdown signal SIGTERM SIGINT HTTP server lifecycle';
-   topic.primaryUrls=['https://nodejs.org/api/process.md','https://nodejs.org/api/process.html'];
-  }
-  if(topic.id==='node-http-runtime' && !/\b(?:http|web|api|fetch|server)\b/i.test(text)) {
-   topic.query='Node.js filesystem readFile writeFile UTF-8 command line arguments';
-   topic.primaryUrls=['https://nodejs.org/en/learn/manipulating-files/reading-files-with-nodejs','https://nodejs.org/api/fs.html'];
-  }
- }
  const required=topics.map(topic=>({...topic,topic_id:topic.id,status:'required',required_by:{kind:'selected_capability',fields:fields.filter(key=>positiveCapabilityText(data[key]))},
-   applicability_reason:topic.reason,evidence_needed:topic.topic,source_preference:'curated primary page or relevant primary search result; snippet alone is insufficient',freshness_rule:'retrieved within 30 days plus source date or explicit version compatibility',primaryDomains:authority[topic.id]||[],primaryUrls:topic.primaryUrls||primaryUrls[topic.id]||[]}));
+   applicability_reason:topic.reason,evidence_needed:topic.topic,source_preference:'primary page read; search snippet alone is insufficient',freshness_rule:'retrieved within 30 days plus source date or explicit version compatibility',primaryDomains:authority[topic.id]||[]}));
  // Memory seeds never become requirements without a selected child capability.
  const seeds=legacyTopics({},options).filter(topic=>topic.id.startsWith('pattern-'));
  return [...required,...seeds.map(topic=>({...topic,required:false,status:'advisory',topic_id:topic.id,required_by:null,

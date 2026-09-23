@@ -90,7 +90,7 @@ export function prepareCreationContract(job, brief, options) {
       // An explicit revision seed retains its authored agent identity. Only the
       // document identity changes; old accepted documents stay attributable.
       ...(job.proposalRevisionPending && job.contract ? {agentId:contractData(job.contract.path,{root:options.root}).agentId} : {}),
-      initRequestFingerprint:`sha256:${normalized.hash}`}).replace(/^---\n/,`---\ncreation_generation: ${generation}\n${job.researchProtocolVersion===2?'research_topic_policy: 2\n':''}`);
+      initRequestFingerprint:`sha256:${normalized.hash}`}).replace(/^---\n/,`---\ncreation_generation: ${generation}\n${job.researchProtocolVersion===2?`research_topic_policy: ${job.researchTopicPolicyVersion || 2}\n`:''}`);
   },options);
   const issues = validateContract(result.path,{root:options.root,print:false});
   if (issues.length) fail('creation_host_contract_invalid',issues.join('\n'));

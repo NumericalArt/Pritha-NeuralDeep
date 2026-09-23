@@ -62,9 +62,9 @@ confidence: high
 
 ## WP4
 
-Для новых chat jobs research protocol v2 и contract `research_topic_policy: 2` отделяют выбранные возможности от advisory memory seeds. Отрицательные требования не включают Voice, Telegram, RAG. Исторический failed/draft материал используется как урок; повторные разделы ограничены на документ.
+Research protocol v2 отделяет выбранные возможности от advisory memory seeds. Его исходная contract policy 2 сохраняется для старых jobs; новые jobs закрепляют `researchTopicPolicyVersion: 3` и contract `research_topic_policy: 3`. Отрицательные требования не включают Voice, Telegram, RAG. Исторический failed/draft материал используется как урок; повторные разделы ограничены на документ.
 
-Хост выполняет не более 12 обязательных тем, по два последовательных Search/Read attempts на тему за generation; независимые лимиты Search Settings также сохраняются. Эти операции используют web/search quota, а не модельный token budget. Время операций входит в active-time budget. Exact topic, primary-domain list, search/read receipts, read page, excerpt и SHA-256 сохраняются до model selection. Reload не сбрасывает счётчики. Незавершённая операция не повторяется автоматически.
+Хост выполняет не более 12 обязательных тем, по два последовательных acquisition attempts на тему за generation, каждый не более одного Search и одного Read; независимые лимиты Search Settings сохраняются. Policy 3 сначала читает известный первоисточник по теме, а при отсутствии такого адреса выбирает релевантный результат Search внутри разрешённых domains. Эти операции используют web/search quota, а не модельный token budget. Время операций входит в active-time budget. Exact topic, primary-domain list, каждый attempted URL, search/read receipts, read page, excerpt и SHA-256 сохраняются до model selection. Reload не сбрасывает счётчики. Незавершённая операция не повторяется автоматически.
 
 Модель одним bounded запросом выбирает точные выдержки и объясняет совместимость; tools отключены. Хост проверяет topic/source identity, exact quote, поля, freshness/version rule, coverage и synthesis, затем публикует locked report с CAS. Это проверка происхождения и структурной полноты, а не математическое доказательство истинности интерпретации. Допустима одна оплаченная структурная коррекция из прежнего бюджета. Неизвестный usage не даёт права повторить запрос. Невыбранные/неподдержанные источники остаются явным блокером с возможностью пересмотра требования.
 
@@ -119,3 +119,43 @@ Production build, 12 desktop/mobile browser scenarios и installed CLI synthetic
 Историческая неразрешённая квитанция первого job не восстанавливается задним числом и не объявляется нулём. Этот прогон остаётся неуспехом. Для оставшихся пяти исходных заданий протокол дополняется явно до запуска: весь первый лимит 1 млн удерживается как worst-case allocation, остаётся максимум 5 млн; candidate SHA каждого задания записывается отдельно. Первое задание не заменяется и не продолжается. Такие результаты нельзя выдавать за шесть успешных проходов на одном неизменном выпуске.
 
 Stock-CLI receipt также выявил расхождение между показанным profile output cap 8192 и прежним общим build cap 16384. Допуск build теперь использует profile cap, отдельно от preparation caps; меньший явный лимит сохраняется. Добавлен stock acceptance нового research v2, включая host page collection, точные excerpts и единственный model selection без shell. Host source publication читает журнал внутри lock; retrieval date из будущего отклоняется с допуском на пять минут расхождения часов.
+
+## Research-дефекты, найденные четвёртым реальным случаем
+
+После успешного brief четвёртый исходный случай на 9c508ed остановился на
+`primary_page_empty`. Saved Search/Read evidence подтвердило три отдельные причины:
+шаблон `minimal until scaffold profile is selected` стал обязательной зависимостью;
+первый разрешённый по domain URL оказался нерелевантным (MDN User-Agent Client Hints,
+затем npm-страница чужого runtime); вся последняя страница из 16000 символов была
+одной строкой, которую прежний excerpt extractor полностью отбрасывал при лимите
+2400 байт. Вторая попытка читала тот же источник; сообщение всё ещё обещало повтор.
+
+Topic policy 3 исключает template placeholders и корректно обрабатывает русские
+отрицания. Для известных тем она задаёт проверенные первичные страницы; Node.js
+использует официальные Markdown API pages без длинного HTML оглавления. При
+поиске недостаточно совпадения domain: результат должен иметь слова темы в
+URL/title/snippet. Это heuristic relevance filter, не доказательство правильности
+интерпретации. Точные факты и compatibility по-прежнему проверяются отдельным gate.
+Источники: [Node HTTP](https://nodejs.org/api/http.md),
+[Node Process](https://nodejs.org/api/process.md),
+[MediaWiki Search](https://www.mediawiki.org/wiki/API:Search),
+[OWASP XSS](https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html).
+Доступность адресов проверена 2026-09-23; переходы Learn/HTTP и Learn/exit,
+возвращавшие 404, в policy не включены.
+
+Новая обработка длинной строки выделяет ограниченные фрагменты по целым Unicode
+code points. Итоговая выдержка не больше 2400 UTF-8 байт. Quote должен совпадать
+не только с excerpt, но и с непрерывным фрагментом оригинального текста: модель
+не может склеить удалённые места в одну поддельную цитату.
+
+Для подтверждённо пустой страницы или snippet вместо Read разрешён один переход
+к другому источнику внутри прежних двух attempts, без вмешательства оператора.
+Credential/quota/transport failure автоматически не повторяется. После двух
+ошибок сообщение честно указывает исчерпание, а reload сохраняет URL, receipts и
+счётчики. Незавершённый dispatch остаётся unconfirmed и не повторяется.
+
+Policy 2 и legacy topics воспроизводятся прежними модулями и не переписываются.
+Новые правила не разрешают изменять старые approvals, research files или release
+pins. Четвёртый реальный случай остаётся зафиксированным неуспехом на 9c508ed;
+его исходники не исправлялись вручную. Реальные ограничения, расходы и результаты
+оставшихся исходных случаев публикуются отдельно в instance verification report.
