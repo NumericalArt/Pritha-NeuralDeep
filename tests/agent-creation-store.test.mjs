@@ -11,10 +11,14 @@ test('new research jobs pin topic policy 3, saved policy 2 survives replay, and 
  const {coordination,store}=make();try {
   const modern=store.create({...input,preparationPolicyVersion:2,researchProtocolVersion:2});
   assert.equal(modern.researchTopicPolicyVersion,3);
+  assert.equal(modern.researchSelectionVersion,2);
+  assert.throws(()=>store.update(modern.chatId,j=>({...j,researchSelectionVersion:1})),{code:'creation_policy_immutable'});
   assert.throws(()=>store.update(modern.chatId,j=>({...j,researchTopicPolicyVersion:2})),{code:'creation_policy_immutable'});
-  const old={...input,chatId:'old_topic_chat',agentId:'old-topic-agent',preparationPolicyVersion:2,researchProtocolVersion:2,researchTopicPolicyVersion:2};
+  const old={...input,chatId:'old_topic_chat',agentId:'old-topic-agent',preparationPolicyVersion:2,researchProtocolVersion:2,researchTopicPolicyVersion:2,researchSelectionVersion:1};
   store.create(old);assert.equal(store.create({...old,researchTopicPolicyVersion:3}).researchTopicPolicyVersion,2);
   assert.throws(()=>store.update(old.chatId,j=>({...j,researchTopicPolicyVersion:3})),{code:'creation_policy_immutable'});
+  assert.equal(store.create({...old,researchSelectionVersion:2}).researchSelectionVersion,1);
+  for(const version of [0,3,'2',null])assert.throws(()=>store.create({...old,researchSelectionVersion:version}),{code:'creation_policy_invalid'});
   for(const version of [0,1,4,'3',null])assert.throws(()=>store.create({...old,researchTopicPolicyVersion:version}),{code:'creation_policy_invalid'});
   assert.throws(()=>store.create({...old,researchProtocolVersion:1}),{code:'creation_policy_invalid'});
  }finally{coordination.close();}

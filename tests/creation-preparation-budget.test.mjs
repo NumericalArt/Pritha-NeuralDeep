@@ -167,6 +167,18 @@ test('one settled provider outage reopens the phase from checkpoint and the seco
   assert.equal(second.budget.maxTokens,1_000_000);
 });
 
+test('a remaining host gate stops tool-free selection even when primary facts made progress',()=>{
+  const base={preparationPolicyVersion:2,researchProtocolVersion:2,status:'pending',phase:'research',autoContinue:true,
+    budget:{maxTokens:1000000,unknownAttempts:[]},contextPacket:{progressHash:'old'},preparation:{}};
+  const research={gate:{ok:false,reasons:['repository_research_pending']},checked:['runtime'],remaining:[],facts:[{topic:'runtime',claim:'A verified source fact'}]};
+  const receipt={processExited:true,tokens:500,blocker:null};
+  const result=settleCreationPreparation(base,receipt,{phase:'research',readResearch:()=>research});
+  assert.equal(result.status,'blocked');assert.equal(result.autoContinue,false);assert.equal(result.researchAttemptCompleted,false);
+  assert.equal(result.blocker.code,'creation_research_gate_blocked');assert.match(result.blocker.message,/repository_research_pending/);
+  assert.deepEqual(result.researchProgress,{checked:['runtime'],remaining:[]});assert.deepEqual(result.budget,base.budget);
+  for(const status of ['paused','cancelled'])assert.equal(settleCreationPreparation({...base,status},receipt,{phase:'research',readResearch:()=>research}).status,status);
+});
+
 test('verified research evidence clears a no-progress stop without another model step',()=>{
   const checked={topic:'node-http-runtime',url:'https://nodejs.org/api/http.html',claim:'Node serves HTTP',evidence:'listen is documented',version:'v26',compatibility:'local process'};
   const base={preparationPolicyVersion:2,status:'paused',activeTurnId:null,phase:'research',autoContinue:false,

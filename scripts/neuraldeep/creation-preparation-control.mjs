@@ -9,7 +9,7 @@ export function settleCreationPreparation(job,receipt,options) {
   const next=structuredClone(job),phase=preparationPhase(options.phase || job.phase);
   let research=null;
   if(phase==='research') {
-    try {research=readCreationResearch(job,options);}
+    try {research=(options.readResearch || readCreationResearch)(job,options);}
     catch(error) {
       if(!receipt.blocker)receipt={...receipt,blocker:{code:'provider_budget_research_changed',message:error.message}};
     }
@@ -39,6 +39,15 @@ export function settleCreationPreparation(job,receipt,options) {
   }
   if(!receipt.blocker && phase==='research' && receipt.processExited && receipt.tokens!==null) {
     next.researchAttemptCompleted=research?.gate.ok===true;
+    if(job.researchProtocolVersion===2 && !next.researchAttemptCompleted && research?.remaining?.length===0) {
+      // A tool-free evidence selector cannot repair a repository/host gate.
+      // Preserve valid primary evidence and stop before another paid selection.
+      const reasons=(research.gate.reasons||[]).filter(value=>/^[a-z0-9_:-]{1,120}$/i.test(value)).slice(0,8);
+      const message='Первоисточники проверены, но обязательная проверка research ещё не пройдена'+(reasons.length?`: ${reasons.join(', ')}`:'.')+'. Работа сохранена; новый запрос модели не устранит эту причину.';
+      next.autoContinue=false;
+      if(!['paused','cancelled'].includes(next.status)){next.status='blocked';next.blocker={code:'creation_research_gate_blocked',message};}
+      return next;
+    }
     if(!next.researchAttemptCompleted && !progress)receipt={...receipt,blocker:{code:'provider_budget_no_progress'}};
   }
   if(!receipt.blocker || !/^provider_budget_/.test(receipt.blocker.code))return next;

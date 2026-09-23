@@ -996,12 +996,16 @@ export async function runRepositoryResearch(root, data, externalTopics, options 
   });
   const staleRegistryOnly = plan.mode === "registry-only"
     && shortlist.some((candidate) => (candidate.discoverySource || candidate.source) === "registry" && !recentDate(candidate.updatedAt));
+  const advisoryOnly = plan.policy === "registry-only" && !plan.required
+    && plan.adoptionMode === "none" && plan.selectedRepositories.length === 0;
   if (staleRegistryOnly) {
-    errors.push(plan.adoptionMode === "reference-only"
+    errors.push(advisoryOnly
+      ? "warning: registry-only advisory lookup completed; candidate metadata is older than 30 days and authorizes no adoption"
+      : plan.adoptionMode === "reference-only"
       ? "warning: registry-only shortlist contains metadata older than 30 days; exact fresh external review remains required"
       : "registry-only shortlist contains metadata older than 30 days");
   }
-  const staleRegistryBlocking = staleRegistryOnly && plan.adoptionMode !== "reference-only";
+  const staleRegistryBlocking = staleRegistryOnly && plan.adoptionMode !== "reference-only" && !advisoryOnly;
   const incomplete = onlineStatus === "failed" || !registry.ok && !plan.online || requiredSelectedMissing || staleRegistryBlocking;
   const status = incomplete ? "pending" : "complete";
 

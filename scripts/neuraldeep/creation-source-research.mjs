@@ -72,10 +72,27 @@ function nextPrimarySource(topic,item,found) {
   score:terms.reduce((n,term)=>n+Number(`${source.url} ${source.title||''} ${source.snippet||''}`.toLowerCase().includes(term)),0)}))
   .filter(candidate=>candidate.score>0).sort((a,b)=>b.score-a.score || a.index-b.index)[0]?.source || null;
 }
+// A ranked excerpt can join nonadjacent lines. Never ask a model to copy that
+// joined text as one source quotation. Bind each exact passage independently.
+export function sourcePassages(source) {
+ const seen=new Set(),passages=[];
+ for(const quote of source.excerpt.split('\n')) {
+  if(quote.length<40 || quote.length>1200 || seen.has(quote) || !source.text.includes(quote))continue;
+  seen.add(quote);passages.push({id:hash({sourceId:source.id,contentHash:source.contentHash,quote}).slice(0,24),quote});
+  if(passages.length===8)break;
+ }
+ return passages;
+}
 export function readCreationSources(job,options) {
  const {state}=load(job,options);
  for(const source of state.sources)if(hash(source.text)!==source.contentHash || !Number.isFinite(Date.parse(source.retrievedAt)) || Date.now()-Date.parse(source.retrievedAt)>30*86400000 || Date.parse(source.retrievedAt)-Date.now()>300000)fail('creation_research_source_stale');
- return state.sources.map(({text,...source})=>source);
+ return state.sources.map(({text,...source})=>{
+  if(job.researchSelectionVersion!==2)return source;
+  const {excerpt,...metadata}=source;
+  const passages=sourcePassages({...source,text});
+  if(!passages.length)fail('creation_research_source_unavailable','В сохранённом источнике нет цельной проверяемой выдержки. Запрос модели не отправлен.');
+  return {...metadata,passages};
+ });
 }
 
 function recoverPublication(job,research,options,state,file) {
@@ -153,15 +170,19 @@ export async function collectCreationSources(job,research,options) {
  });
 }
 
-export function validateResearchSelection(value,sources,topics) {
+export function validateResearchSelection(value,sources,topics,selectionVersion=1) {
  if(!value || !Array.isArray(value.facts) || value.facts.length>24)fail('creation_research_selection_invalid');
  const items=value.facts.map(fact=>{
   const source=sources.find(source=>source.id===fact.sourceId && source.topicId===fact.topicId);
-  if(!source || !topics.some(topic=>topic.id===fact.topicId && topic.required!==false) || typeof fact.quote!=='string'
-    || fact.quote.length<40 || fact.quote.length>1200 || !source.excerpt.includes(fact.quote)
-    || (source.text && !source.text.includes(fact.quote)))fail('creation_research_quote_unbound','Выдержка не совпала с прочитанным первичным источником. Работа сохранена.');
+  const passage=selectionVersion===2?source?.passages?.find(item=>item.id===fact.passageId):null;
+  const quote=selectionVersion===2?passage?.quote:fact.quote;
+  if(!source || !topics.some(topic=>topic.id===fact.topicId && topic.required!==false) || typeof quote!=='string'
+    || quote.length<40 || quote.length>1200 || (selectionVersion===2?Object.hasOwn(fact,'quote'):!source.excerpt.includes(quote))
+    || (source.text && !source.text.includes(quote)))fail('creation_research_quote_unbound',selectionVersion===2
+      ? 'Идентификатор выдержки не принадлежит выбранному источнику и теме. Выберите passageId из списка этой страницы; не присылайте поле quote.'
+      : 'Выдержка не совпала с прочитанным первичным источником. Работа сохранена.');
   return {topic_id:source.topicId,source_url:source.url,source_title:source.title,source_type:'official-docs',source_published:source.publishedAt,
-   retrieved_at:source.retrievedAt,claim:fact.quote,evidence_summary:fact.quote,confidence:'medium',
+   retrieved_at:source.retrievedAt,claim:quote,evidence_summary:quote,confidence:'medium',
    version_context:fact.versionContext,temporal_compatibility:fact.compatibility,temporal_compatibility_status:fact.compatibilityStatus};
  });
  return {backend:'host-primary-pages',items,synthesis:value.synthesis};
@@ -178,7 +199,7 @@ export function completeCreationSourceResearch(job,answer,research,options) {
   if(blocks.length!==1)fail('creation_research_selection_invalid','Не получена проверяемая сводка источников. Исходники и расход сохранены.');
   let value;try{value=JSON.parse(blocks[0][1]);}catch{fail('creation_research_selection_invalid');}
   const sources=readCreationSources(job,options).map(source=>({...source,text:state.sources.find(item=>item.id===source.id).text}));
-  const input=validateResearchSelection(value,sources,research.topics);
+  const input=validateResearchSelection(value,sources,research.topics,job.researchSelectionVersion||1);
   const artifact=research.artifacts.find(item=>item.id==='research'),current=read(artifact.path,job.draftRoot);
   if(hash(current)!==artifact.hash)fail('creation_research_context_changed');
   const data=contractData(job.contract.path,{root:options.root});

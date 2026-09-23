@@ -665,6 +665,26 @@ test("reference-only repository research does not require an adoption pin", asyn
   }
 });
 
+test("advisory registry lookup completes with stale metadata without allowing selection or adoption", async () => {
+  const repository="https://github.com/example/advisory-only";
+  const {root}=temporaryResearchRoot([`| \`${repository}\` | agent-harness | candidate | 2020-01-01 | 2020-01-01 | 5 | Advisory architecture. | MIT |`]);
+  try {
+    const data={repositoryResearchPolicy:'registry-only',repositoryResearchTopics:'agent-harness',repositoryAdoptionMode:'none'};
+    const research=await runRepositoryResearch(root,data,[],{githubMode:'registry-only'});
+    assert.equal(research.status,'complete');assert.equal(research.plan.required,false);assert.equal(research.onlineStatus,'registry-only');
+    assert.deepEqual(research.queries,[]);assert.deepEqual(research.plan.selectedRepositories,[]);
+    assert.ok(research.errors.some(error=>error.includes('authorizes no adoption')));
+    assert.equal(research.candidates[0].updatedAt,'2020-01-01');assert.equal(research.candidates[0].decision,'candidate');
+    assert.ok(research.candidates[0].blockers.includes('verify-current-head'));
+    const verified=verifyRepositoryResearchIntegrity(`---\n${repositoryResearchFrontmatter(research)}\n---\n\n${repositoryResearchMarkdown(research)}`);
+    assert.equal(verified.ok,true,verified.reasons.join(','));
+    for(const change of [{repositoryResearchPolicy:'required'},{selectedGitHubRepositories:repository},{repositoryAdoptionMode:'selected-module',selectedGitHubRepositories:repository,repositoryPin:'a'.repeat(40),selectedRepositoryModule:'src'}]) {
+      const required=await runRepositoryResearch(root,{...data,...change},[],{githubMode:'registry-only'});
+      assert.equal(required.status,'pending',JSON.stringify(change));
+    }
+  } finally {rmSync(root,{recursive:true,force:true});}
+});
+
 test("reference-only registry-only research accepts a real selected row while stale metadata stays nonblocking", async () => {
   const repository = "https://github.com/example/curated-reference";
   const { root } = temporaryResearchRoot([

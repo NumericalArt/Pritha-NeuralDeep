@@ -62,7 +62,7 @@ const brief={identity:{name:'Stock CLI creation fixture',slug:'stock-fixture'},g
   successCriteria:['Actual source records persist exactly once, failed refresh preserves the last successful result'],coreFunctions:['Refresh the selected feed'],
   workflows:['Open the local app, refresh manually and inspect records'],sources:['https://example.test/feed'],constraints:['No schedules and no copied credentials'],nonGoals:['External deployment'],
   permissions:{network:['Declared public feed'],filesystem:['Own target only'],authorization:'Manual local operator actions'},
-  technical:{preset:'local-feed',sourceFormat:'json'}};
+  technical:{preset:'local-feed',sourceFormat:'json',...(hostResearchV2?{repositoryResearchPolicy:'registry-only',repositoryResearchWaiverReason:'Advisory registry lookup only; no repository adoption or online discovery.'}:{})}};
 let product='Create a local feed reader. Refresh manually, preserve source records without duplicates, retain the last successful data on errors. No schedules, no copied credentials.';
 if(signalDeskPreparation){
   Object.assign(brief,structuredClone((await load('tests/fixtures/signal-desk-brief.mjs')).signalDeskBrief));brief.identity.slug='stock-fixture';
@@ -121,8 +121,8 @@ globalThis.fetch=async(url,init)=>{
   }
   if(mode==='research-v2') {
     assert.equal(modeRequests,1);assert.equal(payload.tool_choice,'none');assert.deepEqual(payload.tools,[]);
-    const packet=JSON.parse(payload.input[0].content[0].text);assert.ok(packet.research.sources.every(source=>source.excerpt && !source.text));
-    answer='```pritha-research-json\n'+JSON.stringify({facts:packet.research.sources.map(source=>({sourceId:source.id,topicId:source.topicId,quote:source.excerpt,versionContext:'Current synthetic primary page',compatibility:'The documented Node process and HTTP contract apply to the selected local product.',compatibilityStatus:'compatible'})),
+    const packet=JSON.parse(payload.input[0].content[0].text);assert.ok(packet.research.sources.every(source=>(packet.researchSelectionVersion===2?source.passages.length:source.excerpt) && !source.text));
+    answer='```pritha-research-json\n'+JSON.stringify({facts:packet.research.sources.map(source=>({sourceId:source.id,topicId:source.topicId,...(packet.researchSelectionVersion===2?{passageId:source.passages[0].id}:{quote:source.excerpt}),versionContext:'Current synthetic primary page',compatibility:'The documented Node process and HTTP contract apply to the selected local product.',compatibilityStatus:'compatible'})),
       synthesis:{relationship:'confirms',memory_comparison:'The primary pages confirm bounded local execution.',summary:'Use the agreed local product and persist successful results.',architecture_decision:'Use explicit manual refresh and atomic persistence.',alternatives:['Defer implementation'],tradeoffs:['Verification effort']}})+'\n```';
   }
   if(mode==='research' && modeRequests===1) {

@@ -57,6 +57,7 @@ export function prepareCreationContextPacket(job,dialogue,options) {
   const packet={schema:'pritha-creation-context-packet-v1',jobId:job.jobId,instanceId:job.instanceId,agentId:job.agentId,
     ...(job.briefProtocolVersion ? {briefProtocolVersion:job.briefProtocolVersion} : {}),
     ...(job.researchProtocolVersion ? {researchProtocolVersion:job.researchProtocolVersion} : {}),
+    ...(job.researchSelectionVersion ? {researchSelectionVersion:job.researchSelectionVersion} : {}),
     generation:creationGeneration(job),releaseSha:job.releaseSha,policyVersion:2,phase,workUnitId:options.turnId,
     ...(job.executionPolicy?{executionPolicy:job.executionPolicy}:{}),
     dialogue:JSON.parse(dialogue.text),brief:job.preparation?.brief||null,
@@ -82,7 +83,7 @@ export function readCreationContextPacket(job,options) {
   if(hash(text)!==ref.hash || packet.jobId!==job.jobId || packet.instanceId!==job.instanceId || packet.generation!==creationGeneration(job)
     || packet.releaseSha!==job.releaseSha || packet.policyVersion!==2 || packet.workUnitId!==ref.workUnitId
     || packet.phase!==preparationPhase(creationPhase(job)) || packet.briefProtocolVersion!==job.briefProtocolVersion
-    || packet.researchProtocolVersion!==job.researchProtocolVersion)fail('creation_context_changed');
+    || packet.researchProtocolVersion!==job.researchProtocolVersion || packet.researchSelectionVersion!==job.researchSelectionVersion)fail('creation_context_changed');
   if(JSON.stringify(packet.proposalRevision||null)!==JSON.stringify(proposalRevision(job)))fail('creation_context_revision_changed');
   for(const kind of ['contract','outcome']) {
     const document=packet.documents[kind];

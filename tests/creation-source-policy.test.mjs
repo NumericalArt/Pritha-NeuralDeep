@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {sourceExcerpt,collectCreationSources,validateResearchSelection} from '../scripts/neuraldeep/creation-source-research.mjs';
+import {sourceExcerpt,sourcePassages,collectCreationSources,validateResearchSelection} from '../scripts/neuraldeep/creation-source-research.mjs';
 import {deriveExternalResearchTopics} from '../scripts/agents-mother/external-research-topics.mjs';
 
 const text='The HTTP server receives explicit requests and preserves successful local records. External content must be encoded before inserting it into HTML. Errors must leave the previous successful result intact.';
@@ -125,6 +125,32 @@ test('an invented quotation joining nonadjacent source passages is not accepted'
  const two='Errors must preserve previous successful records for the operator.';
  const source={id:'s',topicId:'security',url:'https://owasp.org/docs',text:one+' omitted material '+two,excerpt:one+'\n'+two};
  assert.throws(()=>validateResearchSelection({facts:[{sourceId:'s',topicId:'security',quote:source.excerpt}]},[source],[{id:'security'}]),{code:'creation_research_quote_unbound'});
+});
+
+test('passage selection restores exact source text without copying a stitched excerpt',()=>{
+ const one='External content must be encoded before inserting it into HTML.';
+ const two='Errors must preserve previous successful records for the operator.';
+ const source={id:'s',topicId:'security',contentHash:'a'.repeat(64),url:'https://owasp.org/docs',text:one+' omitted material '+two,excerpt:one+'\n'+two};
+ source.passages=sourcePassages(source);
+ assert.equal(source.passages.length,2);assert.deepEqual(sourcePassages(source),source.passages);
+ const fact={sourceId:'s',topicId:'security',passageId:source.passages[1].id};
+ const result=validateResearchSelection({facts:[fact]},[source],[{id:'security'}],2);
+ assert.equal(result.items[0].claim,two);assert.ok(source.text.includes(result.items[0].claim));
+ for(const invalid of [{...fact,passageId:'invented'},{...fact,sourceId:'other'},{...fact,topicId:'other'},{...fact,quote:source.excerpt}])
+  assert.throws(()=>validateResearchSelection({facts:[invalid]},[source],[{id:'security'}],2),{code:'creation_research_quote_unbound'});
+ const other={...source,id:'other'};assert.notEqual(sourcePassages(other)[1].id,fact.passageId);
+ assert.throws(()=>validateResearchSelection({facts:[{...fact,sourceId:'other'}]},[{...other,passages:sourcePassages(other)}],[{id:'security'}],2),{code:'creation_research_quote_unbound'});
+});
+
+test('new source packets contain bounded separate passages and old packets retain their excerpt',async t=>{
+ const f=fixture(t),raw=(text+'\n').repeat(30);
+ const options={...f.options,search:{readPage:async ({url})=>page(url,raw),search:async()=>assert.fail()}};
+ const legacy=await collectCreationSources(f.job,f.research,options);assert.ok(legacy[0].excerpt);
+ const modern=await collectCreationSources({...f.job,researchSelectionVersion:2},f.research,options);
+ assert.equal(modern[0].excerpt,undefined);assert.equal(modern[0].text,undefined);
+ assert.ok(modern[0].passages.length>0 && modern[0].passages.length<=8);
+ for(const passage of modern[0].passages)assert.ok(raw.includes(passage.quote));
+ assert.ok(Buffer.byteLength(JSON.stringify(modern))<4000);
 });
 
 test('v3 ignores dependency placeholders and Russian negations while v2 remains reproducible',()=>{
