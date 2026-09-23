@@ -34,7 +34,7 @@ confidence: high
 | WP2: безопасное восстановление | Реализован, проверен локально | 8/8 recovery tests; freshness, task/spec identity, process-tree exit, adoption без новых команд; неизвестный расход сохраняется |
 | WP3: deadlines | Реализован, проверен локально | 63/63 targeted tests: общий срок фаз, soft admission до reservation, медленный ответ с final usage, зависание с unknown, suspend, неизменность policy |
 | WP4: применимое исследование | Реализован, проверен локально | 57/57 targeted tests; v2 новых jobs, primary Search/Read, immutable page hashes, точные выдержки и host publication; legacy policy сохранена |
-| WP5: effective settings | Запланирован | — |
+| WP5: effective settings | Реализован, проверяется | Profile distinguishes provider declarations, transport verification, ignored Qwen effort, pinned model/context/output/application caps |
 | WP6: независимые Trials | Запланирован | — |
 | WP7: интерфейс и инструкции | Запланирован | — |
 | WP8: incremental SSE | Запланирован отдельным изменением | — |
@@ -67,3 +67,9 @@ confidence: high
 Хост выполняет не более 12 обязательных тем, по два последовательных Search/Read attempts на тему за generation; независимые лимиты Search Settings также сохраняются. Эти операции используют web/search quota, а не модельный token budget. Время операций входит в active-time budget. Exact topic, primary-domain list, search/read receipts, read page, excerpt и SHA-256 сохраняются до model selection. Reload не сбрасывает счётчики. Незавершённая операция не повторяется автоматически.
 
 Модель одним bounded запросом выбирает точные выдержки и объясняет совместимость; tools отключены. Хост проверяет topic/source identity, exact quote, поля, freshness/version rule, coverage и synthesis, затем публикует locked report с CAS. Это проверка происхождения и структурной полноты, а не математическое доказательство истинности интерпретации. Допустима одна оплаченная структурная коррекция из прежнего бюджета. Неизвестный usage не даёт права повторить запрос. Невыбранные/неподдержанные источники остаются явным блокером с возможностью пересмотра требования.
+
+## WP5
+
+Повторно проверена документация NeuralDeep от 2026-09-23: `https://neuraldeep.ru/llms-full.txt`. Для Qwen 3.8/3.6 `reasoning_effort` не управляет thinking. Каталог теперь отделяет advertised reasoning от действующего effort; Qwen получает «не применяется». Это не переключение на noreason. Неверифицированные `chat_template_kwargs` в Responses не внедряются. Default model не подменяет выбранный model ID при невалидном значении.
+
+Versioned profile закрепляет provider-declared context (Qwen 262144), application output cap 8192, requested/effective effort и статус transport verification. CLI получает context declaration, а reservation проверяется отдельно. Byte reserve остаётся консервативной оценкой; tokenizer не заявлен. Все фазы новой job используют её model ID и timeout, а не последующие изменения Settings. UI показывает configured prompt budget как настройку общего чата, отдельно от preparation caps. Research v2 передаёт один context packet без coding prompt и дублированной tool history. 39/39 профильных тестов пройдены.

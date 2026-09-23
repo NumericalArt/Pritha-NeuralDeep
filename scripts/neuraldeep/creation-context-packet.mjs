@@ -58,6 +58,7 @@ export function prepareCreationContextPacket(job,dialogue,options) {
     ...(job.briefProtocolVersion ? {briefProtocolVersion:job.briefProtocolVersion} : {}),
     ...(job.researchProtocolVersion ? {researchProtocolVersion:job.researchProtocolVersion} : {}),
     generation:creationGeneration(job),releaseSha:job.releaseSha,policyVersion:2,phase,workUnitId:options.turnId,
+    ...(job.executionPolicy?{executionPolicy:job.executionPolicy}:{}),
     dialogue:JSON.parse(dialogue.text),brief:job.preparation?.brief||null,
     ...(job.proposalRevisionPending ? {proposalRevision:proposalRevision(job)} : {}),
     documents:{contract:evidenceRef(job.contract),outcome:evidenceRef(job.outcome)},approvals:job.approvals,

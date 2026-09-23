@@ -786,12 +786,13 @@ export class CodexChatGateway {
   }
 
   private executionIntent(binding: ChatBinding, turnId: string, settings = getPrithaRuntimeSettings()): ExecutionIntent {
+    const policy=binding.creationWorkflowVersion===1 ? this.withCreationStore(store=>store.get(binding.chatId))?.executionPolicy : null;
     const sandbox = binding.creationWorkflowVersion===1 ? 'workspace-write' : settings.codexSandbox === "auto" ? "workspace-write" : settings.codexSandbox || "read-only";
     return { version: 1, attemptId: `attempt_${turnId}_${randomUUID().replace(/-/g, "")}`,
       modelId: binding.modelId, effortId: binding.effortId, cwd: binding.workspacePath || this.root,
       profileIdentity: binding.profileIdentity || neuralDeepRuntimeIdentity(this.store.stateRoot).profileIdentity,
       sandbox, network: sandbox === "danger-full-access" || (sandbox === "workspace-write" && settings.codexNetworkAccess === true),
-      timeoutMs: taskChatTurnTimeoutMs({ subject: binding.subject ?? null, coordinated: binding.creationWorkflowVersion === 1, settingsTimeoutMs: settings.codexTimeoutMs || 600_000 }), settingsAt: settings.updatedAt,
+      timeoutMs: policy?.iterationTimeoutMs || taskChatTurnTimeoutMs({ subject: binding.subject ?? null, coordinated: binding.creationWorkflowVersion === 1, settingsTimeoutMs: settings.codexTimeoutMs || 600_000 }), settingsAt: settings.updatedAt,
       predecessorTurnId: null, queueRevision: 1, dispatchState: "accepted" };
   }
 

@@ -16,7 +16,7 @@ async function loadCatalogModule() {
       target: ts.ScriptTarget.ES2022,
       isolatedModules: true,
     },
-  }).outputText.replace('"../../../../../scripts/neuraldeep/model-input-capabilities.mjs"', JSON.stringify(pathToFileURL(path.resolve("scripts/neuraldeep/model-input-capabilities.mjs")).href));
+  }).outputText.replace(/"\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/scripts\/neuraldeep\/([^"]+)"/g, (_match,file)=>JSON.stringify(pathToFileURL(path.resolve("scripts/neuraldeep",file)).href));
   const tmp = mkdtempSync(path.join(os.tmpdir(), "pritha-codex-model-catalog-test-"));
   const modulePath = path.join(tmp, "codex-model-catalog.mjs");
   writeFileSync(modulePath, output, "utf8");
@@ -35,7 +35,7 @@ test("fallback catalog is a provider-safe NeuralDeep default without a branded a
     assert.equal(mod.DEFAULT_CODEX_SELECTION.effort, "medium");
     assert.equal(mod.DEFAULT_CODEX_SELECTION.serviceTier, "standard");
     assert.deepEqual([...byId.keys()], ["qwen3.6-35b-a3b"]);
-    assert.deepEqual(byId.get("qwen3.6-35b-a3b").supportedReasoningEfforts.map((item) => item.id), ["low", "medium", "high", "xhigh"]);
+    assert.deepEqual(byId.get("qwen3.6-35b-a3b").supportedReasoningEfforts.map((item) => item.id), ["none"]);
     assert.equal(byId.get("qwen3.6-35b-a3b").provider, "neuraldeep");
     assert.equal(mod.codexReasoningEffortLabel("xhigh"), "Extra High");
     assert.equal(mod.codexModelSupportsFast(byId.get("qwen3.6-35b-a3b")), false);
@@ -153,7 +153,7 @@ test("capability reconciliation follows the dynamic NeuralDeep capability record
       effort: "ultra",
       serviceTier: "fast",
     });
-    assert.equal(reconciled.effort, "xhigh");
+    assert.equal(reconciled.effort, "none");
     assert.equal(reconciled.serviceTier, "standard");
   } finally {
     loaded.cleanup();
@@ -198,9 +198,9 @@ test("selection validation rejects unsupported combinations but preserves an unc
   const loaded = await loadCatalogModule();
   try {
     const mod = loaded.module;
-    assert.equal(mod.validateCodexSelection({ model: "qwen3.6-35b-a3b", effort: "xhigh", serviceTier: "standard" }, mod.FALLBACK_CODEX_MODELS).ok, true);
+    assert.equal(mod.validateCodexSelection({ model: "qwen3.6-35b-a3b", effort: "none", serviceTier: "standard" }, mod.FALLBACK_CODEX_MODELS).ok, true);
     assert.equal(mod.validateCodexSelection({ model: "qwen3.6-35b-a3b", effort: "ultra", serviceTier: "standard" }, mod.FALLBACK_CODEX_MODELS).error, "unsupported_codex_reasoning_effort");
-    assert.equal(mod.validateCodexSelection({ model: "qwen3.6-35b-a3b", effort: "xhigh", serviceTier: "fast" }, mod.FALLBACK_CODEX_MODELS).error, "unsupported_codex_service_tier");
+    assert.equal(mod.validateCodexSelection({ model: "qwen3.6-35b-a3b", effort: "none", serviceTier: "fast" }, mod.FALLBACK_CODEX_MODELS).error, "unsupported_codex_service_tier");
     assert.equal(
       mod.validateCodexSelection({ model: "qwen3.6-35b-a3b", effort: "medium", serviceTier: "priority" }, mod.FALLBACK_CODEX_MODELS).error,
       "invalid_codex_service_tier",
@@ -230,4 +230,15 @@ test("catalog server uses authenticated NeuralDeep models with bounded cache and
   assert.match(serverSource, /model\.type === "embedding"/);
   assert.match(routeSource, /getCodexModelCatalog/);
   assert.match(routeSource, /Cache-Control.*no-store/);
+});
+
+test('Qwen reasoning advertisement does not become an effort control or verified transport',async()=>{
+ const loaded=await loadCatalogModule();try{
+  const [qwen,oss,unknown]=loaded.module.normalizeNeuralDeepModelList({data:['qwen3.8-27b','gpt-oss-120b','future-model'].map(id=>({id,type:'chat',capabilities:{reasoning:true,tools:true},limit:{context:262144,output:235929}}))});
+  assert.equal(qwen.capabilities.reasoning,true);assert.deepEqual(qwen.supportedReasoningEfforts.map(e=>e.id),['none']);
+  assert.equal(qwen.executionProfile.effortControl,'ignored');assert.equal(qwen.executionProfile.transportVerified,false);
+  assert.equal(qwen.outputLimit,235929);assert.equal(qwen.executionProfile.applicationOutputCap,8192);
+  assert.deepEqual(oss.supportedReasoningEfforts.map(e=>e.id),['low','medium','high']);
+  assert.equal(unknown.executionProfile.effortControl,'unverified');
+ }finally{loaded.cleanup();}
 });

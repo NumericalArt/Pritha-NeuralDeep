@@ -1,0 +1,2 @@
+export function neuralDeepExecutionProfile(modelId:string):{version:number;modelId:string;wireApi:string;source:string;checkedAt:string;effortControl:string;supportedEfforts:string[];thinking:string;thinkingBudgetControl:string;transportVerified:boolean;declaredContextTokens:number|null;applicationOutputCap:number;reservationBasis:string;note:string};
+export function effectiveNeuralDeepEffort(modelId:string,requested:string|null|undefined):string|null;

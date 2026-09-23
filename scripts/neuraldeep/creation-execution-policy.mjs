@@ -1,11 +1,14 @@
+import {neuralDeepExecutionProfile,effectiveNeuralDeepEffort} from './model-execution-profile.mjs';
 const positive = value => Number.isSafeInteger(value) && value > 0;
 
 export function creationExecutionPolicy({modelId,effortId=null,timeoutMs=1_800_000,promptTokenBudget=48_000}={}) {
   if (typeof modelId!=='string' || !modelId || modelId.length>200) throw new Error('creation_model_policy_invalid');
   return {schema:'pritha-creation-execution-policy-v1',version:1,modelId,effortId,
+    effectiveEffortId:effectiveNeuralDeepEffort(modelId,effortId),modelProfile:neuralDeepExecutionProfile(modelId),
     iterationTimeoutMs:positive(timeoutMs)?Math.min(timeoutMs,1_800_000):1_800_000,
     requestTimeoutMs:930_000,settlementGraceMs:30_000,
     configuredPromptTokenBudget:positive(promptTokenBudget)?promptTokenBudget:48_000,
+    promptBudgetApplicability:'general-chat setting; creation uses pinned preparation byte caps and measured request accounting',
     appliesTo:'new-creation-job; model-and-deadlines-pinned'};
 }
 

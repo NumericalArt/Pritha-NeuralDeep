@@ -1,4 +1,5 @@
 import { declaredModelInputs } from "../../../../../scripts/neuraldeep/model-input-capabilities.mjs";
+import { neuralDeepExecutionProfile } from "../../../../../scripts/neuraldeep/model-execution-profile.mjs";
 export type CodexServiceTier = "standard" | "fast";
 export type CodexReasoningEffort = string;
 
@@ -29,6 +30,7 @@ export type CodexModelCatalogItem = {
   };
   contextWindow: number | null;
   outputLimit: number | null;
+  executionProfile?:ReturnType<typeof neuralDeepExecutionProfile>;
   region: string | null;
   capabilitiesKnown: boolean;
   inputModalities?: string[] | null;
@@ -155,6 +157,7 @@ function fallbackModel(
   fast: boolean,
   isDefault = false,
 ): CodexModelCatalogItem {
+  const executionProfile=neuralDeepExecutionProfile(id);
   return {
     id,
     label,
@@ -171,8 +174,9 @@ function fallbackModel(
     billingClass: "unknown",
     currentAccess: "unknown",
     walletPricing: null,
-    defaultReasoningEffort: "medium",
-    supportedReasoningEfforts: efforts.map((effort) => ({ ...effort })),
+    defaultReasoningEffort: executionProfile.supportedEfforts.includes('medium')?'medium':'none',
+    executionProfile,
+    supportedReasoningEfforts: executionProfile.supportedEfforts.map(id=>({...fallbackEffort(id),description:executionProfile.note})),
     serviceTiers: fast ? FAST_TIER.map((tier) => ({ ...tier })) : [],
   };
 }
@@ -287,9 +291,8 @@ export function normalizeNeuralDeepModelList(payload: unknown): CodexModelCatalo
     const tools = advertised.tools === true || value.tool_call === true;
     const vision = advertised.vision === true;
     const streaming = advertised.streaming !== false;
-    const supportedReasoningEfforts = reasoning
-      ? LOW_TO_XHIGH.map((effort) => ({ ...effort }))
-      : [{ id: "none", label: "Not applicable", description: "This model does not advertise reasoning controls." }];
+    const executionProfile=neuralDeepExecutionProfile(id);
+    const supportedReasoningEfforts = executionProfile.supportedEfforts.map(id=>({...fallbackEffort(id),description:executionProfile.note}));
     const contextWindowValue = Number(limits.context);
     const contextWindow = Number.isSafeInteger(contextWindowValue) && contextWindowValue > 0 ? contextWindowValue : null;
     const outputLimitValue = Number(limits.output);
@@ -310,13 +313,14 @@ export function normalizeNeuralDeepModelList(payload: unknown): CodexModelCatalo
       toolsAdvertised,
       contextWindow,
       outputLimit,
+      executionProfile,
       region: text(value.region, 80) || null,
       capabilitiesKnown: true,
       catalogPresence: "key",
       billingClass: "unknown",
       currentAccess: "unknown",
       walletPricing: null,
-      defaultReasoningEffort: reasoning ? "medium" : "none",
+      defaultReasoningEffort: supportedReasoningEfforts.some(item=>item.id==='medium') ? "medium" : "none",
       supportedReasoningEfforts,
       serviceTiers: [],
     });

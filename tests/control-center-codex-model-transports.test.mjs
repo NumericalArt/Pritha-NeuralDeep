@@ -11,7 +11,7 @@ async function loadCatalogModule() {
   const source = readFileSync("interfaces/control-center/src/lib/settings/codex-model-catalog.ts", "utf8");
   const output = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022, isolatedModules: true },
-  }).outputText.replace('"../../../../../scripts/neuraldeep/model-input-capabilities.mjs"', JSON.stringify(pathToFileURL(path.resolve("scripts/neuraldeep/model-input-capabilities.mjs")).href));
+  }).outputText.replace(/"\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/scripts\/neuraldeep\/([^"]+)"/g, (_match,file)=>JSON.stringify(pathToFileURL(path.resolve("scripts/neuraldeep",file)).href));
   const tmp = mkdtempSync(path.join(os.tmpdir(), "pritha-codex-model-transport-test-"));
   const modulePath = path.join(tmp, "codex-model-catalog.mjs");
   writeFileSync(modulePath, output, "utf8");

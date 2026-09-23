@@ -5,6 +5,7 @@ import {readCreationResearch} from './creation-research-context.mjs';
 import {reconcileCreationArtifacts} from './agent-creation.mjs';
 import {prepareCreationBriefRequest,validateCreationBriefResponse} from './creation-brief-request.mjs';
 import {prepareCreationResearchRequest} from './creation-research-request.mjs';
+import {neuralDeepExecutionProfile} from './model-execution-profile.mjs';
 
 const OUTPUT_LIMIT = 16_384;
 const FRAMING_RESERVE = 8_192;
@@ -60,6 +61,8 @@ export function prepareBudgetedRequest(payload, available) {
     fail('provider_budget_invalid', 'Invalid response token limit.');
   const inputReservation = Buffer.byteLength(JSON.stringify(payload)) + FRAMING_RESERVE;
   const output = Math.min(payload.max_output_tokens ?? OUTPUT_LIMIT, OUTPUT_LIMIT, available - inputReservation - 64);
+  const context=neuralDeepExecutionProfile(String(payload.model||'')).declaredContextTokens;
+  if(context && inputReservation+output>context)fail('provider_budget_model_context','Conservative request reserve exceeds the declared model context.');
   if (output < Math.min(payload.max_output_tokens ?? OUTPUT_LIMIT,1_024)) fail('provider_token_budget', 'The remaining token budget cannot cover this request and a bounded response.');
   return { ...payload, max_output_tokens: output };
 }
@@ -125,7 +128,12 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
   };
   const checkRequest=(payload,persist=true)=>{
     if(!current)return;
+    if(current.job.executionPolicy && payload.model!==current.job.executionPolicy.modelId)
+      fail('neuraldeep_model_identity_mismatch','The request model does not match the pinned creation policy. No fallback is permitted.');
     const bytes=Buffer.byteLength(JSON.stringify(payload)),policy=current.job.preparationPolicy;
+    const declared=current.job.executionPolicy?.modelProfile?.declaredContextTokens;
+    if(declared && bytes+FRAMING_RESERVE+(payload.max_output_tokens||policy.outputTokens)>declared)
+      fail('provider_budget_model_context','Conservative request reservation exceeds the declared model context.');
     const requestCount=store.providerUsageSummary(runId).providerRequests;
     const state={policyVersion:2,phase:current.phase,workUnitId:workloadId,packetHash:current.job.contextPacket.hash,
       bytes,reservation:bytes+FRAMING_RESERVE+(payload.max_output_tokens||policy.outputTokens),

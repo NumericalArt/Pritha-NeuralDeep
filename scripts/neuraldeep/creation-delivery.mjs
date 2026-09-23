@@ -178,7 +178,7 @@ export async function runCreationDelivery(job, options = {}) {
       if (Date.now() - start >= remainingMs) fail("elapsed_budget_exhausted");
     };
     const input = { ...options, runId, creationJobId: job.jobId, beforeDispatch, shouldContinue: mayContinue,
-      buildExecutorOptions: { model: options.model, effort: options.effort },
+      buildExecutorOptions: { model: job.executionPolicy?.modelId || options.model, effort: job.executionPolicy ? job.executionPolicy.effectiveEffortId || 'none' : options.effort },
       // Legacy jobs retain their original executor policy. New jobs pin the
       // configured limit and give every phase the same enclosing deadline.
       executorTimeoutMs: Math.min(job.executionPolicy?.iterationTimeoutMs || 12 * 60_000, remainingMs),

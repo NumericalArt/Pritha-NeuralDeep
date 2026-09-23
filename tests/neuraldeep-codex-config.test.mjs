@@ -313,3 +313,12 @@ process.stdin.resume();process.stdin.on('end',async()=>{
   const empty=await runCodexWithNeuralDeep(emptyRuntime,['exec'],{input:'fixture',runId:'no-dispatch',model:'fixture',tokenBudget:1000});
   assert.equal(calls,1);assert.equal(empty.usageRecord.usageKnown,true);assert.equal(empty.usageRecord.usage.totalTokens,0);
 });
+
+test('Qwen uses an explicit context declaration and never promises effort control or silently falls back',async()=>{
+ const {normalizeModelExecutionRequest,neuralDeepExecutionProfile}=await import('../scripts/neuraldeep/model-execution-profile.mjs');
+ const args=buildCodexExecArgs({model:'qwen3.8-27b',effort:'high',cwd:'/tmp/project',sandbox:'read-only'});
+ assert.ok(args.includes('model_context_window=262144'));assert.ok(!args.some(a=>a.startsWith('model_reasoning_effort=')));
+ assert.throws(()=>buildCodexExecArgs({model:'not a model'}),/invalid_neuraldeep_model/);
+ assert.deepEqual(normalizeModelExecutionRequest({model:'qwen3.8-27b',reasoning:{effort:'high',summary:'auto'}}),{model:'qwen3.8-27b',reasoning:{summary:'auto'}});
+ assert.equal(neuralDeepExecutionProfile('qwen3.8-27b-noreason').thinking,'disabled-by-selected-alias');
+});

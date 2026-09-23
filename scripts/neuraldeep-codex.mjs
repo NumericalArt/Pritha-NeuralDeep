@@ -25,6 +25,7 @@ import { assertNeuralDeepDispatchAllowed } from "./neuraldeep/release-maintenanc
 import { assertCreationExecutionRoot } from "./neuraldeep/creation-execution-root.mjs";
 import { providerBudgetGate } from "./neuraldeep/provider-budget.mjs";
 import { requestDeadlineWindow } from './neuraldeep/creation-execution-policy.mjs';
+import {neuralDeepExecutionProfile,effectiveNeuralDeepEffort} from './neuraldeep/model-execution-profile.mjs';
 
 import { flattenSearchTools, restoreSearchToolsStream } from "./search/responses-bridge.mjs";
 import { searchMcpConfig, searchMcpArgs, searchRuntimeContext } from "./search/runtime-config.mjs";
@@ -50,7 +51,8 @@ function parsePort(value) {
 
 function safeModelId(value, fallback = DEFAULT_MODEL) {
   const model = String(value || "").trim();
-  if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,191}$/.test(model)) return fallback;
+  if(!model)return fallback;
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,191}$/.test(model)) throw new Error('invalid_neuraldeep_model');
   return model;
 }
 
@@ -274,8 +276,10 @@ export function buildCodexExecArgs(options = {}) {
   const common = ["--json", "--strict-config", "--skip-git-repo-check", "-m", model];
   if (options.images !== undefined && (!Array.isArray(options.images) || options.images.length > 10 || options.images.some(file => typeof file !== "string" || !file || file.includes("\0")))) throw new Error("invalid_codex_images");
   for (const file of options.images || []) common.push("--image", path.resolve(file));
-  const effort = safeReasoningEffort(options.effort);
+  const effort = effectiveNeuralDeepEffort(model,safeReasoningEffort(options.effort));
   if (effort) common.push("-c", `model_reasoning_effort=${tomlString(effort)}`);
+  const context=neuralDeepExecutionProfile(model).declaredContextTokens;
+  if(context)common.push('-c',`model_context_window=${context}`);
   if (options.outputSchema) common.push("--output-schema", path.resolve(options.outputSchema));
   if (options.outputLastMessage) common.push("-o", path.resolve(options.outputLastMessage));
   if (options.network !== undefined) {
@@ -332,6 +336,8 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
   journal.beginRuntimeRun({ runId,
     requestHash: createHash("sha256").update(JSON.stringify([codexArgs, options.input ?? null, options.cwd || runtime.projectRoot, options.model || runtime.model])).digest("hex"),
     receipt: { model: options.model || runtime.model, provider: "neuraldeep", workload_id: safeMetadataId(options.workloadId),
+      model_profile:neuralDeepExecutionProfile(options.model || runtime.model),requested_effort:options.effort||null,
+      effective_effort:effectiveNeuralDeepEffort(options.model || runtime.model,options.effort),
       ...(options.deadline ? {execution_deadline:options.deadline} : {}),
       resumed_session: options.resume || null, worker_pid: process.pid, worker_started: worker.started,
       process_protocol: 1, dispatch_authorized: false, process_exited: false, usage_ledger_recorded: false } });

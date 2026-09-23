@@ -403,15 +403,16 @@ export function CodexSettingsSection() {
               <div><strong>{accessLabel}</strong><span>{rateLabel}</span></div>
               <div className="settings-mini-metrics">
                 <span>{selectedModel.catalogPresence === "pricing" ? "Public price catalog" : "Current key catalog"}</span>
-                <span>{selectedModel.capabilitiesKnown ? "Capabilities confirmed" : "Capabilities unknown"}</span>
-                <span>{selectedModel.capabilities.tools ? "Tools confirmed" : "Tools not confirmed"}</span>
-                <span>{selectedModel.capabilities.reasoning ? "Reasoning controls" : "No reasoning control"}</span>
+                <span>{selectedModel.capabilitiesKnown ? "Provider-declared capabilities" : "Capabilities unknown"}</span>
+                <span>{selectedModel.capabilities.tools ? "Tools advertised; Trials required" : "Tools not advertised"}</span>
+                <span>{selectedModel.executionProfile?.effortControl==='documented' ? "Effort documented; transport needs verification" : "Effort does not control thinking on this route"}</span>
                 <span>{selectedModel.capabilities.vision ? "Vision input" : "Text input"}</span>
-                <span>{selectedModel.contextWindow ? `${selectedModel.contextWindow.toLocaleString()} context` : "Context unknown"}</span>
+                <span>{selectedModel.contextWindow ? `${selectedModel.contextWindow.toLocaleString()} provider context; creation has separate byte caps` : "Context unknown"}</span>
                 {selectedModel.region ? <span>Region {selectedModel.region}</span> : null}
               </div>
             </div>
           ) : null}
+          {selectedModel?.executionProfile ? <p role="note">{selectedModel.executionProfile.note} Settings apply to new creation jobs. Existing jobs retain their model and limits.</p> : null}
           <div className="settings-rowline">
             <div>
               <strong>Reasoning Level</strong>

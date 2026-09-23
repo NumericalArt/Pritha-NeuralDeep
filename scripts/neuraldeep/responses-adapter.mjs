@@ -5,6 +5,7 @@ import { RESPONSES_REQUEST_LIMIT } from "./attachment-policy.mjs";
 import { classifyNeuralDeepProviderError, parseProviderErrorPayload } from "./provider-error.mjs";
 import { neuralDeepUsageKnown, normalizeNeuralDeepUsage } from "./usage-ledger.mjs";
 import { requestDeadlineWindow } from './creation-execution-policy.mjs';
+import {normalizeModelExecutionRequest} from './model-execution-profile.mjs';
 
 const { Agent } = createRequire(new URL("../../interfaces/control-center/package.json", import.meta.url))("undici");
 const DEFAULT_UPSTREAM = "https://api.neuraldeep.ru";
@@ -325,6 +326,7 @@ export function createNeuralDeepAdapter(options = {}) {
         if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw Object.assign(new Error("Invalid Responses request."), { statusCode: 400 });
         await options.validateResponsesRequest?.(payload, body);
         if (options.transformResponsesRequest) payload = options.transformResponsesRequest(payload);
+        payload=normalizeModelExecutionRequest(payload);
         // Identity belongs to the caller's request. A shrinking host response
         // cap must not turn an exact retry into a new payable request.
         requestHash = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
