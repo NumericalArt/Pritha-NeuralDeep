@@ -1,14 +1,16 @@
 export const CREATION_PREPARATION_POLICY_VERSION=2;
 export const PREPARATION_LIMITS=Object.freeze({maxRequests:12,freshBytes:64*1024,rotationBytes:96*1024,hardBytes:128*1024,
   outputTokens:8192,maxRotationsPerPhase:1});
-export function creationPreparationPolicy(budget) {
-  return {version:CREATION_PREPARATION_POLICY_VERSION,...PREPARATION_LIMITS,briefTokens:Math.floor(budget/10),
+export function creationPreparationPolicy(budget,executionPolicy=null) {
+  const cap=executionPolicy?.modelProfile?.applicationOutputCap ?? PREPARATION_LIMITS.outputTokens;
+  if(![8192,16384].includes(cap))throw Object.assign(new Error('Invalid pinned output limit.'),{code:'provider_budget_policy_changed',statusCode:409});
+  return {version:CREATION_PREPARATION_POLICY_VERSION,...PREPARATION_LIMITS,outputTokens:cap,briefTokens:Math.floor(budget/10),
     researchTokens:Math.floor(budget/5),totalTokens:Math.floor(budget*3/10),deliveryTokens:budget-Math.floor(budget*3/10)};
 }
 export const preparationPhase=phase=>['interview','contract','outcome'].includes(phase)?'brief':phase==='research'?'research':null;
 export function assertPreparationPolicy(job) {
   if(job.preparationPolicyVersion!==2)return;
-  if(JSON.stringify(job.preparationPolicy)!==JSON.stringify(creationPreparationPolicy(job.budget.maxTokens)))
+  if(JSON.stringify(job.preparationPolicy)!==JSON.stringify(creationPreparationPolicy(job.budget.maxTokens,job.executionPolicy)))
     throw Object.assign(new Error('The saved preparation policy changed.'),{code:'provider_budget_policy_changed',statusCode:409});
 }
 

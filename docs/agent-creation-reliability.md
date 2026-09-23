@@ -38,7 +38,7 @@ confidence: high
 | WP6: независимые Trials | Реализован, проверен локально | Реальный stock sandbox network-denial; независимые negative controls; host verifier copy вне product worktree |
 | WP7: интерфейс и инструкции | Реализован, локальные проверки пройдены | 37/37 gateway/UI tests, TypeScript; браузерные recovery fixtures подготовлены для общей проверки |
 | WP8: incremental SSE | Реализован отдельным изменением | Bounded UTF-8/CRLF parser, публичный incremental текст, отложенные tools, backpressure, metadata heartbeat; targeted transport tests |
-| Общая проверка и реальный corpus | Synthetic проверка выполнена; real corpus ожидает запуска | 1334/1334 unit локально, production build, 12 desktop/mobile scenarios, stock CLI 0.153/0.154; реальные создания ещё не подтверждены |
+| Общая проверка и реальный corpus | Synthetic проверка выполнена; real corpus идёт с сохранением неуспехов | 1337/1337 unit на MacBook для ревизии be82911; production build, 12 desktop/mobile scenarios, stock CLI 0.153/0.154. Первые реальные случаи обнаружили bootstrap и output-limit дефекты; успешное создание ещё не подтверждено |
 
 ## WP0
 
@@ -72,7 +72,15 @@ confidence: high
 
 Повторно проверена документация NeuralDeep от 2026-09-23: `https://neuraldeep.ru/llms-full.txt`. Для Qwen 3.8/3.6 `reasoning_effort` не управляет thinking. Каталог теперь отделяет advertised reasoning от действующего effort; Qwen получает «не применяется». Это не переключение на noreason. Неверифицированные `chat_template_kwargs` в Responses не внедряются. Default model не подменяет выбранный model ID при невалидном значении.
 
-Versioned profile закрепляет provider-declared context (Qwen 262144), application output cap 8192, requested/effective effort и статус transport verification. CLI получает context declaration, а reservation проверяется отдельно. Byte reserve остаётся консервативной оценкой; tokenizer не заявлен. Все фазы новой job используют её model ID и timeout, а не последующие изменения Settings. UI показывает configured prompt budget как настройку общего чата, отдельно от preparation caps. Research v2 передаёт один context packet без coding prompt и дублированной tool history. 39/39 профильных тестов пройдены.
+Versioned profile закрепляет provider-declared context (Qwen 262144), application output cap, requested/effective effort и статус transport verification. Исходный profile v1 задавал 8192; изменение v2 после реальных проверок описано ниже. CLI получает context declaration, а reservation проверяется отдельно. Byte reserve остаётся консервативной оценкой; tokenizer не заявлен. Все фазы новой job используют её model ID и timeout, а не последующие изменения Settings. UI показывает configured prompt budget как настройку общего чата, отдельно от preparation caps. Research v2 передаёт один context packet без coding prompt и дублированной tool history. 39/39 исходных профильных тестов пройдены.
+
+## Предел ответа: реальные проверки и профиль v2
+
+После исправления локали две независимые исходные задачи (малый CLI и публичный API) завершили первый запрос без пригодного ответа. Расход — 9805 и 9803 токена, включая ровно 8192 output tokens в каждом случае. Входной запрос около 7 КиБ; ответ завершился за 239–250 секунд, до deadline. Подтверждён выход на предел ответа, а не переполнение контекста или timeout. Отдельный reasoning usage отсутствовал: нельзя утверждать, что все output tokens были reasoning, или считать нормализованный ноль доказательством отсутствия thinking.
+
+В profile v2 для Qwen с thinking предел ответа увеличен до 16384. Полный резерв включает этот предел до отправки; общий миллион на создание, квоты подготовки, число запросов и deadlines сохранены. Старые profiles/preparation policies остаются 8192. Это проверяемая гипотеза устранения обрыва, её успешность должна определяться оставшимися исходными случаями. Модель не подменяется, недоказанные thinking kwargs не добавляются, неудачные случаи не заменяются новыми.
+
+Adapter сохраняет только структурные terminal metadata: status, число типов output, наличие публичного текста, достигнутый output cap, nullable reasoning count и ограниченный incomplete reason. Содержимое ответа, reasoning, provider IDs и сообщения ошибок туда не попадают. Empty response на границе лимита получает `neuraldeep_output_limit`; неизвестная ошибка больше не маскируется советом проверить вложение. Final usage сохраняется и при format error; автоматического оплаченного повтора нет.
 
 ## WP6
 

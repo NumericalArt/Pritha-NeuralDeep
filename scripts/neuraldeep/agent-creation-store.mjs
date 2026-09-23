@@ -70,14 +70,14 @@ export class AgentCreationStore {
         approvals: {}, deliveryRunId: null, checkpoint: null, blocker: null, activeTurnId: null,
         budget: { maxTokens: tokenBudget, maxActiveMs: 90*60*1000, maxIterations: 6, repeatedFailureThreshold: 3,
           tokensUsed: 0, activeMs: 0, turns: {}, unknownAttempts: [], repeatedFailures: 0, lastFailureSignature: null } };
+      if (input.executionSettings) record.executionPolicy=creationExecutionPolicy(input.executionSettings);
       if (input.preparationPolicyVersion === 2) {
         record.preparationPolicyVersion = 2;
-        record.preparationPolicy = creationPreparationPolicy(tokenBudget);
+        record.preparationPolicy = creationPreparationPolicy(tokenBudget,record.executionPolicy);
         record.documentIdentity = creationDocumentIdentity(record);
       }
       if (input.briefProtocolVersion === 1) record.briefProtocolVersion = 1;
       if (input.researchProtocolVersion) record.researchProtocolVersion = input.researchProtocolVersion;
-      if (input.executionSettings) record.executionPolicy=creationExecutionPolicy(input.executionSettings);
       this.db.prepare('INSERT INTO agent_creation_jobs VALUES(?,?,?,?,?)').run(input.chatId,input.instanceId,input.agentId,1,JSON.stringify(record));
       return record;
     });

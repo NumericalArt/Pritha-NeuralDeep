@@ -16,13 +16,13 @@ import {listenNeuralDeepAdapter,closeNeuralDeepAdapter} from '../scripts/neurald
 const hash=text=>createHash('sha256').update(text).digest('hex');
 const dialogue=[{role:'user',text:'Русский дайджест из https://example.test/feed. SQLite; максимум 20 материалов; без расписания.'},
   {role:'assistant',text:'Нужен экспорт Markdown?'},{role:'user',text:'Да. Секреты только в привязке Pritha; никаких частных адресов.'}];
-function setup(t,{briefProtocolVersion=1,revisionInstruction}={}) {
+function setup(t,{briefProtocolVersion=1,revisionInstruction,executionSettings}={}) {
   const stateRoot=mkdtempSync(path.join(os.tmpdir(),'brief-protocol-'));t.after(()=>rmSync(stateRoot,{recursive:true,force:true}));
   const store=new NeuralDeepCoordinationStore({databasePath:path.join(stateRoot,'coord.sqlite')});t.after(()=>store.close());
   const jobs=new AgentCreationStore(store),chatId='chat_brief',draftRoot=creationDraftRoot(stateRoot,'fixture',chatId);
   mkdirSync(draftRoot,{recursive:true});
   let job=jobs.create({chatId,instanceId:'fixture',agentId:'brief-fixture',releaseSha:'a'.repeat(40),target:path.join(stateRoot,'child'),
-    draftRoot,tokenBudget:531720,preparationPolicyVersion:2,...(briefProtocolVersion?{briefProtocolVersion}:{})});
+    draftRoot,tokenBudget:531720,preparationPolicyVersion:2,executionSettings,...(briefProtocolVersion?{briefProtocolVersion}:{})});
   job=jobs.update(chatId,j=>({...j,status:'running',activeTurnId:'turn_brief',
     ...(revisionInstruction?{proposalRevisionPending:true,revisionInstruction,revisionRequestId:'revision-request'}:{})}));
   const packet=prepareCreationContextPacket(job,{restart:true,text:JSON.stringify(dialogue)},{root:process.cwd(),stateRoot,turnId:'turn_brief'});
@@ -35,6 +35,20 @@ function setup(t,{briefProtocolVersion=1,revisionInstruction}={}) {
 }
 const executorPayload={model:'fixture',stream:true,input:'Unneeded executor instructions and tool descriptions. '.repeat(2000),
   instructions:'General coding executor',tools:[{type:'function',name:'exec_command',parameters:{type:'object'}}],tool_choice:'auto'};
+
+test('new Qwen reasoning brief reserves its larger output within the original phase ceiling',t=>{
+  const f=setup(t,{executionSettings:{modelId:'qwen3.8-27b',effortId:'none'}});
+  const payload=f.gate.prepare({...executorPayload,model:'qwen3.8-27b'});
+  assert.equal(f.job.executionPolicy.modelProfile.version,2);
+  assert.equal(f.job.preparationPolicy.outputTokens,16384);
+  assert.equal(payload.max_output_tokens,16384);
+  assert.equal(f.job.preparationPolicy.briefTokens,53172);
+  assert.equal(payload.chat_template_kwargs,undefined,'unverified thinking control is not silently injected');
+  f.claim(payload);
+  const metadata=JSON.parse(f.store.db.prepare('SELECT metadata FROM provider_dispatches').get().metadata);
+  assert.equal(metadata.budget.reservation,Buffer.byteLength(JSON.stringify(payload))+8192+16384);
+  assert.ok(metadata.budget.reservation<=53172);
+});
 
 test('brief sends exact host dialogue without executor overhead and reserves the actual outgoing bytes',t=>{
   const f=setup(t),payload=f.gate.prepare(executorPayload);

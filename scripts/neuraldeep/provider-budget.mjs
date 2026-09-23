@@ -53,14 +53,16 @@ function assertLocalTools(tools) {
 
 // This is a conservative dispatch reservation, never a measured usage receipt.
 // Remote/media inputs cannot be bounded by the serialized text and fail closed.
-export function prepareBudgetedRequest(payload, available) {
+export function prepareBudgetedRequest(payload, available, pinnedProfile=null) {
   if (!count(available)) fail('provider_budget_invalid', 'The remaining request budget is unavailable.');
   assertTextInput(payload);
   assertLocalTools(payload.tools);
   if (payload.max_output_tokens !== undefined && (!count(payload.max_output_tokens) || payload.max_output_tokens < 1))
     fail('provider_budget_invalid', 'Invalid response token limit.');
   const inputReservation = Buffer.byteLength(JSON.stringify(payload)) + FRAMING_RESERVE;
-  const profile=neuralDeepExecutionProfile(String(payload.model||''));
+  const profile=pinnedProfile || neuralDeepExecutionProfile(String(payload.model||''));
+  if(pinnedProfile && (profile.modelId!==payload.model || ![8192,16384].includes(profile.applicationOutputCap)))
+    fail('provider_budget_policy_changed','Pinned model output policy does not match the request.');
   const output = Math.min(payload.max_output_tokens ?? OUTPUT_LIMIT, profile.applicationOutputCap, OUTPUT_LIMIT, available - inputReservation - 64);
   const context=profile.declaredContextTokens;
   if(context && inputReservation+output>context)fail('provider_budget_model_context','Conservative request reserve exceeds the declared model context.');
@@ -72,7 +74,7 @@ export function prepareBudgetedRequest(payload, available) {
 export function providerBudgetGate(store, { runId, workloadId, creation, tokenBudget } = {}) {
   if (tokenBudget !== undefined && (!count(tokenBudget) || tokenBudget < 1)) fail('provider_budget_invalid', 'Invalid host token budget.');
   if (!creation && tokenBudget === undefined) return null;
-  let current=null, sourceBytes=null, briefRequestHash=null;
+  let current=null, sourceBytes=null, briefRequestHash=null,pinnedProfile=null;
   const isBrief = () => current?.phase === 'brief' && current.job.briefProtocolVersion === 1;
   const isResearch = () => current?.phase === 'research' && [1,2].includes(current.job.researchProtocolVersion);
   const remaining = () => {
@@ -86,6 +88,7 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
         || (job.generation ?? 1) !== creation.generation || job.activeTurnId !== workloadId
         || job.status !== 'running' || job.budget.turns[workloadId]) fail('provider_budget_owner_changed', 'The owning creation step is no longer active.');
       if (!count(job.budget.maxTokens) || !count(job.budget.tokensUsed)) fail('provider_budget_invalid', 'Invalid creation accounting.');
+      pinnedProfile=job.executionPolicy?.modelProfile || null;
       if (job.budget.unknownAttempts.length) fail('provider_usage_unconfirmed', 'Previous creation accounting is unresolved.');
       if(job.preparationPolicyVersion===2) {
         assertPreparationPolicy(job);
@@ -190,7 +193,7 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
         checkRequest(payload);
       }
       try{
-        const bounded=prepareBudgetedRequest(payload,available);
+        const bounded=prepareBudgetedRequest(payload,available,pinnedProfile);
         if(current)checkRequest(bounded);
         if(isBrief() || isResearch())briefRequestHash=createHash('sha256').update(JSON.stringify(bounded)).digest('hex');
         return bounded;
@@ -213,6 +216,8 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
         fail('provider_budget_research_request_limit','A research selection response has already been requested.');
       checkRequest(event.payload,false);
       const output = event.payload?.max_output_tokens;
+      if(pinnedProfile && (pinnedProfile.modelId!==event.payload?.model || output>pinnedProfile.applicationOutputCap))
+        fail('provider_budget_policy_changed','Pinned model output policy does not match the dispatch.');
       const reserved = event.bytes + FRAMING_RESERVE + output;
       if (!count(output) || output < 1 || output > OUTPUT_LIMIT || !count(reserved) || reserved > available)
         fail('provider_token_budget', 'The remaining token budget cannot cover this request and a bounded response.');

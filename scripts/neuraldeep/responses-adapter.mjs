@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { RESPONSES_REQUEST_LIMIT } from "./attachment-policy.mjs";
 import { classifyNeuralDeepProviderError, parseProviderErrorPayload } from "./provider-error.mjs";
-import { normalizeResponsesSse, responsesUsage } from "./responses-normalizer.mjs";
+import { normalizeResponsesSse, responsesUsage, responsesSummary, responsesTerminalSummary } from "./responses-normalizer.mjs";
 import { ResponsesStreamNormalizer, writeResponseChunk } from "./responses-stream.mjs";
 export { normalizeResponsesSse, responsesUsage } from "./responses-normalizer.mjs";
 import { requestDeadlineWindow } from './creation-execution-policy.mjs';
@@ -128,6 +128,7 @@ export function createNeuralDeepAdapter(options = {}) {
     let upstreamAttempted = false;
     let requestHash = null;
     let providerUsage = null;
+    let responseSummary = null, outputLimit = null;
     const progress=(state,force=false)=>{
       if(!force && Date.now()-progressAt<1000)return;
       progressAt=Date.now();
@@ -140,7 +141,7 @@ export function createNeuralDeepAdapter(options = {}) {
       progress('receiving',first);
     };
     const notifyRequest=event=>{if(!notified){notified=true;options.onRequest?.({method:request.method,path:requestUrl.pathname,
-      durationMs:Date.now()-startedAt,timings:{...timings},cancellationReason,requestHash,upstreamAttempted,usage:providerUsage,...event});}};
+      durationMs:Date.now()-startedAt,timings:{...timings},cancellationReason,requestHash,upstreamAttempted,usage:providerUsage,responseSummary,...event});}};
     try {
       const window=requestDeadlineWindow(options.deadline);
       timeout=setTimeout(()=>{
@@ -161,6 +162,7 @@ export function createNeuralDeepAdapter(options = {}) {
         // cap must not turn an exact retry into a new payable request.
         requestHash = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
         if (options.prepareResponsesRequest) payload = await options.prepareResponsesRequest(payload);
+        outputLimit = payload.max_output_tokens;
         body = Buffer.from(JSON.stringify(payload));
         requestDeadlineWindow(options.deadline);
         if(controller.signal.aborted) throw controller.signal.reason;
@@ -186,7 +188,10 @@ export function createNeuralDeepAdapter(options = {}) {
         && (!options.validateResponsesResponse || options.requiresBufferedResponse?.()===false);
       if(stream) {
         const normalizer=new ResponsesStreamNormalizer({maxBytes:responseLimit,transform:options.transformResponsesStream,
-          onTerminal:event=>{providerUsage=responsesUsage(JSON.stringify(event.response),'application/json');},
+          onTerminal:event=>{
+            providerUsage=responsesUsage(JSON.stringify(event.response),'application/json');
+            responseSummary=responsesTerminalSummary(event.response,{eventType:event.type,outputLimit});
+          },
           write:async chunk=>{
             if(!response.headersSent){copyResponseHeaders(upstream,response);response.writeHead(upstream.status);}
             await writeResponseChunk(response,chunk,controller.signal);
@@ -195,7 +200,7 @@ export function createNeuralDeepAdapter(options = {}) {
         timings.responseCompletedMs=Date.now()-upstreamStartedAt;
         const events=normalizer.finish(),terminal=normalizer.terminal;
         const error=terminal.type==='response.completed'?null:classifyNeuralDeepProviderError({
-          transportCode:`neuraldeep_${terminal.type.replace('response.','response_')}`,status:upstream.status});
+          transportCode:responseSummary?.incompleteReason==='max_output_tokens'?'neuraldeep_output_limit':`neuraldeep_${terminal.type.replace('response.','response_')}`,status:upstream.status});
         // Close the accounting gap before any complete tool can cause Codex to
         // submit another request. Partial public text never settles the turn.
         notifyRequest({status:upstream.status,error});
@@ -204,6 +209,7 @@ export function createNeuralDeepAdapter(options = {}) {
       const upstreamBody = await readWebBody(upstream, responseLimit, received);
       timings.responseCompletedMs = Date.now() - upstreamStartedAt;
       if(isResponses)providerUsage=responsesUsage(upstreamBody.toString('utf8'),upstream.headers.get('content-type') || '');
+      if(isResponses)responseSummary=responsesSummary(upstreamBody.toString('utf8'),upstream.headers.get('content-type') || '',{outputLimit});
       if(isResponses && upstream.ok)await options.validateResponsesResponse?.(upstreamBody.toString('utf8'),upstream.headers.get('content-type') || '');
       const output = isResponses && isEventStream
         ? Buffer.from(normalizeResponsesSse(options.transformResponsesStream ? options.transformResponsesStream(upstreamBody.toString("utf8")) : upstreamBody.toString("utf8")))
@@ -222,7 +228,8 @@ export function createNeuralDeepAdapter(options = {}) {
         requestHash,
         upstreamAttempted,
         usage: providerUsage,
-        error: upstream.ok ? null : classifyNeuralDeepProviderError({
+        error: upstream.ok ? responseSummary && responseSummary.status!=='completed'
+          ? classifyNeuralDeepProviderError({status:upstream.status,transportCode:responseSummary.incompleteReason==='max_output_tokens'?'neuraldeep_output_limit':`neuraldeep_response_${responseSummary.status}`}) : null : classifyNeuralDeepProviderError({
           status: upstream.status,
           payload: parseProviderErrorPayload(upstreamBody),
           retryAfter: upstream.headers.get("retry-after"),
@@ -230,6 +237,9 @@ export function createNeuralDeepAdapter(options = {}) {
       });
       progress('finished',true);
     } catch (error) {
+      if(error?.code==='neuraldeep_empty_response' && responseSummary?.outputLimitReached) {
+        error=Object.assign(new Error('The response reached its output limit without a visible answer.'),{code:'neuraldeep_output_limit',statusCode:502});
+      }
       const statusCode = Number.isInteger(error?.statusCode) ? error.statusCode : 502;
       if (!response.destroyed && !response.headersSent) {
         sendJson(response, statusCode, { error: { message: error instanceof Error ? error.message : String(error) } });

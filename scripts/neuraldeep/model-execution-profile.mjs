@@ -1,12 +1,12 @@
 /** Provider declarations are not evidence of successful product/tool/transport trials. */
 export function neuralDeepExecutionProfile(modelId) {
  const qwen=/^qwen3\.(?:6|8)(?:-|$)/i.test(modelId),noreason=/-noreason$/.test(modelId),oss=modelId==='gpt-oss-120b';
- return {version:1,modelId,wireApi:'responses',source:'https://neuraldeep.ru/llms-full.txt',checkedAt:'2026-09-23',
+ return {version:2,modelId,wireApi:'responses',source:'https://neuraldeep.ru/llms-full.txt',checkedAt:'2026-09-23',
   effortControl:qwen?'ignored':oss?'documented':'unverified',supportedEfforts:oss?['low','medium','high']:['none'],
   thinking:noreason?'disabled-by-selected-alias':qwen?'provider-default-enabled':'provider-default',
   thinkingBudgetControl:'not-verified-for-responses',transportVerified:false,
   declaredContextTokens:qwen?262144:oss?131072:null,
-  applicationOutputCap:8192,reservationBasis:'utf8-text-plus-framing-v1',
+  applicationOutputCap:qwen && !noreason?16384:8192,reservationBasis:'utf8-text-plus-framing-v1',
   note:qwen?'Qwen ignores reasoning_effort. No effort parameter does not disable thinking; a noreason alias must be selected explicitly.':
    oss?'Effort is documented by the provider; Responses transport and phase quality still need acceptance evidence.':'Effort control has not been verified for this Responses route.'};
 }

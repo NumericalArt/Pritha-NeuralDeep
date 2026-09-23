@@ -1,4 +1,9 @@
 const budgetMessages = {
+  neuraldeep_empty_response: 'Провайдер завершил запрос без пригодного ответа. Это не ошибка вложения. Полученные сведения о расходе сохранены; повтор может снова потребовать токены. Нужна проверка формата ответа и настроек модели.',
+  neuraldeep_output_limit: 'Ответ достиг установленного предела выходных токенов без завершённого результата. Это не переполнение входного контекста. Расход сохранён; проверьте предел ответа и thinking выбранной модели. Автоматического повтора нет.',
+  neuraldeep_response_incomplete: 'Провайдер вернул незавершённый ответ. Частичная работа и полученные сведения о расходе сохранены. Проверьте причину завершения перед новым запросом.',
+  neuraldeep_response_failed: 'Провайдер сообщил об ошибке завершения ответа. Полученные сведения о расходе сохранены; результат не объявлен готовым.',
+  neuraldeep_response_cancelled: 'Ответ провайдера отменён. Сохранённая работа остаётся доступной; завершённый результат не подтверждён.',
   process_snapshot_invalid: 'Системные сведения о процессах не прошли проверку. Исполнитель модели не запускался, платный запрос не отправлен. Требуется проверка окружения Pritha.',
   process_snapshot_unavailable: 'Не удалось прочитать системные сведения о процессах. Исполнитель модели не запускался; повторите после проверки локального окружения.',
   process_snapshot_timeout: 'Система не ответила на проверку процессов вовремя. Исполнитель модели не запускался, платный запрос не отправлен.',
@@ -31,5 +36,8 @@ const budgetMessages = {
 };
 
 export function dispatchBlockerMessage(code) {
-  return budgetMessages[code] || 'Attachment validation stopped this request. Check the model and original format before continuing. Originals and previous activity have been kept.';
+  if(budgetMessages[code])return budgetMessages[code];
+  if(/^neuraldeep_(?:stream_|tool_arguments)/.test(code || ''))return 'Поток ответа провайдера не прошёл проверку формата или завершения. Частичный ответ не считается готовым, незавершённые команды не выполняются. История и сведения о расходе сохранены.';
+  if(/^(?:attachment_|model_image_|image_format_|invalid_image_encoding)/.test(code || ''))return 'Attachment validation stopped this request. Check the model and original format before continuing. Originals and previous activity have been kept.';
+  return 'Запрос остановлен. История и полученные сведения о расходе сохранены. Проверьте код причины и состояние задачи перед продолжением.';
 }

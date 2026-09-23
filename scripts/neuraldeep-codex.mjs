@@ -404,10 +404,12 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
         try { journal.recordProviderResponse(runId,requestEvent); }
         catch { providerAccountingError='provider_usage_receipt_failed'; }
         try {
+          if(requestEvent.responseSummary)journal.updateRuntimeRun(runId,{provider_response:requestEvent.responseSummary});
           appendProvenance(runtime, { event: "provider_request_finished", run_id: runId,
             request_hash: requestEvent.requestHash, status: requestEvent.status, duration_ms: requestEvent.durationMs,
             timings: requestEvent.timings, error_code: requestEvent.error?.code || null,
             cancellation_reason: requestEvent.cancellationReason || null,
+            response_summary: requestEvent.responseSummary || null,
           }, { includeCodexVersion: false });
         } catch {
           // Diagnostics must not turn a received provider response into a failed request.

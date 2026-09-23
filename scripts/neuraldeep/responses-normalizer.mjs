@@ -28,6 +28,40 @@ export function responsesUsage(body, contentType = '') {
   } catch { return null; }
 }
 
+/** Bounded structural diagnostics. Never persist provider text, IDs or reasoning. */
+export function responsesTerminalSummary(response, { eventType, outputLimit } = {}) {
+  if (!response || typeof response !== 'object' || Array.isArray(response)) return null;
+  const number = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
+  const statuses = ['completed', 'incomplete', 'failed', 'cancelled'];
+  const status = statuses.includes(response.status) ? response.status
+    : statuses.includes(eventType?.replace(/^response\./, '')) ? eventType.slice(9) : null;
+  if (!status) return null;
+  const counts = { message: 0, reasoning: 0, function_call: 0, custom_tool_call: 0, local_shell_call: 0, other: 0 };
+  let publicText = false;
+  for (const item of Array.isArray(response.output) ? response.output : []) {
+    const type = Object.hasOwn(counts, item?.type) ? item.type : 'other';
+    counts[type]++;
+    publicText ||= type === 'message' && outputTextParts(item).some(part => part.text.trim().length > 0);
+  }
+  const reason = response.incomplete_details?.reason;
+  const outputTokens = number(response.usage?.output_tokens);
+  const limit = number(outputLimit);
+  return { version: 1, status, outputItems: counts, terminalPublicText: publicText,
+    incompleteReason: reason == null ? null : ['max_output_tokens', 'content_filter'].includes(reason) ? reason : 'other',
+    outputTokens, outputLimit: limit,
+    outputLimitReached: limit > 0 && outputTokens !== null && outputTokens >= limit,
+    // Missing is not evidence of zero reasoning, even when aggregate usage is known.
+    reasoningTokens: number(response.usage?.output_tokens_details?.reasoning_tokens) };
+}
+
+export function responsesSummary(body, contentType = '', options = {}) {
+  try {
+    if (!contentType.includes('text/event-stream')) return responsesTerminalSummary(JSON.parse(String(body)), options);
+    const event = parseSseData(String(body)).findLast(item => ['response.completed', 'response.incomplete', 'response.failed', 'response.cancelled'].includes(item?.type));
+    return responsesTerminalSummary(event?.response, { ...options, eventType: event?.type });
+  } catch { return null; }
+}
+
 export function outputTextParts(message) {
   return Array.isArray(message?.content)
     ? message.content.filter((part) => part?.type === "output_text" && typeof part.text === "string")
@@ -185,4 +219,3 @@ export function normalizeResponsesSse(raw) {
     .map((event, sequenceNumber) => `data: ${JSON.stringify({ ...event, sequence_number: sequenceNumber })}\n\n`)
     .join("")}data: [DONE]\n\n`;
 }
-

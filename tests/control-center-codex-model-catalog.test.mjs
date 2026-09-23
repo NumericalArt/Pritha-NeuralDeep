@@ -237,7 +237,7 @@ test('Qwen reasoning advertisement does not become an effort control or verified
   const [qwen,oss,unknown]=loaded.module.normalizeNeuralDeepModelList({data:['qwen3.8-27b','gpt-oss-120b','future-model'].map(id=>({id,type:'chat',capabilities:{reasoning:true,tools:true},limit:{context:262144,output:235929}}))});
   assert.equal(qwen.capabilities.reasoning,true);assert.deepEqual(qwen.supportedReasoningEfforts.map(e=>e.id),['none']);
   assert.equal(qwen.executionProfile.effortControl,'ignored');assert.equal(qwen.executionProfile.transportVerified,false);
-  assert.equal(qwen.outputLimit,235929);assert.equal(qwen.executionProfile.applicationOutputCap,8192);
+  assert.equal(qwen.outputLimit,235929);assert.equal(qwen.executionProfile.applicationOutputCap,16384);
   assert.deepEqual(oss.supportedReasoningEfforts.map(e=>e.id),['low','medium','high']);
   assert.equal(unknown.executionProfile.effortControl,'unverified');
  }finally{loaded.cleanup();}
