@@ -83,6 +83,22 @@ async function fixture(page: Page, job = proposal(), loseFirstApproval = false) 
 }
 
 for (const width of [1440, 390]) {
+  test(`source preparation remains visibly active through reload at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({width,height:900});
+    const job=proposal();job.status='pending';job.phase='research';job.hostStepActive=true;
+    job.actions={verify_saved:false,adopt_verified:false,reconcile_usage:false,approve_contract:false,approve_outcome:false,continue:false,pause:true,cancel:true,revise_proposal:false};
+    const f=await fixture(page,job);
+    await expect(f.card).toContainText('Pritha выполняет подготовку текущего шага');
+    await expect(f.card.getByRole('button',{name:'Продолжить создание',exact:true})).toHaveCount(0);
+    await page.reload();
+    await expect(f.card).toContainText('Pritha выполняет подготовку текущего шага');
+    expect(f.requests).toEqual([]);
+    job.hostStepActive=false;job.status='paused';job.actions.pause=false;job.actions.continue=true;
+    await f.card.getByRole('button',{name:'Обновить состояние',exact:true}).click();
+    await expect(f.card.getByRole('button',{name:'Продолжить создание',exact:true})).toBeEnabled();
+    expect(f.requests).toEqual([]);
+  });
+
   test(`preparation telemetry updates and survives reload without dispatch at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 900 });
     const job=proposal();job.status='running';job.phase='research';

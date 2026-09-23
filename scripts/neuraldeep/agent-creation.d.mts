@@ -2,7 +2,7 @@ export type CreationAction = 'approve_contract'|'approve_outcome'|'continue'|'pa
 export type CreationRequest = { requestId:string; expectedRevision:number; action:CreationAction; actor?:'user'|'codex-operator'; authorizationBasis?:string; reason?:string };
 export type CreationDocument = {path:string;hash:string;text:string;issues:string[]};
 export type CreationJobView = {
-  jobId:string;chatId:string;agentId:string;revision:number;generation?:number;proposalRevisionPending?:boolean;phase:string;status:string;releaseSha:string;
+  jobId:string;chatId:string;agentId:string;revision:number;generation?:number;proposalRevisionPending?:boolean;hostStepActive?:boolean;phase:string;status:string;releaseSha:string;
   versions:{source:string|null;runtime:string|null;execution:string|null;sourceDirty:boolean};
   contract:CreationDocument|null;outcome:CreationDocument|null;
   approvals:Record<string,{hash:string;actor:string;approvedAt:string;authorizationBasis?:string}>;
@@ -21,7 +21,7 @@ export type CreationJobView = {
 export function creationReleaseIdentity(root:string):CreationJobView['versions'];
 export function creationDraftRoot(stateRoot:string,instanceId:string,chatId:string):string;
 export function reconcileCreationArtifacts(job:any,options:{root:string;stateRoot:string}):any;
-export function creationJobView(job:any,options:{root:string;stateRoot:string;executionSha?:string|null}):CreationJobView;
+export function creationJobView(job:any,options:{root:string;stateRoot:string;executionSha?:string|null;hostStepActive?:boolean}):CreationJobView;
 export type CreationApprovalCheckpoint = 'intent_recorded'|'canonical_written'|'outcome_receipt_written'|'receipt_completed';
 export function approveCreationDocument(job:any,kind:'contract'|'outcome',request:CreationRequest,options:{root:string;stateRoot:string;onApprovalCheckpoint?:(checkpoint:CreationApprovalCheckpoint)=>void}):any;
 export function creationPrompt(job:any):string;

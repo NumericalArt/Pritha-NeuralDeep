@@ -113,7 +113,7 @@ export function AgentCreationProgress({ chatId, refreshKey }: { chatId: string; 
   const versionsDiffer = Boolean(job.versions.sourceDirty || (job.versions.runtime && job.versions.execution && job.versions.runtime !== job.versions.execution) || (job.versions.source && job.versions.execution && job.versions.source !== job.versions.execution));
   return <section className="codex-operation-card" aria-label="Создание агента" style={{ marginBottom: 16, padding: 16 }}>
     <h2>Создание агента · {creationPhaseLabel(job.phase)}</h2>
-    <p role="status">{creationStatusLabel(job.status)}. Агент {job.agentId}.</p>
+    <p role="status">{job.hostStepActive && job.status==='pending' ? 'Pritha выполняет подготовку текущего шага' : creationStatusLabel(job.status)}. Агент {job.agentId}.</p>
     {job.executionPolicy ? <details aria-label="Эффективные настройки задачи"><summary>Модель и пределы: {job.executionPolicy.modelId}</summary>
       <p>Модель закреплена при создании задачи. Effort: настроено {job.executionPolicy.effortId || 'none'}; действует {job.executionPolicy.effectiveEffortId || 'не применяется'}. Отсутствие effort не выключает thinking; другая модель или noreason выбираются явно для новой задачи.</p>
       <p>Итерация: до {Math.round(job.executionPolicy.iterationTimeoutMs/60000)} мин. Запрос: до {job.executionPolicy.requestTimeoutMs/1000} с в оставшемся окне; запись расхода и завершение: {job.executionPolicy.settlementGraceMs/1000} с. Перед поздним запросом отправка остановится.</p>

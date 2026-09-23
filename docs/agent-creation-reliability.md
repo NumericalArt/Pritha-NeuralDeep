@@ -92,6 +92,14 @@ Locked host-template verifier запускается из созданной х�
 
 Оператор видит доступное локальное восстановление отдельно от новых запросов модели. Unknown usage не превращается в обещание успешной сверки. Сообщения объясняют изменённый source, устаревшие Trials, незавершённый процесс и недоказанное отсутствие inference. Typed delivery conflict сохраняет свой HTTP status/code.
 
+Реальная загрузка источников выявила промежуток, когда persisted job ещё
+`pending`, а host step уже выполняется. Прежний GET предлагал Continue, который
+POST отклонял как active step. Теперь read-only projection учитывает активные
+host operations: скрывает конфликтующие действия, показывает подготовку и
+оставляет pause/cancel. Это не меняет записанный status, revision, бюджет или
+закреплённую execution policy. Проверяются повторный GET без dispatch, отмена
+запроса источников через pause и возвращение допустимых действий после остановки.
+
 После перезапуска research v2 сначала публикует ответ из сохранённого history, затем вычисляет semantic progress. Crash до очистки activeTurnId и между очисткой и публикацией не вызывает преждевременного no-progress. GET не отправляет model request и не запускает repair; paused сохраняется. Инструкция оператора, архитектура, provider/Settings guide и основной workflow разделяют ND CLI от исторических App Server Goals. Recovery с потерей browser acknowledgement включён в desktop/mobile browser corpus.
 
 ## WP8

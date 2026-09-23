@@ -282,6 +282,10 @@ export class CodexChatGateway {
     });
   }
 
+  private creationStepActive(chatId:string) {
+    return this.activeTurns.has(chatId) || this.creationAdvances.has(chatId) || this.creationDeliveries.has(chatId);
+  }
+
   async creationStatus(chatId:string) {
     await this.ensureRecoveredAfterRestart();
     const binding=await this.requireBinding(chatId);
@@ -289,7 +293,8 @@ export class CodexChatGateway {
     await this.reconcileCreationExecution(chatId,binding);
     this.acceptVerifiedResearch(chatId,binding);
     const job=this.withCreationStore(store=>store.get(chatId));
-    const view=job ? creationJobView(job,{root:this.root,stateRoot:this.store.stateRoot,executionSha:binding.executionWorkspace?.baseCommit}) : null;
+    const view=job ? creationJobView(job,{root:this.root,stateRoot:this.store.stateRoot,executionSha:binding.executionWorkspace?.baseCommit,
+      hostStepActive:this.creationStepActive(chatId)}) : null;
     if(view)view.observedUsage=this.withCreationStore(store=>creationObservedUsage(store.store,job));
     if(view && job.preparationPolicyVersion===2)Object.assign(view,this.withCreationStore(store=>creationPreparationView(store.store,job)));
     return {job:view,
@@ -316,9 +321,9 @@ export class CodexChatGateway {
       return {...await this.creationStatus(chatId),replayed:true};
     }
     try {
-      if(!['pause','cancel'].includes(request.action) && (this.activeTurns.has(chatId) || this.creationAdvances.has(chatId) || this.creationDeliveries.has(chatId)))throw new AgentCreationError('creation_step_active','Дождитесь завершения текущего шага.');
+      if(!['pause','cancel'].includes(request.action) && this.creationStepActive(chatId))throw new AgentCreationError('creation_step_active','Дождитесь завершения текущего шага.');
       let job=this.withCreationStore(store=>store.get(chatId));
-      const view=creationJobView(job,{root:this.root,stateRoot:this.store.stateRoot});
+      const view=creationJobView(job,{root:this.root,stateRoot:this.store.stateRoot,hostStepActive:this.creationStepActive(chatId)});
       if(!view.actions[request.action])throw new AgentCreationError('creation_action_unavailable','Это действие сейчас недоступно.');
       if(['verify_saved','adopt_verified','reconcile_usage'].includes(request.action)) {
         await this.applyCreationRecovery(chatId,binding,request);

@@ -162,7 +162,8 @@ export function reconcileCreationArtifacts(job,options) {
 export function creationJobView(job,options) {
   const versions=creationReleaseIdentity(options.root);versions.execution=options.executionSha || job.releaseSha;
   const budgetBlocker=creationBudgetBlocker(job);
-  const inactive=!['running','cancelled','ready'].includes(job.status);
+  const hostStepActive=options.hostStepActive===true;
+  const inactive=!hostStepActive && !['running','cancelled','ready'].includes(job.status);
   const approvalBlocked=/^creation_(?:revision_incomplete|revision_receipt|revision_boundary|approved_document|approval_|canonical_|contract_approval_|outcome_host_receipt)/.test(job.blocker?.code || '');
   let agentCardUrl=null;
   if(job.status==='ready' && job.delivery?.adopted) {
@@ -173,14 +174,15 @@ export function creationJobView(job,options) {
       if(matches.length===1)agentCardUrl=`/agents/${encodeURIComponent(matches[0].id)}`;
     } catch { /* A missing catalog card cannot weaken verification or create an invented URL. */ }
   }
-  return {...job,versions,agentCardUrl,blocker:job.blocker || budgetBlocker,
+  return {...job,versions,agentCardUrl,hostStepActive,blocker:job.blocker || budgetBlocker,
     actions:{approve_contract:inactive && !job.proposalRevisionPending && job.status==='awaiting_contract_approval' && !job.contract?.issues.length,
       approve_outcome:inactive && job.status==='awaiting_outcome_approval' && !job.outcome?.issues.length,
       revise_proposal:inactive && !job.activeTurnId && !job.scaffoldReady && !job.scaffoldReceipt && !job.deliveryRunId && !job.delivery && !job.budget.unknownAttempts.length && Boolean(job.contract),
       verify_saved:inactive && !job.activeTurnId && job.delivery?.recovery?.verifySaved===true,
       adopt_verified:inactive && !job.activeTurnId && job.delivery?.recovery?.adoptVerified===true,
-      reconcile_usage:!['running','cancelled'].includes(job.status) && !job.activeTurnId && job.budget.unknownAttempts.length>0,
-      continue:inactive && !job.activeTurnId && !budgetBlocker && !approvalBlocked && !job.status.startsWith('awaiting_'),pause:job.status==='running',cancel:!['cancelled','ready'].includes(job.status)}};
+      reconcile_usage:!hostStepActive && !['running','cancelled'].includes(job.status) && !job.activeTurnId && job.budget.unknownAttempts.length>0,
+      continue:inactive && !job.activeTurnId && !budgetBlocker && !approvalBlocked && !job.status.startsWith('awaiting_'),
+      pause:job.status==='running' || (hostStepActive && job.status==='pending'),cancel:!['cancelled','ready'].includes(job.status)}};
 }
 export function approveCreationDocument(job,kind,request,options) {
   if(process.env.PRITHA_AGENT_AUTHORING_ROOT)throw new AgentCreationError('creation_approval_requires_host');

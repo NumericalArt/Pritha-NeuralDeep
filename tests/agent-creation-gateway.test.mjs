@@ -152,9 +152,30 @@ test('creation API requires separate document approvals and repeated navigation 
   assert.equal(f.dispatches.length, 0);
 });
 
+test('host source collection hides conflicting actions without changing durable status or dispatching', async t => {
+  const f=fixture(t), controller=new AbortController();
+  f.jobs.update(f.chatId,j=>({...j,status:'pending',phase:'research',autoContinue:true}));
+  const before=f.jobs.get(f.chatId);
+  f.gateway.creationAdvances.add(f.chatId);f.gateway.creationDeliveries.set(f.chatId,controller);
+  for(let attempt=0;attempt<2;attempt++) {
+    const view=(await f.get()).body.data.job;
+    assert.equal(view.hostStepActive,true);assert.equal(view.status,'pending');
+    for(const action of ['continue','revise_proposal','approve_contract','approve_outcome','verify_saved','adopt_verified','reconcile_usage'])assert.equal(view.actions[action],false,action);
+    assert.equal(view.actions.pause,true);assert.equal(view.actions.cancel,true);
+  }
+  assert.deepEqual(f.jobs.get(f.chatId),before);assert.equal(f.dispatches.length,0);
+  const paused=await f.post(f.request('pause'));
+  assert.equal(paused.status,200,JSON.stringify(paused.body));assert.equal(controller.signal.aborted,true);
+  assert.equal(paused.body.data.job.status,'paused');assert.equal(paused.body.data.job.actions.pause,false);
+  f.gateway.creationAdvances.clear();f.gateway.creationDeliveries.clear();
+  const idle=(await f.get()).body.data.job;assert.equal(idle.hostStepActive,false);assert.equal(idle.actions.continue,true);
+  assert.equal(f.dispatches.length,0);
+});
+
 test('creation API rejects active-step approvals, executor claims and requests without the UI origin', async t => {
   const f = fixture(t);
   f.gateway.activeTurns.set(f.chatId, { turnId: 'busy' });
+  assert.equal((await f.get()).body.data.job.actions.approve_contract,false);
   assert.equal((await f.post(f.request('approve_contract'))).body.error.code, 'creation_step_active');
   f.gateway.activeTurns.clear(); f.gateway.creationAdvances.add(f.chatId);
   assert.equal((await f.post(f.request('approve_contract'))).body.error.code, 'creation_step_active');
