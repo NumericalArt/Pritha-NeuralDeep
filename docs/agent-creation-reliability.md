@@ -38,7 +38,7 @@ confidence: high
 | WP6: независимые Trials | Реализован, проверен локально | Реальный stock sandbox network-denial; независимые negative controls; host verifier copy вне product worktree |
 | WP7: интерфейс и инструкции | Реализован, локальные проверки пройдены | 37/37 gateway/UI tests, TypeScript; браузерные recovery fixtures подготовлены для общей проверки |
 | WP8: incremental SSE | Реализован отдельным изменением | Bounded UTF-8/CRLF parser, публичный incremental текст, отложенные tools, backpressure, metadata heartbeat; targeted transport tests |
-| Общая проверка и реальный corpus | Не выполнены | Локальные тесты не означают создание реального продукта |
+| Общая проверка и реальный corpus | Synthetic проверка выполнена; real corpus ожидает запуска | 1334/1334 unit локально, production build, 12 desktop/mobile scenarios, stock CLI 0.153/0.154; реальные создания ещё не подтверждены |
 
 ## WP0
 
@@ -96,6 +96,10 @@ Tool-free brief/research v2 сохраняют буферизацию для п�
 
 ## Замечания общей проверки
 
-Production build, 12 desktop/mobile browser scenarios и installed CLI synthetic transport/legacy creation прошли на первом кандидате. Первый полный unit run: 1328/1329; единственный отказ — тестовый TS-loader не разрешал новый model-execution-profile import. Fixture исправлен, полный suite повторяется на окончательном кандидате.
+Production build, 12 desktop/mobile browser scenarios и installed CLI synthetic transport/legacy creation прошли. Первый полный unit run: 1328/1329; единственный отказ — тестовый TS-loader не разрешал новый model-execution-profile import. Fixture исправлен; повторный полный локальный suite: 1334/1334. Stock CLI 0.153 локально и 0.154 на MacBook прошли synthetic transport и создание по research v2: четыре preparation sessions, неправильный продукт отклонён, проверенный принят в target, человеческая приёмка не выставлена. Synthetic usage не является замером производительности настоящей модели.
+
+Полный suite на MacBook: 1332/1334. Full env-doctor прошёл после выбора установленного Python из Anaconda. Второй отказ выявил реальный дефект: установленный macOS `/usr/bin/env` не поддерживает `-C`. Sandbox backend теперь меняет command cwd через Node без shell, независимо от writable root. Проверяются запрет сети, каталог с пробелами, буквальные аргументы и exit code. Recovery использует тот же выбор Trial backend, что и delivery, вместо отсутствующего поля policy.
+
+Пользователь разрешил шесть реальных созданий: два CLI без LLM, два публичных API и два NeuralDeep-продукта, по 1 000 000 токенов, всего не более 6 000 000. Корпус запускается последовательно в отдельном экземпляре MacBook. План, prompts, release, модель Qwen 3.8-27B и число попыток фиксируются до первого запроса. Неизвестный расход останавливает последующие задания. Неуспешные попытки не заменяются новыми; финальная приёмка человеком остаётся отдельной. Результаты сохраняются в instance audit, а не дописываются задним числом в исходные задания.
 
 Stock-CLI receipt также выявил расхождение между показанным profile output cap 8192 и прежним общим build cap 16384. Допуск build теперь использует profile cap, отдельно от preparation caps; меньший явный лимит сохраняется. Добавлен stock acceptance нового research v2, включая host page collection, точные excerpts и единственный model selection без shell. Host source publication читает журнал внутри lock; retrieval date из будущего отклоняется с допуском на пять минут расхождения часов.

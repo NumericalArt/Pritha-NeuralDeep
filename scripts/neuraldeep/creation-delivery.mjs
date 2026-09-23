@@ -4,7 +4,7 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { acquireFileLock, atomicWriteFile } from "../lib/atomic-file.mjs";
 import { resolvePrithaStatePathFrom } from "../lib/paths.mjs";
-import { deliverOutcome, findDeliveryRun, resumeDelivery, withDeliveryHostControl } from "../agents-mother/delivery-loop.mjs";
+import { deliverOutcome, findDeliveryRun, resumeDelivery, withDeliveryHostControl, defaultDeliveryTrialBackend } from "../agents-mother/delivery-loop.mjs";
 import { deliveryUsageStatus, readDeliveryLedger } from "../agents-mother/delivery-ledger.mjs";
 import { readDeliveryWorktree } from "../agents-mother/delivery-worktree.mjs";
 import { performTaskDeliveryAction, readTaskDelivery } from "../agents-mother/task-delivery.mjs";
@@ -49,7 +49,7 @@ function recoveryState(job, options, receipt, runRoot, state) {
   try {
     const plan=JSON.parse(readBoundedRegularFile(path.join(runRoot,'trial-plan.json'),{allowedRoots:[runRoot]}).text);
     if (!verifyCompiledTrialPlan(plan,options) || !verifyOutcomeApproval(job.outcome.path,options).ok) return blocked('creation_candidate_evidence_stale');
-    const backend=plan.execution_policy?.trial_backend_policy==='local-trusted-only'?'local':'codex-cli';
+    const backend=options.trialBackend || defaultDeliveryTrialBackend(plan);
     const modelUse=trialModelUse(plan,backend);
     const candidate=workspaceRevision(metadata.worktree,{requireComplete:true});
     const source=workspaceRevision(receipt.sourceProject,{requireComplete:true});

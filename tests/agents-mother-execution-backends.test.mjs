@@ -89,4 +89,11 @@ test('installed stock sandbox denies a reachable loopback server before any offl
  writeFileSync(path.join(codexHome,'config.toml'),'[sandbox_workspace_write]\nnetwork_access = true\n');
  const backend=new CodexCliSandboxBackend({codexHome});
  const probe=await backend.probe({cwd:root});assert.equal(probe.available,true,JSON.stringify(probe));assert.equal(probe.capabilities.networkDenied,true);
+ const nested=path.join(root,'directory with spaces');mkdirSync(nested);
+ const literal='literal $(no-shell) ; `no-shell`';
+ const result=await backend.execute({argv:[process.execPath,'-e',"process.stdout.write(JSON.stringify({cwd:process.cwd(),arg:process.argv[1]}));process.exit(7)",literal],
+   cwd:nested,sandbox:{type:'workspaceWrite',required:true,writableRoots:[root],networkAccess:false}});
+ assert.equal(result.exitCode,7,result.stderr);
+ const {realpathSync}=await import('node:fs');
+ assert.deepEqual(JSON.parse(result.stdout),{cwd:realpathSync(nested),arg:literal});
 });

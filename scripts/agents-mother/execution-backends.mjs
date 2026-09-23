@@ -288,7 +288,11 @@ export class CodexCliSandboxBackend {
       "-c", "sandbox_workspace_write.network_access=false",
       "-C", workspace,
       "--",
-      "/usr/bin/env", "-C", request.cwd,
+      // macOS versions before Tahoe do not implement env -C. Keep the
+      // sandbox's writable root separate from the command cwd without a shell.
+      process.execPath, "-e",
+      "const {spawnSync}=require('node:child_process');const r=spawnSync(process.argv[2],process.argv.slice(3),{cwd:process.argv[1],stdio:'inherit',shell:false});if(r.error){process.stderr.write(r.error.message+'\\n');process.exit(127);}if(r.signal)process.kill(process.pid,r.signal);else process.exit(r.status??1);",
+      request.cwd,
       ...request.argv,
     ];
     const stdoutCapture = boundedCapture(request.outputBytesCap);
