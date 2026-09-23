@@ -274,9 +274,9 @@ try {
       return {status:'completed',thread_id:run.sessionId,turn_id:run.runId,tokens_used:run.usageRecord.usage.totalTokens};
     },{name:'stock-codex-cli-local-provider'})});
   assert.equal(builds,2,'stdout-only project must fail before actual source behavior passes');assert.equal(result.adopted,true,JSON.stringify(result.blocker));
-  assert.equal(new Set(sessions).size,5);
+  assert.equal(new Set(sessions).size,hostResearchV2?4:5);
   const usage=creationPreparationUsage(store,job);assert.ok(usage.requests<=12);assert.ok(usage.total<=300000);assert.ok(usage.phase.brief<=100000);assert.ok(usage.phase.research<=200000);
-  assert.ok([...history.audit({chatId})].some(row=>JSON.stringify(row).includes('OLD_LARGE_OUTPUT_')),'full tool history is retained');
+  assert.ok([...history.audit({chatId})].some(row=>JSON.stringify(row).includes(hostResearchV2?'Current synthetic primary page':'OLD_LARGE_OUTPUT_')),'original research history is retained');
   const report={status:'pass',sha,cli:execFileSync(process.env.PRITHA_CODEX_BIN||'codex',['--version'],{encoding:'utf8'}).trim(),paidCalls:0,
     nativeSessions:sessions.length,preparation:usage,requests,builds,zeroOutcomeRequests:true,reviewedRevision:true,checkpointRotation:!hostResearchV2,researchProtocolVersion:hostResearchV2?2:1,independentNegativeControl:true,adopted:true,acceptance:'not_accepted'};
   if(reportPath){mkdirSync(path.dirname(reportPath),{recursive:true});writeFileSync(reportPath,JSON.stringify(report,null,2),{mode:0o600});}
