@@ -381,6 +381,13 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
       finally{emitPreparationUsage();}
     },
     validateResponsesResponse: (body,contentType) => budgetGate && budgetAction(()=>budgetGate.validateResponse(body,contentType)),
+    requiresBufferedResponse:()=>budgetGate?.requiresBufferedResponse===true,
+    onProgress:event=>{
+      try {
+        journal.updateRuntimeRun(runId,{provider_progress:{...event,at:new Date().toISOString()}});
+        if(options.emitProviderEvents===true && options.passthrough!=='inherit')process.stdout.write(JSON.stringify({type:'pritha.provider_progress'})+'\n');
+      } catch { /* Progress telemetry is metadata only and cannot interrupt inference. */ }
+    },
     beforeResponsesDispatch: (event) => {
       if(providerAccountingError || journal.providerUsageSummary(runId).unknownRequests>0) throw Object.assign(new Error('Previous provider response accounting is unresolved.'), {code:'provider_usage_unconfirmed',statusCode:409});
       providerRequests = budgetGate ? budgetAction(()=>budgetGate.claim(event)) : journal.claimProviderRequest(runId, event.requestHash, { model:event.model, bytes:event.bytes });

@@ -169,6 +169,7 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
       fail('provider_budget_no_progress','Repeated reads produced no verified preparation progress.');
   };
   return {
+    get requiresBufferedResponse(){return isBrief() || isResearch() && current.job.researchProtocolVersion===2;},
     prepare: payload => {
       const available=remaining();
       if(current) {

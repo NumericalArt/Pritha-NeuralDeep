@@ -37,7 +37,7 @@ confidence: high
 | WP5: effective settings | Реализован, 39/39 tests | Profile distinguishes provider declarations, transport verification, ignored Qwen effort, pinned model/context/output/application caps |
 | WP6: независимые Trials | Реализован, проверен локально | Реальный stock sandbox network-denial; независимые negative controls; host verifier copy вне product worktree |
 | WP7: интерфейс и инструкции | Реализован, локальные проверки пройдены | 37/37 gateway/UI tests, TypeScript; браузерные recovery fixtures подготовлены для общей проверки |
-| WP8: incremental SSE | Запланирован отдельным изменением | — |
+| WP8: incremental SSE | Реализован отдельным изменением | Bounded UTF-8/CRLF parser, публичный incremental текст, отложенные tools, backpressure, metadata heartbeat; targeted transport tests |
 | Общая проверка и реальный corpus | Не выполнены | Локальные тесты не означают создание реального продукта |
 
 ## WP0
@@ -85,3 +85,11 @@ Locked host-template verifier запускается из созданной х�
 Оператор видит доступное локальное восстановление отдельно от новых запросов модели. Unknown usage не превращается в обещание успешной сверки. Сообщения объясняют изменённый source, устаревшие Trials, незавершённый процесс и недоказанное отсутствие inference. Typed delivery conflict сохраняет свой HTTP status/code.
 
 После перезапуска research v2 сначала публикует ответ из сохранённого history, затем вычисляет semantic progress. Crash до очистки activeTurnId и между очисткой и публикацией не вызывает преждевременного no-progress. GET не отправляет model request и не запускает repair; paused сохраняется. Инструкция оператора, архитектура, provider/Settings guide и основной workflow разделяют ND CLI от исторических App Server Goals. Recovery с потерей browser acknowledgement включён в desktop/mobile browser corpus.
+
+## WP8
+
+Обычные Responses проходят incremental normalizer с ограничением 32 МиБ всего и 8 МиБ на событие. Явные публичные message deltas поступают до terminal; reasoning сохраняет свой тип. Несовместимые output_text-on-reasoning события ждут канонического результата. Стабильные IDs, namespace Search и восстановление отсутствующего terminal message сохраняются. Текст, который противоречит terminal snapshot, не объявляется завершённым.
+
+Tool events удерживаются до EOF, complete terminal и проверки целых аргументов. Host accounting записывается до выдачи завершённого инструмента. При неполном ответе tool completion не выпускается. Parser обрабатывает разрезанный UTF-8/CRLF, размер кадра, нарушенный порядок, backpressure и disconnect. После начала потока ошибка приходит как response.failed; нет автоматического replay. Полученный final usage сохраняется даже при ошибке формата, отсутствующий остаётся unknown. Ошибки протокола отделены от outage, чтобы форматный отказ не вызывал автоматический повтор.
+
+Tool-free brief/research v2 сохраняют буферизацию для проверки всего ответа до доступа executor. Host heartbeat показывает только время/байты/состояние; reasoning и приватный ответ не входят в progress receipt. Stock-CLI совместимость проверяется отдельно перед выпуском.

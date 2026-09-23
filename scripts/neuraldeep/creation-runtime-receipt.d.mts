@@ -1,4 +1,5 @@
 export type CreationRuntimeReceipt={receiptId:string|null;tokens:number|null;processExited:boolean;coverage:'complete'|'unknown';runs:Array<{runId:string;tokens:number|null;processExited:boolean}>;blocker?:{code:string;message:string}};
 export function creationRuntimeReceipt(coordination:any,turnId:string,options?:{dispatched?:boolean}):CreationRuntimeReceipt;
-export type CreationObservedUsage={finalizedTokens:number;knownMinimumTokens:number;unfinalizedTokens:number;unknownRequests:number;pendingRequests:number;reservedTokens:number;unboundAttempts:number;coverage:'partial'|'complete';provenance:Array<{runId:string;measuredTokens:number;unresolvedRequests:number;processExited:boolean}>};
+export type CreationObservedUsage={providerProgress?:ProviderProgress;finalizedTokens:number;knownMinimumTokens:number;unfinalizedTokens:number;unknownRequests:number;pendingRequests:number;reservedTokens:number;unboundAttempts:number;coverage:'partial'|'complete';provenance:Array<{runId:string;measuredTokens:number;unresolvedRequests:number;processExited:boolean}>};
 export function creationObservedUsage(coordination:any,job:any):CreationObservedUsage;
+export type ProviderProgress={state:'waiting'|'receiving'|'finished'|'failed';at:string;elapsedMs:number|null;firstByteMs:number|null;lastByteMs:number|null;responseBytes:number|null};

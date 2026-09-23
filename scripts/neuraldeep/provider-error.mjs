@@ -38,6 +38,9 @@ export function classifyNeuralDeepProviderError({ status, payload, transportCode
   if (/^provider_(?:token_budget|budget_|usage_unconfirmed)/.test(transport || '')) {
     return { class: 'input', code: transport, status: statusCode, retryAfter: null };
   }
+  if (/^neuraldeep_(?:stream_|empty_response|tool_arguments|response_incomplete|response_failed|response_cancelled)/.test(transport || '')) {
+    return {class:'input',code:transport,status:statusCode,retryAfter:null};
+  }
 
   if (/^(?:attachment_|model_image_|image_format_|invalid_image_encoding|neuraldeep_model_identity_mismatch)/.test(transport || "")) {
     return { class: "input", code: transport, status: statusCode, retryAfter: null };

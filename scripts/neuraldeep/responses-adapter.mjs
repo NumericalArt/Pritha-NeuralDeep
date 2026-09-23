@@ -3,7 +3,9 @@ import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { RESPONSES_REQUEST_LIMIT } from "./attachment-policy.mjs";
 import { classifyNeuralDeepProviderError, parseProviderErrorPayload } from "./provider-error.mjs";
-import { neuralDeepUsageKnown, normalizeNeuralDeepUsage } from "./usage-ledger.mjs";
+import { normalizeResponsesSse, responsesUsage } from "./responses-normalizer.mjs";
+import { ResponsesStreamNormalizer, writeResponseChunk } from "./responses-stream.mjs";
+export { normalizeResponsesSse, responsesUsage } from "./responses-normalizer.mjs";
 import { requestDeadlineWindow } from './creation-execution-policy.mjs';
 import {normalizeModelExecutionRequest} from './model-execution-profile.mjs';
 
@@ -26,191 +28,6 @@ const HOP_BY_HOP_HEADERS = new Set([
   "transfer-encoding",
   "upgrade",
 ]);
-
-function parseSseData(raw) {
-  const events = [];
-  for (const block of raw.replaceAll("\r\n", "\n").split("\n\n")) {
-    const data = block
-      .split("\n")
-      .filter((line) => line.startsWith("data:"))
-      .map((line) => line.slice(5).trimStart())
-      .join("\n");
-    if (!data || data === "[DONE]") continue;
-    try {
-      events.push(JSON.parse(data));
-    } catch (error) {
-      throw new Error(`NeuralDeep returned malformed Responses SSE: ${error.message}`);
-    }
-  }
-  return events;
-}
-
-export function responsesUsage(body, contentType = '') {
-  try {
-    const value = contentType.includes('text/event-stream')
-      ? parseSseData(String(body)).findLast(event => ['response.completed','response.incomplete','response.failed'].includes(event?.type))?.response
-      : JSON.parse(String(body));
-    return neuralDeepUsageKnown(value?.usage) ? normalizeNeuralDeepUsage(value.usage) : null;
-  } catch { return null; }
-}
-
-function outputTextParts(message) {
-  return Array.isArray(message?.content)
-    ? message.content.filter((part) => part?.type === "output_text" && typeof part.text === "string")
-    : [];
-}
-
-function canonicalMessageEvents(message, outputIndex) {
-  const id = message.id;
-  const addedItem = {
-    ...message,
-    status: "in_progress",
-    content: [],
-  };
-  const completedItem = {
-    ...message,
-    status: "completed",
-  };
-  const events = [
-    {
-      type: "response.output_item.added",
-      output_index: outputIndex,
-      item: addedItem,
-    },
-  ];
-
-  for (const [contentIndex, sourcePart] of outputTextParts(message).entries()) {
-    const part = {
-      type: "output_text",
-      text: sourcePart.text,
-      annotations: Array.isArray(sourcePart.annotations) ? sourcePart.annotations : [],
-      logprobs: Array.isArray(sourcePart.logprobs) ? sourcePart.logprobs : [],
-    };
-    events.push({
-      type: "response.content_part.added",
-      item_id: id,
-      output_index: outputIndex,
-      content_index: contentIndex,
-      part: { ...part, text: "" },
-    });
-    if (part.text) {
-      events.push({
-        type: "response.output_text.delta",
-        item_id: id,
-        output_index: outputIndex,
-        content_index: contentIndex,
-        delta: part.text,
-        logprobs: [],
-      });
-    }
-    events.push(
-      {
-        type: "response.output_text.done",
-        item_id: id,
-        output_index: outputIndex,
-        content_index: contentIndex,
-        text: part.text,
-        logprobs: part.logprobs,
-      },
-      {
-        type: "response.content_part.done",
-        item_id: id,
-        output_index: outputIndex,
-        content_index: contentIndex,
-        part,
-      },
-    );
-  }
-
-  events.push({
-    type: "response.output_item.done",
-    output_index: outputIndex,
-    item: completedItem,
-  });
-  return events;
-}
-
-function isUpstreamMessageLifecycle(event) {
-  if (event?.type?.startsWith("response.output_text.")) return true;
-  if (event?.type?.startsWith("response.content_part.")) return true;
-  if (!["response.output_item.added", "response.output_item.done"].includes(event?.type)) return false;
-  return event?.item?.type === "message";
-}
-
-function completedOutput(response, sourceEvents) {
-  const messageId = (item,index) => `msg_nd_${createHash("sha256").update(JSON.stringify([response?.id,index,item.content])).digest("hex").slice(0,24)}`;
-  const output = Array.isArray(response?.output) ? response.output.map((item,index) => item?.type === "message" && typeof item.id !== "string"
-    ? { ...item, id: messageId(item,index) } : item) : [];
-  const hasText = item => item?.type === "message" && outputTextParts(item).some(part => part.text.trim().length > 0);
-  if (output.some(hasText)) return output;
-
-  // Some Responses bridges omit the message from the terminal snapshot. Recover
-  // only explicit public output; reasoning_text is never promoted to an answer.
-  const doneMessages = sourceEvents.filter(event => event.type === "response.output_item.done" && hasText(event.item)).map(event => event.item);
-  let messages = doneMessages;
-  if (!messages.length) {
-    const parts = new Map();
-    for (const event of sourceEvents) {
-      if (!["response.output_text.delta", "response.output_text.done"].includes(event.type)) continue;
-      const key = JSON.stringify([event.item_id, event.output_index, event.content_index]);
-      const part = parts.get(key) || { delta: "", done: null };
-      if (event.type === "response.output_text.delta" && typeof event.delta === "string") part.delta += event.delta;
-      if (event.type === "response.output_text.done" && typeof event.text === "string") part.done = event.text;
-      parts.set(key, part);
-    }
-    const content = [...parts.values()].map(part => ({ type: "output_text", text: part.done ?? part.delta, annotations: [] })).filter(part => part.text);
-    if (content.length) messages = [{ type: "message", role: "assistant", status: "completed", content }];
-  }
-  for (const [index, message] of messages.entries()) {
-    const id = typeof message.id === "string" ? message.id : messageId(message,index);
-    const existing = output.findIndex(item => item?.type === "message" && item.id === id);
-    if (existing >= 0) output[existing] = { ...message, id };
-    else output.push({ ...message, id });
-  }
-  const isTool = item => ["function_call","custom_tool_call","local_shell_call"].includes(item?.type);
-  if (!output.some(hasText) && !output.some(isTool) && !sourceEvents.some(event => event.type === "response.output_item.done" && isTool(event.item))) {
-    throw Object.assign(new Error("NeuralDeep completed the request without a visible answer."), { code: "neuraldeep_empty_response", statusCode: 502 });
-  }
-  return output;
-}
-
-/**
- * Normalize NeuralDeep's Responses stream for Codex.
- *
- * NeuralDeep currently places output_text events on a reasoning item and omits
- * the message lifecycle. The completed response still contains the canonical
- * message, so message events are rebuilt from that value. Reasoning and tool
- * events pass through unchanged.
- */
-export function normalizeResponsesSse(raw) {
-  const normalized = [];
-  let terminal = null;
-  const sourceEvents = parseSseData(raw);
-
-  for (const [index,event] of sourceEvents.entries()) {
-    if (event?.type === "response.completed") {
-      terminal = event;
-      const output = completedOutput(event.response, sourceEvents.slice(0,index));
-      output.forEach((item, outputIndex) => {
-        if (item?.type === "message" && typeof item.id === "string") {
-          normalized.push(...canonicalMessageEvents(item, outputIndex));
-        }
-      });
-      normalized.push({ ...event, response: { ...event.response, output } });
-      continue;
-    }
-    if (["response.failed", "response.incomplete", "response.cancelled"].includes(event?.type)) {
-      terminal = event;
-    }
-    if (!isUpstreamMessageLifecycle(event)) normalized.push(event);
-  }
-
-  if (!terminal) throw new Error("NeuralDeep Responses stream ended without a terminal event");
-
-  return `${normalized
-    .map((event, sequenceNumber) => `data: ${JSON.stringify({ ...event, sequence_number: sequenceNumber })}\n\n`)
-    .join("")}data: [DONE]\n\n`;
-}
 
 async function readNodeBody(request, limit) {
   const chunks = [];
@@ -299,7 +116,7 @@ export function createNeuralDeepAdapter(options = {}) {
 
     const controller = new AbortController();
     const timings = { upstreamStartedAt: null, firstByteMs: null, lastByteMs: null, responseCompletedMs: null, responseBytes: 0, timedOut: false };
-    let timeout, cancellationReason=null;
+    let timeout, heartbeat, cancellationReason=null, notified=false, progressAt=0;
     const abort = (code,message) => {
       cancellationReason ||= code;
       controller.abort(Object.assign(new Error(message),{code}));
@@ -311,6 +128,19 @@ export function createNeuralDeepAdapter(options = {}) {
     let upstreamAttempted = false;
     let requestHash = null;
     let providerUsage = null;
+    const progress=(state,force=false)=>{
+      if(!force && Date.now()-progressAt<1000)return;
+      progressAt=Date.now();
+      try {options.onProgress?.({requestHash,state,elapsedMs:Date.now()-startedAt,timings:{...timings}});}catch{/* Metadata diagnostics cannot break a request. */}
+    };
+    const received=bytes=>{
+      const elapsedMs=Date.now()-Date.parse(timings.upstreamStartedAt);
+      const first=timings.firstByteMs===null;
+      timings.firstByteMs ??= elapsedMs;timings.lastByteMs=elapsedMs;timings.responseBytes+=bytes;
+      progress('receiving',first);
+    };
+    const notifyRequest=event=>{if(!notified){notified=true;options.onRequest?.({method:request.method,path:requestUrl.pathname,
+      durationMs:Date.now()-startedAt,timings:{...timings},cancellationReason,requestHash,upstreamAttempted,usage:providerUsage,...event});}};
     try {
       const window=requestDeadlineWindow(options.deadline);
       timeout=setTimeout(()=>{
@@ -340,6 +170,8 @@ export function createNeuralDeepAdapter(options = {}) {
       upstreamAttempted = true;
       const upstreamStartedAt = Date.now();
       timings.upstreamStartedAt = new Date(upstreamStartedAt).toISOString();
+      progress('waiting',true);
+      heartbeat=setInterval(()=>progress(timings.firstByteMs===null?'waiting':'receiving'),options.heartbeatMs || 5000);heartbeat.unref?.();
       const upstream = await fetchImpl(target, {
         method: request.method,
         headers: upstreamHeaders(request.headers),
@@ -348,15 +180,29 @@ export function createNeuralDeepAdapter(options = {}) {
         signal: controller.signal,
         dispatcher,
       });
-      const upstreamBody = await readWebBody(upstream, responseLimit, bytes => {
-        const elapsedMs = Date.now() - upstreamStartedAt;
-        timings.firstByteMs ??= elapsedMs;
-        timings.lastByteMs = elapsedMs;
-        timings.responseBytes += bytes;
-      });
-      timings.responseCompletedMs = Date.now() - upstreamStartedAt;
       const isResponses = requestUrl.pathname === "/v1/responses";
       const isEventStream = upstream.headers.get("content-type")?.includes("text/event-stream");
+      const stream=isResponses && upstream.ok && isEventStream && typeof response.write==='function'
+        && (!options.validateResponsesResponse || options.requiresBufferedResponse?.()===false);
+      if(stream) {
+        const normalizer=new ResponsesStreamNormalizer({maxBytes:responseLimit,transform:options.transformResponsesStream,
+          onTerminal:event=>{providerUsage=responsesUsage(JSON.stringify(event.response),'application/json');},
+          write:async chunk=>{
+            if(!response.headersSent){copyResponseHeaders(upstream,response);response.writeHead(upstream.status);}
+            await writeResponseChunk(response,chunk,controller.signal);
+          }});
+        for await(const chunk of upstream.body || []) {if(chunk.length)received(chunk.length);await normalizer.push(chunk);}
+        timings.responseCompletedMs=Date.now()-upstreamStartedAt;
+        const events=normalizer.finish(),terminal=normalizer.terminal;
+        const error=terminal.type==='response.completed'?null:classifyNeuralDeepProviderError({
+          transportCode:`neuraldeep_${terminal.type.replace('response.','response_')}`,status:upstream.status});
+        // Close the accounting gap before any complete tool can cause Codex to
+        // submit another request. Partial public text never settles the turn.
+        notifyRequest({status:upstream.status,error});
+        await normalizer.flush(events);response.end();progress('finished',true);return;
+      }
+      const upstreamBody = await readWebBody(upstream, responseLimit, received);
+      timings.responseCompletedMs = Date.now() - upstreamStartedAt;
       if(isResponses)providerUsage=responsesUsage(upstreamBody.toString('utf8'),upstream.headers.get('content-type') || '');
       if(isResponses && upstream.ok)await options.validateResponsesResponse?.(upstreamBody.toString('utf8'),upstream.headers.get('content-type') || '');
       const output = isResponses && isEventStream
@@ -366,7 +212,7 @@ export function createNeuralDeepAdapter(options = {}) {
       response.setHeader("content-length", output.length);
       response.writeHead(upstream.status);
       response.end(output);
-      options.onRequest?.({
+      notifyRequest({
         method: request.method,
         path: requestUrl.pathname,
         status: upstream.status,
@@ -382,14 +228,18 @@ export function createNeuralDeepAdapter(options = {}) {
           retryAfter: upstream.headers.get("retry-after"),
         }),
       });
+      progress('finished',true);
     } catch (error) {
       const statusCode = Number.isInteger(error?.statusCode) ? error.statusCode : 502;
       if (!response.destroyed && !response.headersSent) {
         sendJson(response, statusCode, { error: { message: error instanceof Error ? error.message : String(error) } });
-      } else if (!response.destroyed) {
-        response.destroy();
+      } else if (!response.destroyed && !response.writableEnded) {
+        // HTTP status is already committed; explicitly terminate the SSE as a
+        // failure. Never present the partial text as response.completed.
+        const code=typeof error?.code==='string' && /^[a-z_]{1,96}$/.test(error.code)?error.code:'neuraldeep_stream_failed';
+        response.end(`data: ${JSON.stringify({type:'response.failed',response:{status:'failed',error:{code,message:'Response stream did not complete.'}}})}\n\ndata: [DONE]\n\n`);
       }
-      options.onRequest?.({
+      notifyRequest({
         method: request.method,
         path: requestUrl.pathname,
         status: statusCode,
@@ -404,8 +254,10 @@ export function createNeuralDeepAdapter(options = {}) {
           transportCode: cancellationReason || (error?.name === "AbortError" ? "provider_timeout" : error?.code),
         }),
       });
+      progress('failed',true);
     } finally {
       clearTimeout(timeout);
+      clearInterval(heartbeat);
       response.off("close", abortIfClientLeaves);
     }
   });

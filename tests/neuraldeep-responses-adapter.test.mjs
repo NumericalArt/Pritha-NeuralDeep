@@ -76,7 +76,7 @@ test("a stalled body preserves first-byte evidence but never reports response co
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
   const read = Promise.withResolvers(), observed = [];
   const { response, finished } = invokeAdapter({
-    fetchImpl: async (_url, { signal }) => ({ body: (async function* () {
+    fetchImpl: async (_url, { signal }) => ({status:200,ok:true,headers:new Headers(), body: (async function* () {
       t.mock.timers.tick(100);
       yield Buffer.from("partial");
       const aborted = new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
@@ -228,7 +228,7 @@ test("an empty successful upstream stream reaches the caller as a classified err
     assert.equal(response.status,502);await response.text();
     assert.equal(requests,1);
     assert.equal(observed[0].error.code,"neuraldeep_empty_response");
-    assert.equal(observed[0].error.class,"outage");
+    assert.equal(observed[0].error.class,"input");
   } finally {await closeNeuralDeepAdapter(server);}
 });
 
@@ -405,7 +405,7 @@ test('deadline abort preserves partial byte evidence and never invents usage',as
  t.mock.timers.enable({apis:['setTimeout','Date'],now:1000});
  const read=Promise.withResolvers(),observed=[];
  const {finished}=invokeAdapter({deadline:{version:1,hardDeadlineAt:6000,softDeadlineAt:2000,requestTimeoutMs:3000,settlementGraceMs:1000},
-  fetchImpl:async(_url,{signal})=>({body:(async function*(){yield Buffer.from('partial');read.resolve();
+  fetchImpl:async(_url,{signal})=>({status:200,ok:true,headers:new Headers(),body:(async function*(){yield Buffer.from('partial');read.resolve();
    await new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}));})()}),onRequest:event=>observed.push(event)});
  await read.promise;t.mock.timers.tick(3000);await finished;
  assert.equal(observed[0].cancellationReason,'iteration_deadline');assert.equal(observed[0].error.class,'control');

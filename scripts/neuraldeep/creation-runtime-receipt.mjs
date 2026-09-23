@@ -39,11 +39,17 @@ export function creationObservedUsage(coordination,job) {
     for (const row of coordination.db.prepare('SELECT run_id FROM runtime_lineage WHERE creation_job_id=? AND delivery_run_id=?').all(job.jobId,job.deliveryRunId)) runs.add(row.run_id);
   }
   let unfinalizedTokens=0,unknownRequests=0,pendingRequests=0,reservedTokens=0;
+  let providerProgress=null;
   const provenance = [];
   for (const id of runs) {
-    if (accounted.has(id)) continue;
     const receipt = coordination.runtimeRun(id);
     if (!receipt) { unboundAttempts++; continue; }
+    const p=receipt.provider_progress;
+    if(p && ['waiting','receiving','finished','failed'].includes(p.state) && Number.isFinite(Date.parse(p.at)) && (!providerProgress || Date.parse(p.at)>Date.parse(providerProgress.at))) {
+      const number=value=>Number.isSafeInteger(value) && value>=0?value:null;
+      providerProgress={state:p.state,at:p.at,elapsedMs:number(p.elapsedMs),firstByteMs:number(p.timings?.firstByteMs),lastByteMs:number(p.timings?.lastByteMs),responseBytes:number(p.timings?.responseBytes)};
+    }
+    if (accounted.has(id)) continue;
     const summary=coordination.providerUsageSummary(id);
     const exited=receipt.process_exited===true && receipt.process_tree_exited===true && receipt.adapter_closed===true;
     unfinalizedTokens+=summary.usage.totalTokens;
@@ -58,5 +64,5 @@ export function creationObservedUsage(coordination,job) {
   const knownMinimumTokens=job.budget.tokensUsed+unfinalizedTokens;
   if (![knownMinimumTokens,unfinalizedTokens,unknownRequests,pendingRequests,reservedTokens].every(Number.isSafeInteger))throw new Error('creation_usage_overflow');
   return {finalizedTokens:job.budget.tokensUsed,knownMinimumTokens,unfinalizedTokens,unknownRequests,pendingRequests,reservedTokens,unboundAttempts,
-    coverage:unknownRequests || pendingRequests || unboundAttempts || job.budget.unknownAttempts.length ? 'partial' : 'complete',provenance};
+    coverage:unknownRequests || pendingRequests || unboundAttempts || job.budget.unknownAttempts.length ? 'partial' : 'complete',provenance,...(providerProgress?{providerProgress}:{})};
 }

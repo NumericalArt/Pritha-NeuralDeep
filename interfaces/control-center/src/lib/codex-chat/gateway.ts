@@ -1530,7 +1530,7 @@ export class CodexChatGateway {
   private async handleCliEvent(chatId: string, active: ActiveAttempt, event: Record<string, unknown>) {
     if (this.activeTurns.get(chatId) !== active) return;
     const type = String(event.type || "");
-    if (type === "pritha.preparation_usage") {await this.emitThreadUpdated(chatId);return;}
+    if (type === "pritha.preparation_usage" || type === "pritha.provider_progress") {await this.emitThreadUpdated(chatId);return;}
     if (type === "pritha.provider_error") return;
     if (type === "thread.started") {
       const sessionId = String(event.thread_id || "");

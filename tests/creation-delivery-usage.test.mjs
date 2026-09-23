@@ -65,3 +65,12 @@ test('legacy delivery uses the exact saved executor receipt, never workload nami
   state.budget.unaccounted_attempts=[{executor_result:'../elsewhere.json'}];
   assert.equal(deliveryAccountingLineage(state,root).unsettledRunIds.length,0);
 });
+
+test('provider progress projects only timing metadata from a bound run and never settles unknown usage',t=>{
+  const {store,job,id}=fixture(t);
+  store.updateRuntimeRun(id,{provider_progress:{at:new Date().toISOString(),state:'receiving',elapsedMs:9000,
+    raw:'private content must stay out of the view',timings:{firstByteMs:3000,lastByteMs:8000,responseBytes:1024,privateText:'never rendered'}}});
+  const view=creationObservedUsage(store,job);assert.equal(view.providerProgress.responseBytes,1024);assert.equal(view.providerProgress.firstByteMs,3000);
+  assert.equal(view.knownMinimumTokens,208544);assert.equal(view.unknownRequests,1);assert.equal(view.coverage,'partial');
+  assert.doesNotMatch(JSON.stringify(view),/private content|privateText|never rendered/);
+});
