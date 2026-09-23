@@ -10,7 +10,7 @@ import {creationDraftRoot} from '../scripts/neuraldeep/agent-creation.mjs';
 import {prepareCreationContextPacket,creationSemanticProgress} from '../scripts/neuraldeep/creation-context-packet.mjs';
 import {creationDocumentIdentity} from '../scripts/neuraldeep/creation-generation.mjs';
 import {creationPreparationUsage} from '../scripts/neuraldeep/creation-preparation-policy.mjs';
-import {settleCreationPreparation} from '../scripts/neuraldeep/creation-preparation-control.mjs';
+import {settleCreationPreparation,acceptVerifiedResearchProgress} from '../scripts/neuraldeep/creation-preparation-control.mjs';
 import {providerBudgetGate} from '../scripts/neuraldeep/provider-budget.mjs';
 import {listenNeuralDeepAdapter,closeNeuralDeepAdapter} from '../scripts/neuraldeep/responses-adapter.mjs';
 const hash=text=>createHash('sha256').update(text).digest('hex');
@@ -165,4 +165,23 @@ test('one settled provider outage reopens the phase from checkpoint and the seco
   assert.equal(second.autoContinue,false);
   assert.match(second.blocker.message,/checkpoint/);
   assert.equal(second.budget.maxTokens,1_000_000);
+});
+
+test('verified research evidence clears a no-progress stop without another model step',()=>{
+  const checked={topic:'node-http-runtime',url:'https://nodejs.org/api/http.html',claim:'Node serves HTTP',evidence:'listen is documented',version:'v26',compatibility:'local process'};
+  const base={preparationPolicyVersion:2,status:'paused',activeTurnId:null,phase:'research',autoContinue:false,
+    preparationStop:{code:'provider_budget_no_progress',message:'stopped',progressHash:'old',generation:1},
+    blocker:{code:'creation_recovered',message:'restored'},budget:{maxTokens:1_000_000}};
+  const same=acceptVerifiedResearchProgress(base,{readResearch:()=>{throw new Error('missing');}});
+  assert.equal(same,base);
+  const open=acceptVerifiedResearchProgress(base,{readResearch:()=>({gate:{ok:true},facts:[checked],checked:['node-http-runtime'],remaining:[]})});
+  assert.equal(open.preparationStop,null);
+  assert.equal(open.researchAttemptCompleted,true);
+  assert.equal(open.blocker,null);
+  assert.equal(open.autoContinue,false);
+  assert.equal(open.status,'paused');
+  assert.equal(open.budget.maxTokens,1_000_000);
+  const unchanged=acceptVerifiedResearchProgress({...base,preparationStop:{...base.preparationStop,progressHash:creationSemanticProgress(base,{facts:[checked]})}},
+    {readResearch:()=>({gate:{ok:true},facts:[checked],checked:['node-http-runtime'],remaining:[]})});
+  assert.equal(unchanged.preparationStop.code,'provider_budget_no_progress');
 });

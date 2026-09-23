@@ -60,6 +60,26 @@ export function settleCreationPreparation(job,receipt,options) {
   return next;
 }
 
+/** A no-progress stop asks for a fix. Verified research evidence is that fix and does not repeat the failed model step. */
+export function acceptVerifiedResearchProgress(job, options = {}) {
+  if (job?.preparationPolicyVersion !== 2 || job.preparationStop?.code !== 'provider_budget_no_progress') return job;
+  if (!['paused', 'blocked'].includes(job.status) || job.activeTurnId) return job;
+  let research;
+  try { research = (options.readResearch || readCreationResearch)(job, options); }
+  catch { return job; }
+  if (research?.gate?.ok !== true) return job;
+  const progressHash = creationSemanticProgress(job, research);
+  if (!progressHash || progressHash === job.preparationStop.progressHash) return job;
+  const next = structuredClone(job);
+  next.preparationStop = null;
+  next.researchAttemptCompleted = true;
+  next.researchProgress = { checked: research.checked || [], remaining: research.remaining || [] };
+  if (['provider_budget_no_progress', 'creation_recovered'].includes(next.blocker?.code)) next.blocker = null;
+  if (next.status === 'blocked') next.status = 'paused';
+  next.autoContinue = false;
+  return next;
+}
+
 export function creationPreparationView(store,job) {
   if(job.preparationPolicyVersion!==2)return {};
   const preparation=creationPreparationUsage(store,job);

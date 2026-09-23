@@ -30,7 +30,7 @@ import { reviseCreationProposal, creationRevisionPending } from "../../../../../
 import { completeCreationBrief, prepareCreationOutcome } from "../../../../../scripts/neuraldeep/creation-preparation.mjs";
 import { prepareCreationResearch } from "../../../../../scripts/neuraldeep/creation-research-context.mjs";
 import { prepareCreationContextPacket, readCreationContextPacket } from "../../../../../scripts/neuraldeep/creation-context-packet.mjs";
-import { settleCreationPreparation, creationPreparationView } from "../../../../../scripts/neuraldeep/creation-preparation-control.mjs";
+import { acceptVerifiedResearchProgress, settleCreationPreparation, creationPreparationView } from "../../../../../scripts/neuraldeep/creation-preparation-control.mjs";
 import { preflightAgentCreation } from "../../../../../scripts/neuraldeep/creation-preflight.mjs";
 export { AgentCreationError };
 import { runCreationDelivery as deliverCreation, readCreationDelivery } from "../../../../../scripts/neuraldeep/creation-delivery.mjs";
@@ -284,6 +284,7 @@ export class CodexChatGateway {
     const binding=await this.requireBinding(chatId);
     if(binding.creationWorkflowVersion!==1)return {job:null,legacy:binding.subject?.taskType==='agent_creation'};
     await this.reconcileCreationExecution(chatId,binding);
+    this.acceptVerifiedResearch(chatId,binding);
     const job=this.withCreationStore(store=>store.get(chatId));
     const view=job ? creationJobView(job,{root:this.root,stateRoot:this.store.stateRoot,executionSha:binding.executionWorkspace?.baseCommit}) : null;
     if(view)view.observedUsage=this.withCreationStore(store=>creationObservedUsage(store.store,job));
@@ -292,10 +293,18 @@ export class CodexChatGateway {
       legacy:binding.subject?.taskType==='agent_creation' && binding.creationWorkflowVersion!==1};
   }
 
+  private acceptVerifiedResearch(chatId:string,binding:ChatBinding) {
+    const job=this.withCreationStore(store=>store.get(chatId));
+    if(!job) return;
+    const root=binding.executionWorkspace?.cwd || this.root;
+    this.withCreationStore(store=>store.update(chatId,current=>acceptVerifiedResearchProgress(current,{root,stateRoot:this.store.stateRoot})));
+  }
+
   async creationAction(chatId:string,request:CreationRequest) {
     await this.ensureRecoveredAfterRestart();
     const binding=await this.requireBinding(chatId);
     await this.reconcileCreationExecution(chatId,binding);
+    this.acceptVerifiedResearch(chatId,binding);
     if(binding.archived || binding.creationWorkflowVersion!==1)throw new AgentCreationError('creation_task_unavailable');
     const receipt=this.withCreationStore(store=>store.beginAction(chatId,request));
     if(receipt.replayed) {
