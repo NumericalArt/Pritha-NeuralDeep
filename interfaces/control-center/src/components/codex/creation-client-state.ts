@@ -1,6 +1,6 @@
 import type { CreationAction, CreationJobView, CreationRequest } from "@/lib/codex-chat/creation-types";
 
-const actions = new Set<CreationAction>(["approve_contract", "approve_outcome", "continue", "pause", "cancel", "revise_proposal"]);
+const actions = new Set<CreationAction>(["approve_contract", "approve_outcome", "continue", "pause", "cancel", "revise_proposal", "verify_saved", "adopt_verified", "reconcile_usage"]);
 export const creationPendingKey = (chatId: string) => `pritha.creation.pending.v1:${chatId}`;
 export const creationOperatorKey = (chatId: string) => `pritha.creation.operator.v1:${chatId}`;
 export function readCreationOperator(text: string | null): { actor: CreationRequest["actor"]; basis: string } {

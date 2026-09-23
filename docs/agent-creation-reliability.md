@@ -31,7 +31,7 @@ confidence: high
 |---|---|---|
 | WP0: исходная точка | Выполнен | Согласованные SQLite backups; сохранены jobs, delivery evidence и Git bundles кандидата; operations report перенесён в instance memory с прежним SHA-256; source чистый. 28/28 gateway tests |
 | WP1: расход | Реализован, проверен локально | Явная host-owned lineage, legacy receipt binding, нижняя граница 208544 и unknown=1, без двойного начисления после settlement. 26/26 targeted tests |
-| WP2: безопасное восстановление | В работе | — |
+| WP2: безопасное восстановление | Реализован, проверен локально | 8/8 recovery tests; freshness, task/spec identity, process-tree exit, adoption без новых команд; неизвестный расход сохраняется |
 | WP3: deadlines | Запланирован | — |
 | WP4: применимое исследование | Запланирован | — |
 | WP5: effective settings | Запланирован | — |

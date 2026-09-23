@@ -4,13 +4,16 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { acquireFileLock, atomicWriteFile } from "../lib/atomic-file.mjs";
 import { resolvePrithaStatePathFrom } from "../lib/paths.mjs";
-import { deliverOutcome, findDeliveryRun, resumeDelivery } from "../agents-mother/delivery-loop.mjs";
+import { deliverOutcome, findDeliveryRun, resumeDelivery, withDeliveryHostControl } from "../agents-mother/delivery-loop.mjs";
 import { deliveryUsageStatus, readDeliveryLedger } from "../agents-mother/delivery-ledger.mjs";
 import { readDeliveryWorktree } from "../agents-mother/delivery-worktree.mjs";
 import { performTaskDeliveryAction, readTaskDelivery } from "../agents-mother/task-delivery.mjs";
 import { verifyTrialResultFreshness } from "../agents-mother/trial-runner.mjs";
 import { workspaceRevision } from "../agents-mother/workspace-revision.mjs";
 import { deliveryAccountingLineage } from "./creation-usage-lineage.mjs";
+import { deliveryProcessesExited, trialModelUse } from "../agents-mother/trial-model-use.mjs";
+import { verifyOutcomeApproval, verifyCompiledTrialPlan } from "../agents-mother/outcome-spec.mjs";
+import { readBoundedRegularFile } from "../lib/safe-file-read.mjs";
 
 const digest = value => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const taskHash = task => digest([task?.chatId, task?.providerId, task?.stateIdentityHash, task?.nativeThreadId]);
@@ -37,12 +40,34 @@ function receiptFor(job, options) {
 }
 function writeReceipt(job, options, receipt) { atomicWriteFile(paths(job, options).receiptPath, `${JSON.stringify(receipt, null, 2)}\n`); }
 
+function recoveryState(job, options, receipt, runRoot, state) {
+  const blocked = reason => ({verifySaved:false,adoptVerified:false,evidenceFresh:false,modelUse:'unknown',reason});
+  if (!deliveryProcessesExited(state.budget)) return blocked('creation_execution_unconfirmed');
+  if (job.budget.unknownAttempts.some(id=>id!==state.run_id)) return blocked('creation_preparation_usage_unknown');
+  const metadata=readDeliveryWorktree(runRoot);
+  if (!metadata || metadata.source_project!==receipt.sourceProject || metadata.base_revision!==receipt.scaffoldRevision) return blocked('creation_scaffold_baseline_changed');
+  try {
+    const plan=JSON.parse(readBoundedRegularFile(path.join(runRoot,'trial-plan.json'),{allowedRoots:[runRoot]}).text);
+    if (!verifyCompiledTrialPlan(plan,options) || !verifyOutcomeApproval(job.outcome.path,options).ok) return blocked('creation_candidate_evidence_stale');
+    const backend=plan.execution_policy?.trial_backend_policy==='local-trusted-only'?'local':'codex-cli';
+    const modelUse=trialModelUse(plan,backend);
+    const candidate=workspaceRevision(metadata.worktree,{requireComplete:true});
+    const source=workspaceRevision(receipt.sourceProject,{requireComplete:true});
+    if (source.dirty || ![receipt.scaffoldRevision,candidate.head].includes(source.head)) return blocked('creation_source_changed');
+    const evidenceFresh=Boolean(completed.has(state.status) && metadata.verified_checkpoint===candidate.head && !candidate.dirty && state.last_trial_result?.path
+      && verifyTrialResultFreshness(path.join(runRoot,state.last_trial_result.path),metadata.worktree,{...options,outcomeSpecPath:job.outcome.path,workspaceRevisionOptions:{requireComplete:true}}).ok);
+    return {verifySaved:evidenceFresh || modelUse.kind==='none',adoptVerified:evidenceFresh && !receipt.adoptedHead,
+      evidenceFresh,modelUse:modelUse.kind,reason:evidenceFresh?'verified-candidate-preserved':modelUse.kind==='none'?'sandbox-verification-available':'trial_model_usage_unknown'};
+  } catch { return blocked('creation_candidate_evidence_stale'); }
+}
+
 export function readCreationDelivery(job, options) {
   const receipt = receiptFor(job, options), runRoot = findDeliveryRun(creationDeliveryRunId(job), options);
   if (!receipt || !runRoot) return null;
   const state = readDeliveryLedger(runRoot), coverage = deliveryUsageStatus(state.budget);
   return { runId: state.run_id, runRoot, status: state.status, blocker: state.blockers?.[0] || null,
     runtimeAccounting: deliveryAccountingLineage(state, runRoot),
+    recovery: recoveryState(job, options, receipt, runRoot, state),
     adopted: Boolean(receipt.adoptedHead), head: receipt.adoptedHead || null, acceptance: "not_accepted",
     usage: { preparationTokens: receipt.preparationTokens, deliveryTokens: state.budget.tokens_used,
       knownTotalTokens: receipt.preparationTokens + state.budget.tokens_used, coverage,
@@ -63,9 +88,12 @@ async function bindToTask(runId, task, options) {
 // scaffold commit. It never merges into an existing user project or resolves a
 // conflict by resetting, stashing, overwriting, or choosing one side.
 async function adoptVerified(job, options, receipt, runRoot, mayContinue) {
+  return withDeliveryHostControl(receipt.runId,options,async()=>{
   const state = readDeliveryLedger(runRoot), metadata = readDeliveryWorktree(runRoot);
   if (!completed.has(state.status) || !metadata?.verified_checkpoint) return receipt;
-  if (deliveryUsageStatus(state.budget) !== "complete") fail("creation_delivery_usage_unknown");
+  if (!deliveryProcessesExited(state.budget)) fail('creation_execution_unconfirmed');
+  const safety=recoveryState(job,options,receipt,runRoot,state);
+  if (!safety.evidenceFresh) fail(safety.reason);
   if (metadata.source_project !== receipt.sourceProject || metadata.base_revision !== receipt.scaffoldRevision) fail("creation_scaffold_baseline_changed");
   if (!await mayContinue()) fail("creation_paused", "Creation paused before adopting its verified result");
   const candidate = workspaceRevision(metadata.worktree, { requireComplete: true });
@@ -81,18 +109,35 @@ async function adoptVerified(job, options, receipt, runRoot, mayContinue) {
   }
   if (!verifyTrialResultFreshness(evidence, receipt.sourceProject, verification).ok) fail("creation_canonical_verification_stale");
   if (receipt.adoptedHead === candidate.head) return receipt;
-  let view = readTaskDelivery(state.run_id, options.task, options);
-  const checked = await performTaskDeliveryAction(options.task, {
-    runId: state.run_id, requestId: `creation-verify-${digest([candidate.head, view.revision]).slice(0, 40)}`,
-    expectedRevision: view.revision, action: "verify",
-  }, options);
-  if (!completed.has(checked.run.status)) fail("creation_canonical_verification_failed");
-  const latest = readDeliveryLedger(runRoot);
-  if (!verifyTrialResultFreshness(path.join(runRoot, latest.last_trial_result.path), receipt.sourceProject, verification).ok) fail("creation_canonical_verification_stale");
+  // The exact clean commit and its locked evidence have just been checked at
+  // both paths. Adoption must not run arbitrary product commands or inference.
   receipt.adoptedHead = candidate.head;
   receipt.adoptedAt = new Date().toISOString();
   writeReceipt(job, options, receipt);
   return receipt;
+  });
+}
+
+export async function recoverCreationDelivery(job, options = {}) {
+  if (!options.task || options.task.chatId!==job.chatId || !['verify_saved','adopt_verified'].includes(options.action)) fail('creation_delivery_task_mismatch');
+  const {runId,receiptPath}=paths(job,options), lock=acquireFileLock(`${receiptPath}.execution`);
+  try {
+    const receipt=receiptFor(job,options),runRoot=findDeliveryRun(runId,options);
+    if (!receipt || !runRoot || readTaskDelivery(runId,options.task,options).bindingStatus!=='bound') fail('creation_delivery_not_ready');
+    const state=readDeliveryLedger(runRoot), recovery=recoveryState(job,options,receipt,runRoot,state);
+    if (options.action==='adopt_verified') {
+      if (receipt.adoptedHead && recovery.evidenceFresh) return readCreationDelivery(job,options);
+      if (!recovery.adoptVerified) fail(recovery.reason);
+      await adoptVerified(job,options,receipt,runRoot,async()=>!options.signal?.aborted);
+    } else {
+      if (!recovery.verifySaved) fail(recovery.reason);
+      if (!recovery.evidenceFresh) {
+        const view=readTaskDelivery(runId,options.task,options);
+        await performTaskDeliveryAction(options.task,{runId,requestId:options.requestId,expectedRevision:view.revision,action:'verify'},options);
+      }
+    }
+    return readCreationDelivery(job,options);
+  } finally { lock.release(); }
 }
 
 export async function runCreationDelivery(job, options = {}) {

@@ -6,7 +6,7 @@ import type { CreationAction, CreationJobView, CreationRequest } from "@/lib/cod
 import { CodexMarkdown } from "./CodexMarkdown";
 import { creationPendingKey, creationOperatorKey, readCreationOperator, creationRequestForAction, readCreationPending, creationPhaseLabel, creationStatusLabel, creationShouldPoll, creationResultPresentation } from "./creation-client-state";
 
-const labels: Record<CreationAction, string> = { approve_contract: "Подтвердить контракт", approve_outcome: "Подтвердить Outcome Spec", continue: "Продолжить создание", pause: "Приостановить", cancel: "Отменить создание", revise_proposal: "Пересмотреть предложение" };
+const labels: Record<CreationAction, string> = { approve_contract: "Подтвердить контракт", approve_outcome: "Подтвердить Outcome Spec", continue: "Продолжить создание", pause: "Приостановить", cancel: "Отменить с сохранением результата", revise_proposal: "Пересмотреть предложение", verify_saved: "Проверить сохранённую работу", adopt_verified: "Завершить перенос проверенного результата", reconcile_usage: "Сверить расход" };
 const shortSha = (value: string | null | undefined) => value ? value.slice(0, 12) : "неизвестна";
 
 export function AgentCreationProgress({ chatId, refreshKey }: { chatId: string; refreshKey?: string | number }) {
@@ -162,7 +162,7 @@ export function AgentCreationProgress({ chatId, refreshKey }: { chatId: string; 
       <button type="button" className="outline-button compact" disabled={locked || delegatedMissing || !revisionReason.trim()} onClick={() => void act("revise_proposal")}>{labels.revise_proposal}</button>
     </details> : job.deliveryRunId ? <p>Проект уже создан. Изменение согласованного задания требует новой задачи и отдельного каталога.</p> : null}
     <div className="codex-goal-fields" style={{ marginTop: 12, flexWrap: "wrap" }}>
-      {(["continue", "pause", "cancel"] as const).filter(action => job.actions[action]).map(action => <button key={action} type="button" className="outline-button compact" disabled={locked || delegatedMissing} onClick={() => void act(action)}>{labels[action]}</button>)}
+      {(["verify_saved", "adopt_verified", "reconcile_usage", "continue", "pause", "cancel"] as const).filter(action => job.actions[action]).map(action => <button key={action} type="button" className="outline-button compact" disabled={locked || delegatedMissing} onClick={() => void act(action)}>{labels[action]}</button>)}
       {pending ? <button type="button" className="outline-button compact" disabled={busy} onClick={() => void act(pending.action)}>Проверить сохранённое действие</button> : null}
       <button type="button" className="outline-button compact" disabled={busy} onClick={refreshManually}>Обновить состояние</button>
     </div>

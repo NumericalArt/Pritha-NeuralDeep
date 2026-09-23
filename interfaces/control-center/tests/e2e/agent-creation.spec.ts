@@ -12,7 +12,7 @@ function proposal(): CreationJobView {
     approvals: {}, blocker: null, checkpoint: null,
     budget: { tokensUsed: 2400, maxTokens: 1_000_000, activeMs: 60000, maxActiveMs: 5400000, unknownAttempts: [], maxIterations: 6, repeatedFailures: 0 },
     deliveryRunId: null,
-    actions: { approve_contract: true, approve_outcome: false, continue: false, pause: false, cancel: true, revise_proposal: true },
+    actions: { verify_saved: false, adopt_verified: false, reconcile_usage: false, approve_contract: true, approve_outcome: false, continue: false, pause: false, cancel: true, revise_proposal: true },
   };
 }
 
@@ -78,7 +78,7 @@ for (const width of [1440, 390]) {
   test(`preparation telemetry updates and survives reload without dispatch at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 900 });
     const job=proposal();job.status='running';job.phase='research';
-    job.actions={approve_contract:false,approve_outcome:false,continue:false,pause:true,cancel:true,revise_proposal:false};
+    job.actions={verify_saved:false,adopt_verified:false,reconcile_usage:false,approve_contract:false,approve_outcome:false,continue:false,pause:true,cancel:true,revise_proposal:false};
     job.preparation={phase:{brief:2400,research:0},phaseRemaining:{brief:97600,research:200000},total:2400,remaining:297600,
       requests:2,requestsRemaining:10,pendingRequests:1,unknownRequests:0,deliveryProtected:700000,availableForDelivery:null,
       limits:{briefTokens:100000,researchTokens:200000,totalTokens:300000,maxRequests:12},research:{checked:['runtime'],remaining:['source','provider']}};
@@ -190,9 +190,9 @@ for (const width of [1440, 390]) {
   test(`creation displays unresolved usage and version mismatch without offering dispatch at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     const job = proposal(); job.status = 'blocked'; job.phase = 'implementation';
-    job.actions = { approve_contract: false, approve_outcome: false, continue: false, pause: false, cancel: false, revise_proposal: false };
+    job.actions = { verify_saved: false, adopt_verified: false, reconcile_usage: false, approve_contract: false, approve_outcome: false, continue: false, pause: false, cancel: false, revise_proposal: false };
     job.budget.unknownAttempts = ['unsettled-run']; job.versions.sourceDirty = true;
-    job.observedUsage = {knownMinimumTokens:367882,unfinalizedTokens:365482,unknownRequests:1};
+    job.observedUsage = {finalizedTokens:2400,knownMinimumTokens:367882,unfinalizedTokens:365482,unknownRequests:1,pendingRequests:0,reservedTokens:196929,unboundAttempts:0,coverage:"partial",provenance:[]};
     job.blocker = { code: 'creation_usage_unknown', message: 'Previous usage is not confirmed.' };
     const f = await fixture(page, job);
     await expect(f.card).toContainText('Есть исполнения с неподтверждённым расходом: 1');

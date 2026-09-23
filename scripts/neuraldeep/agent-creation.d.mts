@@ -1,4 +1,4 @@
-export type CreationAction = 'approve_contract'|'approve_outcome'|'continue'|'pause'|'cancel'|'revise_proposal';
+export type CreationAction = 'approve_contract'|'approve_outcome'|'continue'|'pause'|'cancel'|'revise_proposal'|'verify_saved'|'adopt_verified'|'reconcile_usage';
 export type CreationRequest = { requestId:string; expectedRevision:number; action:CreationAction; actor?:'user'|'codex-operator'; authorizationBasis?:string; reason?:string };
 export type CreationDocument = {path:string;hash:string;text:string;issues:string[]};
 export type CreationJobView = {
@@ -15,7 +15,7 @@ export type CreationJobView = {
   context?:{bytes:number|null;packetBytes:number|null;reservation:number|null;outputLimit:number|null;freshLimit:number;rotationLimit:number;hardLimit:number;requestMode?:string;sourceBytes?:number};
   nextDispatch?:{status:string;reason:string};
   deliveryRunId:string|null;actions:Record<CreationAction,boolean>;
-  delivery?:{adopted:boolean;acceptance?:string;head?:string|null};agentCardUrl?:string|null;
+  delivery?:{adopted:boolean;acceptance?:string;head?:string|null;recovery?:{verifySaved:boolean;adoptVerified:boolean;evidenceFresh:boolean;modelUse:string;reason:string}};agentCardUrl?:string|null;
 };
 export function creationReleaseIdentity(root:string):CreationJobView['versions'];
 export function creationDraftRoot(stateRoot:string,instanceId:string,chatId:string):string;

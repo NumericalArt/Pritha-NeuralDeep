@@ -113,6 +113,19 @@ test('the fixture reports a missing required dependency instead of silently retu
   assert.equal(fixtureDependency('./registered', { './registered': { run: () => 7 } }).run(), 7);
 });
 
+test('reconciling unknown spend never dispatches a model, clears debt or changes the saved approval',async t=>{
+  const f=fixture(t);
+  f.jobs.update(f.chatId,j=>({...j,status:'blocked',budget:{...j.budget,unknownAttempts:['unknown-turn']}}));
+  const before=f.jobs.get(f.chatId),request=f.request('reconcile_usage');
+  const first=await f.post(request);
+  assert.equal(first.status,200,JSON.stringify(first.body));
+  assert.deepEqual(first.body.data.job.budget.unknownAttempts,['unknown-turn']);
+  assert.deepEqual(first.body.data.job.approvals,before.approvals);assert.equal(first.body.data.job.actions.continue,false);
+  assert.equal(f.dispatches.length,0);
+  const revision=f.jobs.get(f.chatId).revision;
+  assert.equal((await f.post(request)).status,200);assert.equal(f.jobs.get(f.chatId).revision,revision);
+});
+
 test('creation API requires separate document approvals and repeated navigation has no side effect', async t => {
   const f = fixture(t), initial = f.jobs.get(f.chatId);
   const pages = await Promise.all([f.get(), f.get()]);

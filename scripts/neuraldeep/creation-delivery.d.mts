@@ -14,3 +14,4 @@ export type CreationDeliveryResult = {
 export function creationDeliveryRunId(job: any): string;
 export function readCreationDelivery(job: any, options: CreationDeliveryOptions): CreationDeliveryResult | null;
 export function runCreationDelivery(job: any, options: CreationDeliveryOptions): Promise<CreationDeliveryResult>;
+export function recoverCreationDelivery(job:any,options:CreationDeliveryOptions & {action:'verify_saved'|'adopt_verified';requestId:string}):Promise<CreationDeliveryResult>;

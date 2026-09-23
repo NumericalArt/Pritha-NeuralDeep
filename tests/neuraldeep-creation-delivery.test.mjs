@@ -6,8 +6,9 @@ import path from "node:path";
 import test from "node:test";
 import { createOutcomeSpec, approveOutcomeSpec } from "../scripts/agents-mother/outcome-spec.mjs";
 import { FunctionBuildExecutor } from "../scripts/agents-mother/build-executors.mjs";
-import { readDeliveryLedger } from "../scripts/agents-mother/delivery-ledger.mjs";
-import { creationDeliveryRunId, readCreationDelivery, runCreationDelivery } from "../scripts/neuraldeep/creation-delivery.mjs";
+import { readDeliveryLedger, updateDeliveryLedger } from "../scripts/agents-mother/delivery-ledger.mjs";
+import { creationDeliveryRunId, readCreationDelivery, runCreationDelivery, recoverCreationDelivery } from "../scripts/neuraldeep/creation-delivery.mjs";
+import { trialModelUse } from '../scripts/agents-mother/trial-model-use.mjs';
 
 const git = (cwd, args) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: "pipe" }).trim();
 function fixture(t) {
@@ -80,4 +81,54 @@ test("missing baseline, unknown preparation usage and another task fail before m
     await assert.rejects(runCreationDelivery(job, { ...f.options, buildExecutor: executor(() => calls++) }));
   }
   assert.equal(calls, 0); assert.equal(readCreationDelivery(f.job, f.options), null);
+});
+
+async function interruptedVerifiedFixture(t) {
+  const f=fixture(t);let calls=0;
+  const result=await runCreationDelivery(f.job,{...f.options,buildExecutor:executor(()=>{calls++;writeFileSync(path.join(f.target,'operator-note.txt'),'keep');})});
+  rmSync(path.join(f.target,'operator-note.txt'));
+  updateDeliveryLedger(result.runRoot,state=>({...state,budget:{...state.budget,unaccounted_attempts:[{executor_result:'executor/attempt-nd_dead.json',reason:'usage_unavailable',
+    process_protocol:1,process_exited:true,process_tree_exited:true,adapter_closed:true,reserved_tokens:500}]}}),{eventType:'test_interrupted_receipt'});
+  f.job.deliveryRunId=result.runId;f.job.budget.unknownAttempts=[result.runId];
+  return {...f,result,calls:()=>calls};
+}
+
+test('verified interrupted candidate can be inspected and adopted with no new inference or Trial execution',async t=>{
+  const f=await interruptedVerifiedFixture(t),before=readDeliveryLedger(f.result.runRoot);
+  const view=readCreationDelivery(f.job,f.options);
+  assert.equal(view.recovery.evidenceFresh,true,JSON.stringify(view.recovery));assert.equal(view.recovery.adoptVerified,true);
+  const inspected=await recoverCreationDelivery(f.job,{...f.options,action:'verify_saved',requestId:'inspect-saved-1'});
+  assert.equal(inspected.adopted,false);assert.equal(readDeliveryLedger(f.result.runRoot).version,before.version);
+  const adopted=await recoverCreationDelivery(f.job,{...f.options,action:'adopt_verified',requestId:'adopt-saved-1'});
+  assert.equal(adopted.adopted,true);assert.equal(adopted.usage.coverage,'unknown');assert.equal(adopted.acceptance,'not_accepted');
+  assert.equal(f.calls(),1);assert.equal(readFileSync(path.join(f.target,'result.txt'),'utf8'),'working');
+  assert.equal(readDeliveryLedger(f.result.runRoot).version,before.version,'adoption reused fresh evidence without executing commands');
+  const replay=await recoverCreationDelivery(f.job,{...f.options,action:'adopt_verified',requestId:'adopt-saved-1'});
+  assert.equal(replay.head,adopted.head);assert.equal(replay.usage.knownTotalTokens,125);assert.equal(f.job.budget.unknownAttempts.length,1);
+});
+
+test('recovery refuses live descendants and modified candidates without touching the target',async t=>{
+  const f=await interruptedVerifiedFixture(t);
+  updateDeliveryLedger(f.result.runRoot,s=>({...s,budget:{...s.budget,unaccounted_attempts:s.budget.unaccounted_attempts.map(a=>({...a,adapter_closed:false}))}}),{eventType:'test_live_adapter'});
+  await assert.rejects(recoverCreationDelivery(f.job,{...f.options,action:'adopt_verified',requestId:'adopt-refused-1'}),{code:'creation_execution_unconfirmed'});
+  updateDeliveryLedger(f.result.runRoot,s=>({...s,budget:{...s.budget,unaccounted_attempts:s.budget.unaccounted_attempts.map(a=>({...a,adapter_closed:true}))}}),{eventType:'test_stopped_adapter'});
+  writeFileSync(path.join(f.result.runRoot,'worktree/result.txt'),'changed after verification');
+  await assert.rejects(recoverCreationDelivery(f.job,{...f.options,action:'adopt_verified',requestId:'adopt-refused-2'}));
+  assert.equal(existsSync(path.join(f.target,'result.txt')),false);assert.equal(f.calls(),1);
+});
+
+test('a command called local is not proof of zero inference; only enforced network isolation qualifies',()=>{
+  const plan={trials:[{kind:'automated',isolation:'none',argv:['node','may-call-provider.mjs']}]};
+  assert.equal(trialModelUse(plan,'local').kind,'unknown');
+  plan.trials[0].isolation='sandbox';assert.equal(trialModelUse(plan,'local').kind,'unknown');
+  assert.equal(trialModelUse(plan,'codex-cli').kind,'none');
+  plan.execution_policy={trial_model_usage:'metered'};assert.equal(trialModelUse(plan,'codex-cli').kind,'metered');
+});
+
+test('a different task or changed approved specification cannot adopt a preserved candidate',async t=>{
+  const f=await interruptedVerifiedFixture(t);
+  await assert.rejects(recoverCreationDelivery(f.job,{...f.options,task:{...f.options.task,nativeThreadId:'another-session'},action:'adopt_verified',requestId:'wrong-task'}),{code:'creation_delivery_identity_changed'});
+  writeFileSync(f.job.outcome.path,readFileSync(f.job.outcome.path,'utf8')+'\nChanged outcome.\n');
+  await assert.rejects(recoverCreationDelivery(f.job,{...f.options,action:'adopt_verified',requestId:'changed-spec'}),{code:'delivery_approval_stale'});
+  assert.equal(existsSync(path.join(f.target,'result.txt')),false);
 });

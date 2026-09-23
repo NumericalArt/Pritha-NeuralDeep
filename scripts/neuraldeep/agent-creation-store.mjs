@@ -5,7 +5,7 @@ import { creationPreparationPolicy } from './creation-preparation-policy.mjs';
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const now = () => new Date().toISOString();
-export const CREATION_ACTIONS = ['approve_contract', 'approve_outcome', 'continue', 'pause', 'cancel', 'revise_proposal'];
+export const CREATION_ACTIONS = ['approve_contract', 'approve_outcome', 'continue', 'pause', 'cancel', 'revise_proposal', 'verify_saved', 'adopt_verified', 'reconcile_usage'];
 export class AgentCreationError extends Error {
   constructor(code, message = code, status = 409) { super(message); this.code = code; this.status = status; }
 }

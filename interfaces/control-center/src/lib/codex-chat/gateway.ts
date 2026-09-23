@@ -33,7 +33,7 @@ import { prepareCreationContextPacket, readCreationContextPacket } from "../../.
 import { acceptVerifiedResearchProgress, settleCreationPreparation, creationPreparationView } from "../../../../../scripts/neuraldeep/creation-preparation-control.mjs";
 import { preflightAgentCreation } from "../../../../../scripts/neuraldeep/creation-preflight.mjs";
 export { AgentCreationError };
-import { runCreationDelivery as deliverCreation, readCreationDelivery } from "../../../../../scripts/neuraldeep/creation-delivery.mjs";
+import { runCreationDelivery as deliverCreation, readCreationDelivery, recoverCreationDelivery, CreationDeliveryError } from "../../../../../scripts/neuraldeep/creation-delivery.mjs";
 import { creationDraftRoot, creationReleaseIdentity, reconcileCreationArtifacts, creationJobView, approveCreationDocument, creationPrompt, creationHostStep, type CreationRequest } from "../../../../../scripts/neuraldeep/agent-creation.mjs";
 import { captureTargetFileManifest, diffTargetFileManifests, type TargetFileManifest } from "../../../../../scripts/neuraldeep/target-file-manifest.mjs";
 import { getPrithaRuntimeSettings } from "@/lib/realtime/pritha-runtime";
@@ -313,11 +313,13 @@ export class CodexChatGateway {
       return {...await this.creationStatus(chatId),replayed:true};
     }
     try {
-      if(!['pause','cancel'].includes(request.action) && (this.activeTurns.has(chatId) || this.creationAdvances.has(chatId)))throw new AgentCreationError('creation_step_active','Дождитесь завершения текущего шага.');
+      if(!['pause','cancel'].includes(request.action) && (this.activeTurns.has(chatId) || this.creationAdvances.has(chatId) || this.creationDeliveries.has(chatId)))throw new AgentCreationError('creation_step_active','Дождитесь завершения текущего шага.');
       let job=this.withCreationStore(store=>store.get(chatId));
       const view=creationJobView(job,{root:this.root,stateRoot:this.store.stateRoot});
       if(!view.actions[request.action])throw new AgentCreationError('creation_action_unavailable','Это действие сейчас недоступно.');
-      if(request.action==='approve_contract' || request.action==='approve_outcome') {
+      if(['verify_saved','adopt_verified','reconcile_usage'].includes(request.action)) {
+        await this.applyCreationRecovery(chatId,binding,request);
+      } else if(request.action==='approve_contract' || request.action==='approve_outcome') {
         const kind=request.action==='approve_contract'?'contract':'outcome';
         if(kind==='contract') {
           const reservation=this.withCreationStore(store=>store.store.db.prepare('SELECT owner,path,state FROM execution_agent_targets WHERE path=?').get(job.target));
@@ -345,7 +347,7 @@ export class CodexChatGateway {
         if(['pause','cancel'].includes(request.action))this.creationDeliveries.get(chatId)?.abort();
       }
       this.withCreationStore(store=>store.finishAction(chatId,request.requestId,{ok:true}));
-      if(!['pause','cancel'].includes(request.action))void this.advanceCreation(chatId);
+      if(!['pause','cancel','verify_saved','adopt_verified','reconcile_usage'].includes(request.action))void this.advanceCreation(chatId);
       return {...await this.creationStatus(chatId),replayed:false};
     } catch(error) {
       if(request.action==='revise_proposal') {
@@ -381,6 +383,8 @@ export class CodexChatGateway {
         const next=reviseCreationProposal(job,request,{root:this.root,stateRoot:this.store.stateRoot,coordination:store.store});
         return store.update(chatId,()=>next,job.revision);
       });
+    } else if(['verify_saved','adopt_verified','reconcile_usage'].includes(request.action)) {
+      if(job.lastAction!==request.requestId)await this.applyCreationRecovery(chatId,await this.requireBinding(chatId),request);
     } else if(job.lastAction!==request.requestId) {
       if(job.revision!==request.expectedRevision)throw new CodexChatGatewayError('creation_action_unconfirmed','Состояние изменилось до завершения действия. Нужна проверка сохранённой операции.',503,true);
       if(request.action==='continue') {
@@ -391,8 +395,33 @@ export class CodexChatGateway {
         autoContinue:request.action==='continue',lastAction:request.requestId,blocker:null}),request.expectedRevision));
     }
     this.withCreationStore(store=>store.finishAction(chatId,request.requestId,{ok:true}));
-    if(!['pause','cancel'].includes(request.action))void this.advanceCreation(chatId);
+    if(!['pause','cancel','verify_saved','adopt_verified','reconcile_usage'].includes(request.action))void this.advanceCreation(chatId);
     return {...await this.creationStatus(chatId),replayed:true};
+  }
+
+  private async applyCreationRecovery(chatId:string,binding:ChatBinding,request:CreationRequest) {
+    if(!['user','codex-operator'].includes(request.actor || '') || request.actor==='codex-operator' && !request.authorizationBasis?.trim())throw new AgentCreationError('creation_authorization_required');
+    const job=this.withCreationStore(store=>store.get(chatId));
+    if(request.action==='reconcile_usage') {
+      await this.reconcileCreationExecution(chatId,binding);
+      this.withCreationStore(store=>store.update(chatId,current=>({...current,lastAction:request.requestId,autoContinue:false})));
+      return;
+    }
+    if(!binding.nativeThreadId || !['verify_saved','adopt_verified'].includes(request.action))throw new AgentCreationError('creation_session_missing');
+    const controller=new AbortController();this.creationDeliveries.set(chatId,controller);this.creationAdvances.add(chatId);
+    try {
+      const result=await recoverCreationDelivery(job,{root:this.root,stateRoot:this.store.stateRoot,
+        action:request.action as 'verify_saved'|'adopt_verified',requestId:request.requestId,signal:controller.signal,
+        task:{chatId,nativeThreadId:binding.nativeThreadId,providerId:'neuraldeep_cli',stateIdentityHash:binding.stateIdentityHash}});
+      this.withCreationStore(store=>store.update(chatId,current=>({...current,lastAction:request.requestId,autoContinue:false,delivery:result,
+        status:controller.signal.aborted && ['cancelled','paused'].includes(current.status)?current.status:result.adopted?'ready':result.blocker?'blocked':'paused',
+        phase:result.adopted?'finish':'verify',blocker:result.blocker || (result.usage.coverage==='complete'?null:{code:'creation_usage_unknown',message:'Сохранённая работа проверена. Расход прерванного запроса остаётся неизвестным; новая отправка запрещена.'}),
+        budget:{...current.budget,tokensUsed:result.usage.knownTotalTokens,activeMs:result.usage.activeMs,
+          unknownAttempts:result.usage.coverage==='complete'?current.budget.unknownAttempts.filter((id:string)=>id!==result.runId):[...new Set([...current.budget.unknownAttempts,result.runId])]}})));
+    } catch(error) {
+      if(error instanceof CreationDeliveryError)throw new AgentCreationError(error.code,error.message);
+      throw error;
+    } finally {this.creationDeliveries.delete(chatId);this.creationAdvances.delete(chatId);}
   }
 
   private async reconcileCreationExecution(chatId:string,binding:ChatBinding) {

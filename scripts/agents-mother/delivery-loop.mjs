@@ -40,6 +40,7 @@ import {
 } from "./delivery-worktree.mjs";
 import { compileOutcomeSpec, TRIAL_PLAN_SCHEMA, verifyCompiledTrialPlan, verifyOutcomeApproval } from "./outcome-spec.mjs";
 import { runTrialPlan, verifyTrialResultFreshness } from "./trial-runner.mjs";
+import { deliveryProcessesExited, trialModelUse } from "./trial-model-use.mjs";
 
 export class DeliveryLoopError extends Error {
   constructor(code, message, details = {}) {
@@ -143,8 +144,7 @@ async function withDeliveryExecution(runRoot, work) {
 }
 
 function hostVerificationAllowed(budget) {
-  return deliveryUsageStatus(budget) === "complete" || !budget.legacy_usage_unverified
-    && budget.unaccounted_attempts.every(entry => entry.process_exited === true);
+  return deliveryUsageStatus(budget) === "complete" || deliveryProcessesExited(budget);
 }
 
 export function canHostVerifyDelivery(state) {
@@ -688,6 +688,10 @@ async function runDeliveryLoopLocked(input = {}) {
     await recoverExecutorAttempts(runRoot, worktree, buildExecutor, input);
     state = readDeliveryLedger(runRoot);
     if (!hostVerificationAllowed(state.budget)) return blockDelivery(runRoot, plan, worktree, budgetBlocker(state), input);
+    if (deliveryUsageStatus(state.budget) !== 'complete' && trialModelUse(plan,trialBackend).kind !== 'none') {
+      return blockDelivery(runRoot,plan,worktree,blockerForError(new DeliveryLoopError('trial_model_usage_unknown',
+        'The saved build has unresolved usage and these commands may perform inference. Existing evidence is preserved; no Trial was dispatched.')),input);
+    }
     if (state.status !== "verifying") {
       state = transitionDelivery(runRoot, "verifying", { nextAction: "run_initial_trials", phase: "initial_verification" }).state;
     }
