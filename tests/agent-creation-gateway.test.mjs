@@ -14,6 +14,7 @@ import * as creationRevision from '../scripts/neuraldeep/creation-revision.mjs';
 import * as creationDelivery from '../scripts/neuraldeep/creation-delivery.mjs';
 import * as targetManifest from '../scripts/neuraldeep/target-file-manifest.mjs';
 import * as creationPreflight from '../scripts/neuraldeep/creation-preflight.mjs';
+import * as preparationControl from '../scripts/neuraldeep/creation-preparation-control.mjs';
 import { NeuralDeepExecutionWorkspaces } from '../scripts/neuraldeep/execution-workspaces.mjs';
 import * as chatHistory from '../scripts/neuraldeep/chat-history-store.mjs';
 import * as attachmentStore from '../scripts/neuraldeep/attachment-store.mjs';
@@ -23,10 +24,17 @@ import { renderOutcomeSpecFromContract, verifyOutcomeApproval } from '../scripts
 
 const require = createRequire(import.meta.url);
 const sourceDirectory = 'interfaces/control-center/src/lib/codex-chat';
+function fixtureDependency(id, dependencies) {
+  if (id.startsWith('node:')) return require(id);
+  if (Object.hasOwn(dependencies, id)) return dependencies[id];
+  return new Proxy({}, { get(_target, name) {
+    throw new Error(`Missing fixture dependency: ${id}.${String(name)}. Register the real module or an explicit stub.`);
+  } });
+}
 function load(file, dependencies = {}) {
   const code = ts.transpileModule(readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
   const module = { exports: {} };
-  new Function('require', 'module', 'exports', code)(id => id.startsWith('node:') ? require(id) : dependencies[id] || {}, module, module.exports);
+  new Function('require', 'module', 'exports', code)(id => fixtureDependency(id, dependencies), module, module.exports);
   return module.exports;
 }
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
@@ -63,6 +71,7 @@ function fixture(t, { hostStep } = {}) {
     '../../../../../scripts/neuraldeep/creation-delivery.mjs': { ...creationDelivery, runCreationDelivery: unexpected },
     '../../../../../scripts/neuraldeep/target-file-manifest.mjs': targetManifest,
     '../../../../../scripts/neuraldeep/creation-preflight.mjs': creationPreflight,
+    '../../../../../scripts/neuraldeep/creation-preparation-control.mjs': preparationControl,
     '@/lib/pritha-paths': { resolvePrithaAgentParent: () => path.dirname(target) },
   });
   function restart() {
@@ -98,6 +107,11 @@ function fixture(t, { hostStep } = {}) {
   }
   return { root, stateRoot, options, chatId, target, draftRoot, binding, journal, jobs, dispatches, request, post, get, outcome, restart, get gateway() { return gateway; } };
 }
+
+test('the fixture reports a missing required dependency instead of silently returning an empty object', () => {
+  assert.throws(() => fixtureDependency('./unregistered', {}).run(), /Missing fixture dependency: \.\/unregistered.run/);
+  assert.equal(fixtureDependency('./registered', { './registered': { run: () => 7 } }).run(), 7);
+});
 
 test('creation API requires separate document approvals and repeated navigation has no side effect', async t => {
   const f = fixture(t), initial = f.jobs.get(f.chatId);
