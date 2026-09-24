@@ -1859,7 +1859,7 @@ export class CodexChatGateway {
         const repair=['creation_research_selection_invalid','creation_research_quote_unbound'].includes(code)
           && !current.budget.unknownAttempts.length && (current.preparation?.researchRepairCount||0)<1 && !['paused','cancelled'].includes(current.status);
         return {...current,status:['paused','cancelled'].includes(current.status)?current.status:repair?'pending':'blocked',autoContinue:repair,
-          preparation:{...current.preparation,pendingResearchTurnId:repair?null:turnId,
+          preparation:{...current.preparation,pendingResearchTurnId:repair || code==='creation_research_evidence_incomplete'?null:turnId,
             researchRepairCount:(current.preparation?.researchRepairCount||0)+Number(repair),
             researchError:error instanceof Error?error.message:code},
           blocker:{code,message:error instanceof Error?error.message:'Не удалось подтвердить источники. Страницы и расход сохранены.'}};

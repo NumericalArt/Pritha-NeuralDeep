@@ -137,20 +137,20 @@ for(const protocol of [undefined,1])test(`research request protocol ${protocol |
   assert.throws(()=>f.jobs.update(job.chatId,j=>({...j,researchProtocolVersion:undefined})),{code:'creation_policy_immutable'});
 });
 
-for(const [topicPolicy,selectionVersion] of [[2,1],[3,1],[3,2]])test(`host research v2/topic policy ${topicPolicy}/selection ${selectionVersion} checkpoints primary reads and completes without shell edits`,async t=>{
+for(const [topicPolicy,selectionVersion] of [[2,1],[3,1],[3,2],[3,3]])test(`host research v2/topic policy ${topicPolicy}/selection ${selectionVersion} checkpoints primary reads and completes without shell edits`,async t=>{
  const {collectCreationSources,readCreationSources,completeCreationSourceResearch,validateResearchSelection}=await import('../scripts/neuraldeep/creation-source-research.mjs');
  const {prepareCreationResearchRequest}=await import('../scripts/neuraldeep/creation-research-request.mjs');
  const f=fixture(t,{researchProtocolVersion:2,researchTopicPolicyVersion:topicPolicy,researchSelectionVersion:selectionVersion});const research=await prepareCreationResearch(f.job,{...f.options,command:f.command});
  assert.equal(Number(contractData(f.job.contract.path,f.options).fm.research_topic_policy),topicPolicy);
  let searches=0,reads=0;
- const text='Current official documentation for Node.js HTTP server lifecycle, browser API security and source preservation. The documented API uses bounded HTTP requests and returns an explicit error on failure; preserve successful local data. SQLite transactions commit atomically and retain persistent rows across process restarts.';
+ const text='Current official documentation for Node.js HTTP server lifecycle, browser API security and source preservation. The documented API uses bounded HTTP requests and returns an explicit error on failure; preserve successful local data. SQLite transactions commit atomically and retain persistent rows across process restarts.\n\nSynthetic NeuralDeep model credentials, Responses output limits and authentication stay in the instance provider binding.\n\nSynthetic RSS XML feeds retain article links and text and use bounded requests with explicit errors.';
  const search={search:async input=>{searches++;return {ok:true,status:'ok',id:`s${searches}`,sources:[{url:`https://${input.domains[0]}/documentation`,snippet:'not evidence'}]};},
   readPage:async input=>{reads++;return {ok:true,status:'ok',id:`r${reads}`,sources:[{url:input.url,title:'Official fixture',read:true,text,retrieved_at:new Date().toISOString(),published_at:null}]};}};
  const options={...f.options,search};
  const sources=await collectCreationSources(f.job,research,options);
  await collectCreationSources(f.job,research,options);assert.equal(searches,topicPolicy===2?sources.length:0);assert.equal(reads,sources.length);
- assert.ok(sources.length>0);assert.ok(sources.every(source=>source.contentHash && (selectionVersion===2?source.passages.length:source.excerpt) && !source.text));
- const value={facts:sources.map(source=>({sourceId:source.id,topicId:source.topicId,...(selectionVersion===2?{passageId:source.passages[0].id}:{quote:'The documented API uses bounded HTTP requests and returns an explicit error on failure; preserve successful local data.'}),
+ assert.ok(sources.length>0);assert.ok(sources.every(source=>source.contentHash && (selectionVersion>=2?source.passages.length:source.excerpt) && !source.text));
+ const value={facts:sources.map(source=>({sourceId:source.id,topicId:source.topicId,...(selectionVersion>=2?{passageId:source.passages[0].id}:{quote:'The documented API uses bounded HTTP requests and returns an explicit error on failure; preserve successful local data.'}),
   versionContext:'Current fixture documentation without a pinned version',compatibility:'The documented process APIs apply to the selected fixture Node runtime.',compatibilityStatus:'compatible'})),
   synthesis:{relationship:'confirms',memory_comparison:'The primary fixture confirms the retained history rule.',summary:'Use bounded public requests and preserve the previous successful state.',architecture_decision:'Use the approved HTTP process, local storage and bound provider.',alternatives:['Defer the provider integration'],tradeoffs:['More source verification effort']}};
  assert.throws(()=>validateResearchSelection({...value,facts:[{...value.facts[0],quote:'Invented source quote that does not appear anywhere in the read page.'}]},sources,research.topics,selectionVersion),{code:'creation_research_quote_unbound'});
@@ -159,10 +159,16 @@ for(const [topicPolicy,selectionVersion] of [[2,1],[3,1],[3,2]])test(`host resea
  const packet=readCreationContextPacket({...f.job,contextPacket:packetRef},options);
  const request=prepareCreationResearchRequest({model:'fixture',stream:true,instructions:'general large coding prompt',tools:[{type:'function'}],input:'duplicated history'},f.job,packet,f.options.root);
  assert.deepEqual(request.tools,[]);assert.equal(request.tool_choice,'none');assert.ok(Buffer.byteLength(JSON.stringify(request))<64*1024);
- if(selectionVersion===2)assert.match(request.instructions,/Select passageId/);
- assert.throws(()=>prepareCreationResearchRequest({model:'fixture'},f.job,{...packet,packet:{...packet.packet,researchSelectionVersion:3-selectionVersion}},f.options.root),{code:'provider_budget_context_changed'});
+ if(selectionVersion>=2)assert.match(request.instructions,/Select passageId/);
+ assert.throws(()=>prepareCreationResearchRequest({model:'fixture'},f.job,{...packet,packet:{...packet.packet,researchSelectionVersion:selectionVersion+1}},f.options.root),{code:'provider_budget_context_changed'});
  assert.match(request.input[0].content[0].text,/Preserve the whole product request/);assert.doesNotMatch(JSON.stringify(request),/duplicated history|general large coding prompt/);
  const answer='```pritha-research-json\n'+JSON.stringify(value)+'\n```';
+ if(selectionVersion===3) {
+  const before=readFileSync(f.reportPath,'utf8');
+  const insufficient={...value,facts:value.facts.map(fact=>({...fact,compatibilityStatus:'unknown',compatibility:'The supplied page does not establish the selected API requirements.'}))};
+  assert.throws(()=>completeCreationSourceResearch(f.job,'```pritha-research-json\n'+JSON.stringify(insufficient)+'\n```',research,{...options,turnId:'insufficient'}),{code:'creation_research_evidence_incomplete'});
+  assert.equal(readFileSync(f.reportPath,'utf8'),before,'Insufficient evidence never publishes a false success');
+ }
  completeCreationSourceResearch(f.job,answer,research,{...options,turnId:'v2'});
  const complete=readCreationResearch(f.job,f.options);assert.deepEqual(complete.remaining,[]);assert.equal(complete.gate.ok,true,JSON.stringify(complete.gate));
  completeCreationSourceResearch(f.job,answer,complete,{...options,turnId:'v2'});

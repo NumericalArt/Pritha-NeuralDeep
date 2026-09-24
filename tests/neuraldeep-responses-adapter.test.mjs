@@ -265,6 +265,21 @@ test("rejects a truncated stream", () => {
   assert.throws(() => normalizeResponsesSse(sse([{ type: "response.created", response: { id: "resp_3" } }]).replace("data: [DONE]\n\n", "")), /without a terminal event/);
 });
 
+for(const [name,body,code] of [
+ ['missing terminal',sse([{type:'response.created',response:{id:'incomplete-fixture'}}]),'neuraldeep_stream_truncated'],
+ ['malformed event','data: {"private":"DO_NOT_PUBLISH_PROVIDER_TEXT", invalid}\n\n','neuraldeep_stream_malformed'],
+])test(`buffered preparation classifies ${name} without claiming a network outage or replaying`,async()=>{
+ let calls=0;const observed=[];
+ const {response,finished}=invokeAdapter({validateResponsesResponse(){},fetchImpl:async()=>{
+  calls++;return new Response(body,{headers:{'content-type':'text/event-stream'}});
+ },onRequest:event=>observed.push(event)});
+ await finished;assert.equal(calls,1);assert.equal(response.status,502);assert.equal(observed.length,1);
+ assert.equal(observed[0].error.class,'input');assert.equal(observed[0].error.code,code);
+ assert.equal(observed[0].usage,null);assert.equal(observed[0].timings.timedOut,false);
+ assert.ok(observed[0].timings.responseCompletedMs!==null);
+ assert.doesNotMatch(String(response.body),/DO_NOT_PUBLISH_PROVIDER_TEXT/);
+});
+
 test("preserves a provider failure as a terminal Responses event", () => {
   const events = parsedEvents(normalizeResponsesSse(sse([
     { type: "response.created", response: { id: "resp_4", output: [] } },

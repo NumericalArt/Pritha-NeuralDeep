@@ -41,7 +41,7 @@ function load(file, dependencies = {}) {
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-function fixture(t, { hostStep, recoverDelivery, readDelivery, settlePreparation, preparationV2=false } = {}) {
+function fixture(t, { hostStep, recoverDelivery, readDelivery, settlePreparation, preparationV2=false, researchFailure } = {}) {
   const temporary = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'pritha-creation-gateway-')));
   t.after(() => rmSync(temporary, { recursive: true, force: true }));
   const root = path.join(temporary, 'code'), stateRoot = path.join(temporary, 'state'), target = path.join(temporary, 'children', 'alpha');
@@ -67,7 +67,9 @@ function fixture(t, { hostStep, recoverDelivery, readDelivery, settlePreparation
     '../../../../../scripts/neuraldeep/coordination-store.mjs': coordination,
     '../../../../../scripts/neuraldeep/agent-creation-store.mjs': creationStore,
     '../../../../../scripts/neuraldeep/agent-creation.mjs': { ...creation, creationHostStep: hostStep || unexpected },
-    '../../../../../scripts/neuraldeep/creation-runtime-receipt.mjs': runtimeReceipt,
+    '../../../../../scripts/neuraldeep/creation-runtime-receipt.mjs': {...runtimeReceipt,...(researchFailure?{creationRuntimeReceipt:()=>({tokens:100,processExited:true,blocker:null})}:{})},
+    '../../../../../scripts/neuraldeep/creation-research-context.mjs': {readCreationResearch:()=>({})},
+    '../../../../../scripts/neuraldeep/creation-source-research.mjs': {completeCreationSourceResearch:()=>{throw new creationStore.AgentCreationError(researchFailure,'Insufficient primary evidence; preserve the response.');}},
     '../../../../../scripts/neuraldeep/creation-revision.mjs': creationRevision,
     '../../../../../scripts/neuraldeep/creation-delivery.mjs': { ...creationDelivery, runCreationDelivery: unexpected, ...(recoverDelivery?{recoverCreationDelivery:recoverDelivery}:{}), ...(readDelivery?{readCreationDelivery:readDelivery}:{}) },
     '../../../../../scripts/agents-mother/task-delivery.mjs': taskDelivery,
@@ -113,6 +115,19 @@ function fixture(t, { hostStep, recoverDelivery, readDelivery, settlePreparation
 test('the fixture reports a missing required dependency instead of silently returning an empty object', () => {
   assert.throws(() => fixtureDependency('./unregistered', {}).run(), /Missing fixture dependency: \.\/unregistered.run/);
   assert.equal(fixtureDependency('./registered', { './registered': { run: () => 7 } }).run(), 7);
+});
+
+test('insufficient source evidence stops without retry or repeated pending publication',async t=>{
+ const f=fixture(t,{preparationV2:true,researchFailure:'creation_research_evidence_incomplete'});
+ f.gateway.store.historyStore=async()=>({originalAssistantText:()=> 'Saved model response explaining missing evidence.'});
+ f.jobs.update(f.chatId,j=>({...j,phase:'research',status:'pending',autoContinue:true,preparation:{pendingResearchTurnId:'research-turn'}}));
+ await f.gateway.completeCreationResearch(f.chatId,'research-turn');
+ const stopped=f.jobs.get(f.chatId);
+ assert.equal(stopped.status,'blocked');assert.equal(stopped.autoContinue,false);
+ assert.equal(stopped.blocker.code,'creation_research_evidence_incomplete');
+ assert.equal(stopped.preparation.researchRepairCount,0);assert.equal(stopped.preparation.pendingResearchTurnId,null);
+ await f.gateway.advanceCreation(f.chatId);
+ assert.deepEqual(f.jobs.get(f.chatId),stopped);assert.equal(f.dispatches.length,0);
 });
 
 test('reconciling unknown spend never dispatches a model, clears debt or changes the saved approval',async t=>{

@@ -12,8 +12,8 @@ export function parseSseData(raw) {
     if (!data || data === "[DONE]") continue;
     try {
       events.push(JSON.parse(data));
-    } catch (error) {
-      throw new Error(`NeuralDeep returned malformed Responses SSE: ${error.message}`);
+    } catch {
+      throw Object.assign(new Error('NeuralDeep returned malformed Responses SSE'),{code:'neuraldeep_stream_malformed',statusCode:502});
     }
   }
   return events;
@@ -213,7 +213,7 @@ export function normalizeResponsesSse(raw) {
     if (!isUpstreamMessageLifecycle(event)) normalized.push(event);
   }
 
-  if (!terminal) throw new Error("NeuralDeep Responses stream ended without a terminal event");
+  if (!terminal) throw Object.assign(new Error("NeuralDeep Responses stream ended without a terminal event"),{code:'neuraldeep_stream_truncated',statusCode:502});
 
   return `${normalized
     .map((event, sequenceNumber) => `data: ${JSON.stringify({ ...event, sequence_number: sequenceNumber })}\n\n`)

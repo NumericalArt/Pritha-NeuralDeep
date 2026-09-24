@@ -9,6 +9,7 @@ import {applyExternalResearchEvidence} from '../agents-mother/external-research.
 import {researchGateDecisionForReport} from '../agents-mother/research-gate.mjs';
 import {creationHostDirectory} from './creation-research.mjs';
 import {AgentCreationError} from './agent-creation-store.mjs';
+import {rankedSourceQuotes} from './source-passages.mjs';
 
 const hash=value=>createHash('sha256').update(typeof value==='string'?value:JSON.stringify(value)).digest('hex');
 const fail=(code,message)=>{throw new AgentCreationError(code,message);};
@@ -74,9 +75,10 @@ function nextPrimarySource(topic,item,found) {
 }
 // A ranked excerpt can join nonadjacent lines. Never ask a model to copy that
 // joined text as one source quotation. Bind each exact passage independently.
-export function sourcePassages(source) {
+export function sourcePassages(source,selectionVersion=2) {
  const seen=new Set(),passages=[];
- for(const quote of source.excerpt.split('\n')) {
+ const quotes=selectionVersion===3?rankedSourceQuotes(source.text,source.query):source.excerpt.split('\n');
+ for(const quote of quotes) {
   if(quote.length<40 || quote.length>1200 || seen.has(quote) || !source.text.includes(quote))continue;
   seen.add(quote);passages.push({id:hash({sourceId:source.id,contentHash:source.contentHash,quote}).slice(0,24),quote});
   if(passages.length===8)break;
@@ -87,9 +89,9 @@ export function readCreationSources(job,options) {
  const {state}=load(job,options);
  for(const source of state.sources)if(hash(source.text)!==source.contentHash || !Number.isFinite(Date.parse(source.retrievedAt)) || Date.now()-Date.parse(source.retrievedAt)>30*86400000 || Date.parse(source.retrievedAt)-Date.now()>300000)fail('creation_research_source_stale');
  return state.sources.map(({text,...source})=>{
-  if(job.researchSelectionVersion!==2)return source;
-  const {excerpt,...metadata}=source;
-  const passages=sourcePassages({...source,text});
+  if(![2,3].includes(job.researchSelectionVersion))return source;
+  const {excerpt,query,...metadata}=source;
+  const passages=sourcePassages({...source,text},job.researchSelectionVersion);
   if(!passages.length)fail('creation_research_source_unavailable','В сохранённом источнике нет цельной проверяемой выдержки. Запрос модели не отправлен.');
   return {...metadata,passages};
  });
@@ -150,10 +152,13 @@ export async function collectCreationSources(job,research,options) {
      const source=page.sources.find(source=>source.read===true && source.text && allowed(source.url,topic.primaryDomains));
      if(!source)throw Object.assign(new Error('a snippet is not evidence'),{code:'primary_page_not_read'});
      const excerpt=(modern?sourceExcerpt:legacySourceExcerpt)(source.text,topic.query);
-     if(Buffer.byteLength(excerpt)<80)throw Object.assign(new Error('page has no usable excerpt'),{code:'primary_page_empty'});
      const contentHash=hash(source.text);
-     state.sources.push({id:hash([topic.id,source.url,contentHash]).slice(0,24),topicId:topic.id,url:source.url,title:source.title,
-      retrievedAt:source.retrieved_at,publishedAt:source.published_at||'unknown',contentHash,text:source.text,excerpt,untrusted:true});
+     const storedSource={id:hash([topic.id,source.url,contentHash]).slice(0,24),topicId:topic.id,url:source.url,title:source.title,
+      retrievedAt:source.retrieved_at,publishedAt:source.published_at||'unknown',contentHash,text:source.text,excerpt,untrusted:true,
+      ...(job.researchSelectionVersion===3?{query:topic.query}:{})};
+     const usable=job.researchSelectionVersion===3?sourcePassages(storedSource,3).map(passage=>passage.quote).join('\n'):excerpt;
+     if(Buffer.byteLength(usable)<80)throw Object.assign(new Error('page has no usable excerpt'),{code:'primary_page_empty'});
+     state.sources.push(storedSource);
      item.status='completed';attempt.status='completed';item.error=null;save();
     } catch(error) {item.status='failed';item.error=error.code||'source_unavailable';attempt.status='failed';attempt.error=item.error;save();
      if(options.signal?.aborted)fail('creation_paused');
@@ -174,11 +179,12 @@ export function validateResearchSelection(value,sources,topics,selectionVersion=
  if(!value || !Array.isArray(value.facts) || value.facts.length>24)fail('creation_research_selection_invalid');
  const items=value.facts.map(fact=>{
   const source=sources.find(source=>source.id===fact.sourceId && source.topicId===fact.topicId);
-  const passage=selectionVersion===2?source?.passages?.find(item=>item.id===fact.passageId):null;
-  const quote=selectionVersion===2?passage?.quote:fact.quote;
+  const boundPassage=[2,3].includes(selectionVersion);
+  const passage=boundPassage?source?.passages?.find(item=>item.id===fact.passageId):null;
+  const quote=boundPassage?passage?.quote:fact.quote;
   if(!source || !topics.some(topic=>topic.id===fact.topicId && topic.required!==false) || typeof quote!=='string'
-    || quote.length<40 || quote.length>1200 || (selectionVersion===2?Object.hasOwn(fact,'quote'):!source.excerpt.includes(quote))
-    || (source.text && !source.text.includes(quote)))fail('creation_research_quote_unbound',selectionVersion===2
+    || quote.length<40 || quote.length>1200 || (boundPassage?Object.hasOwn(fact,'quote'):!source.excerpt.includes(quote))
+    || (source.text && !source.text.includes(quote)))fail('creation_research_quote_unbound',boundPassage
       ? 'Идентификатор выдержки не принадлежит выбранному источнику и теме. Выберите passageId из списка этой страницы; не присылайте поле quote.'
       : 'Выдержка не совпала с прочитанным первичным источником. Работа сохранена.');
   return {topic_id:source.topicId,source_url:source.url,source_title:source.title,source_type:'official-docs',source_published:source.publishedAt,
@@ -205,6 +211,8 @@ export function completeCreationSourceResearch(job,answer,research,options) {
   const data=contractData(job.contract.path,{root:options.root});
   const updated=applyExternalResearchEvidence(current,data,input,{topics:research.topics,
    evaluateOverallGate:text=>researchGateDecisionForReport(data,text,{stateRoot:options.stateRoot,artifactRoots:[job.draftRoot]})});
+  if(job.researchSelectionVersion===3 && !updated.coverage.complete && value.facts.some(fact=>['unknown','incompatible'].includes(fact.compatibilityStatus)))
+   fail('creation_research_evidence_incomplete',`Источники не подтверждают выбранные требования: ${updated.coverage.missingTopicIds.join(', ')}. Страницы и ответ сохранены; повторный запрос с теми же доказательствами не отправлен.`);
   if(updated.evidence.invalidCount || !updated.synthesis.complete || !updated.coverage.complete)fail('creation_research_selection_invalid',
    `Сводка источников неполна: ${[...updated.coverage.missingTopicIds,...updated.synthesis.errors].join(', ')}. Проверенные страницы сохранены.`);
   // Journal the exact output first, then publish with CAS; recovery can finish without a new model call.

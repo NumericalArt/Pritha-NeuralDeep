@@ -50,7 +50,7 @@ export class AgentCreationStore {
     if (input.briefProtocolVersion !== undefined && (input.briefProtocolVersion !== 1 || input.preparationPolicyVersion !== 2)) throw new AgentCreationError('creation_policy_invalid');
     if (input.researchProtocolVersion !== undefined && (![1,2].includes(input.researchProtocolVersion) || input.preparationPolicyVersion !== 2)) throw new AgentCreationError('creation_policy_invalid');
     if(input.researchTopicPolicyVersion!==undefined && (input.researchProtocolVersion!==2 || ![2,3].includes(input.researchTopicPolicyVersion)))throw new AgentCreationError('creation_policy_invalid');
-    if(input.researchSelectionVersion!==undefined && (input.researchProtocolVersion!==2 || ![1,2].includes(input.researchSelectionVersion)))throw new AgentCreationError('creation_policy_invalid');
+    if(input.researchSelectionVersion!==undefined && (input.researchProtocolVersion!==2 || ![1,2,3].includes(input.researchSelectionVersion)))throw new AgentCreationError('creation_policy_invalid');
     if (![input.chatId,input.instanceId,input.agentId].every(value => ID.test(value || ''))
       || !/^[a-f0-9]{40}$/.test(input.releaseSha || '')) throw new AgentCreationError('creation_identity_invalid');
     const tokenBudget = input.tokenBudget === undefined ? 1_000_000 : input.tokenBudget;
@@ -81,7 +81,7 @@ export class AgentCreationStore {
       if (input.briefProtocolVersion === 1) record.briefProtocolVersion = 1;
       if (input.researchProtocolVersion) record.researchProtocolVersion = input.researchProtocolVersion;
       if(input.researchProtocolVersion===2)record.researchTopicPolicyVersion=input.researchTopicPolicyVersion ?? 3;
-      if(input.researchProtocolVersion===2)record.researchSelectionVersion=input.researchSelectionVersion ?? 2;
+      if(input.researchProtocolVersion===2)record.researchSelectionVersion=input.researchSelectionVersion ?? 3;
       this.db.prepare('INSERT INTO agent_creation_jobs VALUES(?,?,?,?,?)').run(input.chatId,input.instanceId,input.agentId,1,JSON.stringify(record));
       return record;
     });

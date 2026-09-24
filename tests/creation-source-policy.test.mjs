@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {sourceExcerpt,sourcePassages,collectCreationSources,validateResearchSelection} from '../scripts/neuraldeep/creation-source-research.mjs';
+import {sourceExcerpt,sourcePassages,collectCreationSources,readCreationSources,validateResearchSelection} from '../scripts/neuraldeep/creation-source-research.mjs';
 import {deriveExternalResearchTopics} from '../scripts/agents-mother/external-research-topics.mjs';
 
 const text='The HTTP server receives explicit requests and preserves successful local records. External content must be encoded before inserting it into HTML. Errors must leave the previous successful result intact.';
@@ -151,6 +151,48 @@ test('new source packets contain bounded separate passages and old packets retai
  assert.ok(modern[0].passages.length>0 && modern[0].passages.length<=8);
  for(const passage of modern[0].passages)assert.ok(raw.includes(passage.quote));
  assert.ok(Buffer.byteLength(JSON.stringify(modern))<4000);
+});
+
+test('selection v3 retains parameter descriptions after navigation and preserves v2 packets',async t=>{
+ const f=fixture(t);f.job.researchSelectionVersion=3;
+ f.topic.query='MediaWiki Action API query list search srlimit snippet title URL API etiquette documentation';
+ const navigation=Array.from({length:12},(_,i)=>`* [Search action API menu ${i}](https://owasp.org/docs?title=API:Search&action=query&list=search)`).join('\n');
+ const parameters=[
+  'srsearch\n: Search for page titles or content matching the supplied query.\n: This parameter is required.',
+  'srlimit\n: How many matching pages to return.\n: This integer must be between 1 and 500; the default is 10.',
+  'snippet\n: Returns a passage containing the matching query with highlighting markup; encode external text before showing it.'
+ ];
+ const related=Array.from({length:12},(_,i)=>`titlesnippet${i}\n: Adds an optional page title with query term highlighting markup.`).join('\n\n');
+ const raw=navigation+'\n\n'+parameters.join('\n\n')+'\n\n'+related;
+ const sources=await collectCreationSources(f.job,f.research,{...f.options,search:{readPage:async ({url})=>page(url,raw)}});
+ assert.ok(sources[0].passages?.length,'Expected bound passages, not a stitched excerpt');
+ for(const parameter of parameters)assert.ok(sources[0].passages.some(p=>p.quote===parameter),parameter);
+ assert.ok(sources[0].passages.every(p=>raw.includes(p.quote)&&!p.quote.includes('menu')));
+ assert.equal(sources[0].text,undefined);assert.equal(sources[0].excerpt,undefined);
+ assert.deepEqual(readCreationSources(f.job,f.options),sources,'Reload preserves exact source IDs and passages');
+ const stored=f.state().sources[0];
+ assert.deepEqual(sourcePassages(stored),sourcePassages({...stored,query:'changed ignored by v2'}));
+ assert.ok(sourcePassages(stored).some(p=>p.quote.includes('menu')),'Saved v2 behavior remains reproducible');
+ const fact={sourceId:sources[0].id,topicId:f.topic.id,passageId:sources[0].passages[0].id};
+ assert.equal(validateResearchSelection({facts:[fact]},sources,[f.topic],3).items[0].claim,sources[0].passages[0].quote);
+ assert.throws(()=>validateResearchSelection({facts:[{...fact,quote:'forged'}]},sources,[f.topic],3),{code:'creation_research_quote_unbound'});
+});
+
+test('selection v3 rejects navigation-only pages before model dispatch and keeps the two-source quota',async t=>{
+ const f=fixture(t);f.job.researchSelectionVersion=3;let calls=0;
+ const search={readPage:async ({url})=>{calls++;return page(url,Array.from({length:20},(_,i)=>`* [HTML output encoding prevention reference ${i}](https://owasp.org/encoding/${i})`).join('\n\n'));}};
+ await assert.rejects(collectCreationSources(f.job,f.research,{...f.options,search}),{code:'creation_research_source_limit'});
+ await assert.rejects(collectCreationSources(f.job,f.research,{...f.options,search}),{code:'creation_research_source_limit'});
+ assert.equal(calls,2);assert.deepEqual(f.state().sources,[]);
+});
+
+test('selection v3 caps exact Unicode paragraphs and cannot accept a passage from another source',()=>{
+ const raw=Array.from({length:30},(_,i)=>`Данные 🌍 ${i}: HTTP server preserves successful local records; внешние ответы не дают новых прав. ${'Содержимое проверяется. '.repeat(10)}`).join('\n\n');
+ const source={id:'unicode',topicId:'runtime',contentHash:'c'.repeat(64),text:raw,query:'HTTP server данные records'};
+ const passages=sourcePassages(source,3);assert.ok(passages.length>0 && passages.length<=8);
+ assert.ok(passages.reduce((n,p)=>n+Buffer.byteLength(p.quote),0)<=2400);
+ for(const p of passages){assert.ok(raw.includes(p.quote));assert.doesNotMatch(p.quote,/\uFFFD/);assert.ok(p.quote.length<=1200);}
+ assert.notEqual(sourcePassages({...source,id:'different'},3)[0].id,passages[0].id);
 });
 
 test('v3 ignores dependency placeholders and Russian negations while v2 remains reproducible',()=>{

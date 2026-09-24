@@ -125,8 +125,8 @@ globalThis.fetch=async(url,init)=>{
   }
   if(mode==='research-v2') {
     assert.equal(modeRequests,1);assert.equal(payload.tool_choice,'none');assert.deepEqual(payload.tools,[]);
-    const packet=JSON.parse(payload.input[0].content[0].text);assert.ok(packet.research.sources.every(source=>(packet.researchSelectionVersion===2?source.passages.length:source.excerpt) && !source.text));
-    answer='```pritha-research-json\n'+JSON.stringify({facts:packet.research.sources.map(source=>({sourceId:source.id,topicId:source.topicId,...(packet.researchSelectionVersion===2?{passageId:source.passages[0].id}:{quote:source.excerpt}),versionContext:'Current synthetic primary page',compatibility:'The documented Node process and HTTP contract apply to the selected local product.',compatibilityStatus:'compatible'})),
+    const packet=JSON.parse(payload.input[0].content[0].text);assert.ok(packet.research.sources.every(source=>([2,3].includes(packet.researchSelectionVersion)?source.passages.length:source.excerpt) && !source.text));
+    answer='```pritha-research-json\n'+JSON.stringify({facts:packet.research.sources.map(source=>({sourceId:source.id,topicId:source.topicId,...([2,3].includes(packet.researchSelectionVersion)?{passageId:source.passages[0].id}:{quote:source.excerpt}),versionContext:'Current synthetic primary page',compatibility:'The documented Node process and HTTP contract apply to the selected local product.',compatibilityStatus:'compatible'})),
       synthesis:{relationship:'confirms',memory_comparison:'The primary pages confirm bounded local execution.',summary:'Use the agreed local product and persist successful results.',architecture_decision:'Use explicit manual refresh and atomic persistence.',alternatives:['Defer implementation'],tradeoffs:['Verification effort']}})+'\n```';
   }
   if(mode==='research' && modeRequests===1) {
@@ -248,7 +248,7 @@ try {
   currentResearch=await prepareCreationResearch(job,{root:workspace.cwd,stateRoot,model:'fixture-model'});
   if(hostResearchV2) {
     const search={search:async input=>({ok:true,status:'ok',sources:[{url:`https://${input.domains[0]}/fixture-primary-page`}]}),
-      readPage:async input=>({ok:true,status:'ok',sources:[{url:input.url,read:true,retrieved_at:new Date().toISOString(),text:'Current official HTTP runtime documentation requires bounded network requests, explicit error status and atomic persistence of successful source records across restarts.'}]})};
+      readPage:async input=>({ok:true,status:'ok',sources:[{url:input.url,read:true,retrieved_at:new Date().toISOString(),text:'Synthetic Node.js HTTP server and browser HTML security documentation requires bounded network requests and explicit error status.\n\nSynthetic SQLite transactions and filesystem storage preserve successful records atomically across restarts.\n\nSynthetic NeuralDeep model credentials, Responses output limits and authentication stay in the instance provider binding.\n\nSynthetic RSS XML feeds retain article links and text and use bounded requests with explicit errors.'}]})};
     await collectCreationSources(job,currentResearch,{root:workspace.cwd,stateRoot,search});
     currentResearch=readCreationResearch(job,{root:workspace.cwd,stateRoot});
     await prepRun('research-v2');assert.equal(job.researchAttemptCompleted,true);assert.equal(requests.filter(item=>item.mode==='research-v2').length,1);
