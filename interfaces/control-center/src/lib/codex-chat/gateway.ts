@@ -34,7 +34,7 @@ import { prepareCreationContextPacket, readCreationContextPacket } from "../../.
 import { acceptVerifiedResearchProgress, settleCreationPreparation, creationPreparationView } from "../../../../../scripts/neuraldeep/creation-preparation-control.mjs";
 import { preflightAgentCreation } from "../../../../../scripts/neuraldeep/creation-preflight.mjs";
 export { AgentCreationError };
-import { runCreationDelivery as deliverCreation, readCreationDelivery, recoverCreationDelivery, CreationDeliveryError } from "../../../../../scripts/neuraldeep/creation-delivery.mjs";
+import { runCreationDelivery as deliverCreation, readCreationDelivery, recoverCreationDelivery, CreationDeliveryError, type CreationDeliveryResult } from "../../../../../scripts/neuraldeep/creation-delivery.mjs";
 import { creationDraftRoot, creationReleaseIdentity, reconcileCreationArtifacts, creationJobView, approveCreationDocument, creationPrompt, creationHostStep, type CreationRequest } from "../../../../../scripts/neuraldeep/agent-creation.mjs";
 import { captureTargetFileManifest, diffTargetFileManifests, type TargetFileManifest } from "../../../../../scripts/neuraldeep/target-file-manifest.mjs";
 import { getPrithaRuntimeSettings } from "@/lib/realtime/pritha-runtime";
@@ -122,6 +122,17 @@ const SAFE_TASK_LINK_ID = /^[0-9A-Za-z][0-9A-Za-z._:-]{0,119}$/;
 
 function hash(value: unknown) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function creationDeliveryCheckpoint(result: CreationDeliveryResult, previous?: Omit<CreationDeliveryResult, 'taskDelivery'> | CreationDeliveryResult) {
+  // Task delivery has its own revision and live clock. It is a read-only
+  // projection, not a creation checkpoint or a reason to invalidate its CAS.
+  const {taskDelivery: _projection, ...checkpoint}=result;
+  if(previous) {
+    const {taskDelivery: _legacyProjection, ...prior}=previous as CreationDeliveryResult;
+    if(hash(checkpoint)===hash(prior))return previous;
+  }
+  return checkpoint;
 }
 
 function newId(prefix: "chat" | "turn" | "item") {
@@ -290,11 +301,12 @@ export class CodexChatGateway {
     await this.ensureRecoveredAfterRestart();
     const binding=await this.requireBinding(chatId);
     if(binding.creationWorkflowVersion!==1)return {job:null,legacy:binding.subject?.taskType==='agent_creation'};
-    await this.reconcileCreationExecution(chatId,binding);
+    const delivery=await this.reconcileCreationExecution(chatId,binding);
     this.acceptVerifiedResearch(chatId,binding);
     const job=this.withCreationStore(store=>store.get(chatId));
     const view=job ? creationJobView(job,{root:this.root,stateRoot:this.store.stateRoot,executionSha:binding.executionWorkspace?.baseCommit,
       hostStepActive:this.creationStepActive(chatId)}) : null;
+    if(view && delivery)view.delivery=delivery;
     if(view)view.observedUsage=this.withCreationStore(store=>creationObservedUsage(store.store,job));
     if(view && job.preparationPolicyVersion===2)Object.assign(view,this.withCreationStore(store=>creationPreparationView(store.store,job)));
     return {job:view,
@@ -421,7 +433,7 @@ export class CodexChatGateway {
       const result=await recoverCreationDelivery(job,{root:this.root,stateRoot:this.store.stateRoot,
         action:request.action as 'verify_saved'|'adopt_verified',requestId:request.requestId,signal:controller.signal,
         task:{chatId,nativeThreadId:binding.nativeThreadId,providerId:'neuraldeep_cli',stateIdentityHash:binding.stateIdentityHash}});
-      this.withCreationStore(store=>store.update(chatId,current=>({...current,lastAction:request.requestId,autoContinue:false,delivery:result,
+      this.withCreationStore(store=>store.update(chatId,current=>({...current,lastAction:request.requestId,autoContinue:false,delivery:creationDeliveryCheckpoint(result,current.delivery),
         status:controller.signal.aborted && ['cancelled','paused'].includes(current.status)?current.status:result.adopted?'ready':result.blocker?'blocked':'paused',
         phase:result.adopted?'finish':'verify',blocker:result.blocker || (result.usage.coverage==='complete'?null:{code:'creation_usage_unknown',message:'Сохранённая работа проверена. Расход прерванного запроса остаётся неизвестным; новая отправка запрещена.'}),
         budget:{...current.budget,tokensUsed:result.usage.knownTotalTokens,activeMs:result.usage.activeMs,
@@ -496,11 +508,12 @@ export class CodexChatGateway {
     }
     if(job.deliveryRunId && binding.nativeThreadId) {
       const result=readCreationDelivery(job,{root:this.root,stateRoot:this.store.stateRoot,task:{chatId,nativeThreadId:binding.nativeThreadId,providerId:'neuraldeep_cli',stateIdentityHash:binding.stateIdentityHash}});
-      if(result)this.withCreationStore(store=>store.update(chatId,current=>({...current,delivery:result,
+      if(result)this.withCreationStore(store=>store.update(chatId,current=>({...current,delivery:creationDeliveryCheckpoint(result,current.delivery),
         status:['cancelled','paused'].includes(current.status)?current.status:result.adopted?'ready':current.status==='running'?'paused':current.status,
         autoContinue:false,blocker:result.blocker?{code:result.blocker.code,message:result.blocker.message||result.blocker.summary}:current.blocker,
         budget:{...current.budget,tokensUsed:result.usage.knownTotalTokens,activeMs:result.usage.activeMs,
           unknownAttempts:result.usage.coverage==='complete'?current.budget.unknownAttempts.filter((id:string)=>id!==result.runId):[...new Set([...current.budget.unknownAttempts,result.runId])]}})));
+      return result;
     }
   }
 
@@ -591,7 +604,7 @@ export class CodexChatGateway {
         onRunId:runId=>{this.withCreationStore(store=>store.update(chatId,current=>({...current,deliveryRunId:runId})));}});
       this.withCreationStore(store=>store.update(chatId,current=>({...current,
         status:['paused','cancelled'].includes(current.status)?current.status:result.adopted?'ready':'blocked',
-        phase:result.adopted?'finish':'verify',deliveryRunId:result.runId,delivery:result,blocker:result.blocker,
+        phase:result.adopted?'finish':'verify',deliveryRunId:result.runId,delivery:creationDeliveryCheckpoint(result,current.delivery),blocker:result.blocker,
         budget:{...current.budget,tokensUsed:result.usage.knownTotalTokens,activeMs:result.usage.activeMs,
           unknownAttempts:result.usage.coverage==='complete' ? current.budget.unknownAttempts.filter((id:string)=>id!==result.runId)
             : [...new Set([...current.budget.unknownAttempts,result.runId])]}})));

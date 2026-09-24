@@ -3,7 +3,7 @@ id: neuraldeep-agent-creation-reliability-implementation
 type: review
 status: implemented-pending-release
 created: 2026-09-23
-updated: 2026-09-23
+updated: 2026-09-24
 topics: [neuraldeep, agent-creation, reliability, recovery]
 tools: [Pritha, Node.js, SQLite, Codex CLI]
 sources: [2026-09-23-neuraldeep-agent-creation-deep-audit, 2026-09-23-neuraldeep-agent-creation-reliability-plan]
@@ -51,6 +51,25 @@ confidence: high
 Для старых данных используется точная host executor receipt с совпадающими delivery/attempt/launcher IDs. Префикс строки, время и название модели доказательством принадлежности не являются. Неразрешимая связь остаётся явно неизвестной.
 
 Карточка разделяет подтверждённый итог, измеренную часть незакрытых исполнений, ожидающие и остановленные неизвестные запросы, удержанный резерв. При settlement тот же запрос не начисляется повторно; cached input уже включён в input. Проекция не переписывает ledger.
+
+## Повторное чтение delivery и конфликты действий
+
+Перед дополнительной серией 2026-09-24, до первого оплаченного запроса,
+обнаружено изменение creation revision при обычном GET завершённого build.
+Причина: в сохранённую creation job попадал весь `taskDelivery`, включая
+вычисляемый `budget.elapsedMs`. Новый отсчёт времени отличался от предыдущего
+snapshot; следующий GET и даже reconciliation перед POST меняли revision.
+Это могло отвергать действие оператора как `creation_revision_stale`, хотя
+ни работа, ни approvals, ни учтённый расход не изменялись.
+
+Теперь `taskDelivery` возвращается как актуальная read-only проекция со своей
+revision, а durable creation checkpoint хранит стабильные данные исполнения.
+Прежние snapshots не мигрируются только из-за чтения. Изменение подтверждённого
+расхода, состояния, recovery evidence и остальных данных исполнения по-прежнему
+обновляет creation revision и отвергает действительно устаревшее действие.
+Регрессия воспроизведена тестом до исправления; проверены повторные GET,
+актуальный clock в ответе и отмена с revision, полученной до очередного GET.
+Отдельный negative control сохраняет отказ при изменении реального usage.
 
 ## Проверки и выпуск
 

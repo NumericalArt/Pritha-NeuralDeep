@@ -41,7 +41,7 @@ function load(file, dependencies = {}) {
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-function fixture(t, { hostStep, recoverDelivery, settlePreparation, preparationV2=false } = {}) {
+function fixture(t, { hostStep, recoverDelivery, readDelivery, settlePreparation, preparationV2=false } = {}) {
   const temporary = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'pritha-creation-gateway-')));
   t.after(() => rmSync(temporary, { recursive: true, force: true }));
   const root = path.join(temporary, 'code'), stateRoot = path.join(temporary, 'state'), target = path.join(temporary, 'children', 'alpha');
@@ -69,7 +69,7 @@ function fixture(t, { hostStep, recoverDelivery, settlePreparation, preparationV
     '../../../../../scripts/neuraldeep/agent-creation.mjs': { ...creation, creationHostStep: hostStep || unexpected },
     '../../../../../scripts/neuraldeep/creation-runtime-receipt.mjs': runtimeReceipt,
     '../../../../../scripts/neuraldeep/creation-revision.mjs': creationRevision,
-    '../../../../../scripts/neuraldeep/creation-delivery.mjs': { ...creationDelivery, runCreationDelivery: unexpected, ...(recoverDelivery?{recoverCreationDelivery:recoverDelivery}:{}) },
+    '../../../../../scripts/neuraldeep/creation-delivery.mjs': { ...creationDelivery, runCreationDelivery: unexpected, ...(recoverDelivery?{recoverCreationDelivery:recoverDelivery}:{}), ...(readDelivery?{readCreationDelivery:readDelivery}:{}) },
     '../../../../../scripts/agents-mother/task-delivery.mjs': taskDelivery,
     '../../../../../scripts/neuraldeep/target-file-manifest.mjs': targetManifest,
     '../../../../../scripts/neuraldeep/creation-preflight.mjs': creationPreflight,
@@ -169,6 +169,44 @@ test('host source collection hides conflicting actions without changing durable 
   assert.equal(paused.body.data.job.status,'paused');assert.equal(paused.body.data.job.actions.pause,false);
   f.gateway.creationAdvances.clear();f.gateway.creationDeliveries.clear();
   const idle=(await f.get()).body.data.job;assert.equal(idle.hostStepActive,false);assert.equal(idle.actions.continue,true);
+  assert.equal(f.dispatches.length,0);
+});
+
+test('delivery clock projection stays live without invalidating creation actions on every read', async t => {
+  let elapsed = 10;
+  const result = () => ({runId:'delivery-fixture',status:'blocked',adopted:false,acceptance:'not_accepted',
+    blocker:{code:'build_runtime_unavailable',summary:'Saved failure'},
+    recovery:{verifySaved:false,adoptVerified:false,evidenceFresh:false,modelUse:'unknown'},
+    usage:{knownTotalTokens:120,activeMs:500,coverage:'complete'},
+    taskDelivery:{revision:'stable-ledger-revision',budget:{elapsedMs:elapsed++}}});
+  const f=fixture(t,{readDelivery:result});
+  // Legacy records already contain the read-only task projection. Merely
+  // observing a new clock value must not migrate or rewrite those records.
+  f.jobs.update(f.chatId,j=>({...j,deliveryRunId:'delivery-fixture',delivery:result(),status:'blocked',
+    blocker:{code:'build_runtime_unavailable',message:'Saved failure'},
+    budget:{...j.budget,tokensUsed:120,activeMs:500}}));
+  const first=await f.get();assert.equal(first.status,200,JSON.stringify(first.body));
+  const before=f.jobs.get(f.chatId), request=f.request('cancel');
+  const second=await f.get();assert.equal(second.status,200,JSON.stringify(second.body));
+  assert.ok(second.body.data.job.delivery.taskDelivery.budget.elapsedMs>first.body.data.job.delivery.taskDelivery.budget.elapsedMs);
+  assert.deepEqual(f.jobs.get(f.chatId),before,'clock-only polling must not change durable revision or timestamps');
+  const cancelled=await f.post(request);assert.equal(cancelled.status,200,JSON.stringify(cancelled.body));
+  assert.equal(cancelled.body.data.job.status,'cancelled');assert.equal(f.dispatches.length,0);
+});
+
+test('new delivery evidence still invalidates a stale creation action', async t => {
+  let tokens=100,elapsed=10;
+  const f=fixture(t,{readDelivery:()=>({runId:'delivery-fixture',status:'blocked',adopted:false,
+    blocker:{code:'saved_failure',summary:'Saved failure'},
+    usage:{knownTotalTokens:tokens,activeMs:500,coverage:'complete'},
+    taskDelivery:{revision:'ledger-'+tokens,budget:{elapsedMs:elapsed++}}})});
+  f.jobs.update(f.chatId,j=>({...j,deliveryRunId:'delivery-fixture',status:'blocked'}));
+  const first=await f.get();assert.equal(first.status,200,JSON.stringify(first.body));
+  const request=f.request('cancel'),before=f.jobs.get(f.chatId);
+  tokens=200;
+  const changed=await f.get();assert.equal(changed.body.data.job.budget.tokensUsed,200);
+  assert.equal(f.jobs.get(f.chatId).revision,before.revision+1);
+  const stale=await f.post(request);assert.equal(stale.body.error.code,'creation_revision_stale');
   assert.equal(f.dispatches.length,0);
 });
 
