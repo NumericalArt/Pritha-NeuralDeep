@@ -11,6 +11,7 @@ test("quality-gate unit tests do not inherit live instance configuration", () =>
     "PRITHA_CONTROL_CENTER_PORT",
     "PRITHA_CONTROL_CENTER_ENV_FILE",
     "PRITHA_SEARXNG_URL",
+    "PRITHA_NEURALDEEP_LOCAL_PARALLEL_LIMIT",
   ]) {
     assert.equal(process.env[key], undefined, `${key} leaked into the quality-gate test sandbox`);
   }

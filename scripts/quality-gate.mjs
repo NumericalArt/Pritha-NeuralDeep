@@ -122,6 +122,7 @@ const allCheckSpecs = [
       "PRITHA_CONTROL_CENTER_ENV_FILE",
       "PRITHA_SEARXNG_URL",
       "PRITHA_NEURALDEEP_CODEX_HOME",
+      "PRITHA_NEURALDEEP_LOCAL_PARALLEL_LIMIT",
     ],
   }],
   ["agents-mother-test", "Agents Mother self-inspection", "node", ["scripts/agents-mother.mjs", "test", ".", "--no-report"]],
