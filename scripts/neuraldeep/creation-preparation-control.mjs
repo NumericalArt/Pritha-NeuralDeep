@@ -17,6 +17,17 @@ export function settleCreationPreparation(job,receipt,options) {
   const progressHash=creationSemanticProgress(job,research);
   if(research)next.researchProgress={checked:research.checked,remaining:research.remaining};
   const progress=progressHash!==job.contextPacket?.progressHash;
+  if(['provider_timeout','iteration_deadline','provider_iteration_deadline'].includes(receipt.blocker?.code)) {
+    next.autoContinue=false;
+    if(!['paused','cancelled'].includes(next.status)) {
+      next.status='blocked';
+      next.blocker={code:receipt.blocker.code,message:'Pritha остановила запрос по локальному сроку ожидания. Работа сохранена. '+
+        (receipt.processExited && receipt.tokens!==null && !job.budget.unknownAttempts.length
+          ? 'Завершение и расход подтверждены; продолжение требует явного действия оператора.'
+          : 'Расход или завершение процесса ещё не подтверждены; новый запрос пока запрещён.')};
+    }
+    return next;
+  }
   if(receipt.blocker?.code==='neuraldeep_unavailable') {
     const phaseKey=phase || 'brief';
     const used=job.providerOutageContinuations?.[phaseKey] || 0;

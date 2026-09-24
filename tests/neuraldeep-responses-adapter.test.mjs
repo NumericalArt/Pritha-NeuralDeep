@@ -20,6 +20,35 @@ function invokeAdapter(options) {
   return { response, finished: server.listeners("request")[0](request, response) };
 }
 
+test('preparation deadline allows an active response past the legacy 930-second cap and keeps final usage',async t=>{
+ t.mock.timers.enable({apis:['setTimeout','Date'],now:1000});
+ const observed=[];
+ const deadline={version:2,hardDeadlineAt:1_801_000,softDeadlineAt:1_711_000,requestTimeoutMs:1_770_000,settlementGraceMs:30_000};
+ const body=JSON.stringify({usage:{input_tokens:20,output_tokens:3,total_tokens:23}});
+ const {response,finished}=invokeAdapter({deadline,fetchImpl:async(_url,{signal})=>({status:200,ok:true,headers:new Headers({'content-type':'application/json'}),body:(async function*(){
+   yield Buffer.from(body.slice(0,10));t.mock.timers.tick(940_000);
+   if(signal.aborted)throw signal.reason;
+   yield Buffer.from(body.slice(10));
+ })()}),onRequest:event=>observed.push(event)});
+ await finished;assert.equal(response.status,200);assert.equal(observed.length,1);
+ assert.equal(observed[0].usage.totalTokens,23);assert.equal(observed[0].timings.responseCompletedMs,940_000);
+ assert.equal(observed[0].timings.timedOut,false);
+});
+
+test('preparation hard deadline cancels a live stream, preserves unknown usage and does not retry',async t=>{
+ t.mock.timers.enable({apis:['setTimeout','Date'],now:1000});
+ const read=Promise.withResolvers(),observed=[];let calls=0;
+ const deadline={version:2,hardDeadlineAt:1_801_000,softDeadlineAt:1_711_000,requestTimeoutMs:1_770_000,settlementGraceMs:30_000};
+ const {finished}=invokeAdapter({deadline,fetchImpl:async(_url,{signal})=>{calls++;return {status:200,ok:true,headers:new Headers(),body:(async function*(){
+   yield Buffer.from('partial');read.resolve(signal);
+   await new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}));
+ })()};},onRequest:event=>observed.push(event)});
+ const signal=await Promise.race([read.promise,finished.then(()=>{throw Error('rejected before dispatch');})]);
+ t.mock.timers.tick(1_769_999);assert.equal(signal.aborted,false);t.mock.timers.tick(1);await finished;
+ assert.equal(calls,1);assert.equal(observed[0].cancellationReason,'iteration_deadline');
+ assert.equal(observed[0].usage,null);assert.equal(observed[0].timings.responseBytes,7);
+});
+
 test("default upstream deadline permits five-minute waits and aborts at 930 seconds", async t => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
   const dispatched = Promise.withResolvers();

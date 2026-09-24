@@ -25,6 +25,7 @@ import { resolveTaskChatPhase, taskChatPhasePreamble, taskChatTimeoutCheckpoint,
 import { privateUserContextFor } from "@/lib/private-user-context";
 import { AgentCreationStore, AgentCreationError, creationBudgetBlocker, creationPhase } from "../../../../../scripts/neuraldeep/agent-creation-store.mjs";
 import { creationRuntimeReceipt, creationObservedUsage } from "../../../../../scripts/neuraldeep/creation-runtime-receipt.mjs";
+import { preparationExecutionDeadline } from "../../../../../scripts/neuraldeep/creation-execution-policy.mjs";
 import { dispatchBlockerMessage } from "../../../../../scripts/neuraldeep/dispatch-blocker-message.mjs";
 import { reviseCreationProposal, creationRevisionPending } from "../../../../../scripts/neuraldeep/creation-revision.mjs";
 import { completeCreationBrief, prepareCreationOutcome } from "../../../../../scripts/neuraldeep/creation-preparation.mjs";
@@ -1485,6 +1486,7 @@ export class CodexChatGateway {
         active.creationStartedAt=Date.now();
         this.withCreationStore(store=>store.update(chatId,current=>({...current,stepStartedAt:new Date(active.creationStartedAt!).toISOString()})));
       }
+      const deadline=creation?.executionPolicy?.version===2 ? preparationExecutionDeadline(creation,active.creationStartedAt) : null;
       const run = await this.runner.start({
         admission: active.admissionLease?.launcherReceipt,
         model: intent.modelId,
@@ -1512,6 +1514,7 @@ export class CodexChatGateway {
         network: intent.network,
         usageSource: "codex-chat",
         workloadId: active.turnId,
+        ...(deadline ? {deadline} : {}),
         timeoutMs: creation ? Math.max(1,Math.min(intent.timeoutMs,creation.budget.maxActiveMs-creation.budget.activeMs)) : intent.timeoutMs,
         stdoutLogPath: path.join(this.store.root, "turns", active.turnId, "stdout.jsonl"),
         stderrLogPath: path.join(this.store.root, "turns", active.turnId, "stderr.log"),
@@ -1601,6 +1604,11 @@ export class CodexChatGateway {
     const failure = classifyNeuralDeepRunnerFailure(result);
     if (failure.kind === "input_rejected") {
       await this.finishAttempt(chatId, "failed", { code: failure.code || "attachment_input_rejected", message: dispatchBlockerMessage(failure.code) });
+      return;
+    }
+    if (!active.interrupted && failure.kind === "timeout" && result.providerError?.class === "control") {
+      await this.finishAttempt(chatId,"failed",{code:failure.code || "provider_timeout",
+        message:"Pritha остановила запрос по локальному сроку ожидания. Работа сохранена. Перед продолжением нужно подтвердить завершение процесса и расход; запрос автоматически не повторяется."});
       return;
     }
     if (active.interrupted || failure.kind === "interrupted") {
@@ -1809,8 +1817,8 @@ export class CodexChatGateway {
           if(status==='completed' && creation.preparationPolicyVersion===2 && ['interview','contract'].includes(creation.phase)) {
             next.preparation={...next.preparation,pendingProposalTurnId:active.turnId};
           } else if(status==='completed' && !next.contract && next.status==='pending')next.status='waiting_input';
-          const settledReceipt = error?.code === "neuraldeep_unavailable" && !receipt.blocker
-            ? { ...receipt, blocker: { code: "neuraldeep_unavailable", message: error.message || "" } }
+          const settledReceipt = error && ["neuraldeep_unavailable","provider_timeout","iteration_deadline","provider_iteration_deadline"].includes(error.code) && !receipt.blocker
+            ? { ...receipt, blocker: { code: error.code, message: error.message || "" } }
             : receipt;
           if(status==='completed' && creation.phase==='research' && creation.researchProtocolVersion===2) {
             next.preparation={...next.preparation,pendingResearchTurnId:active.turnId};

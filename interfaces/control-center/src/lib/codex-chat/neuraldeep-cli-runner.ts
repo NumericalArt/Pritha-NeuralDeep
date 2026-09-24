@@ -171,7 +171,7 @@ export class NeuralDeepCliRunner {
       stderrTail = `${stderrTail}\n${error.message}`.slice(-STDERR_TAIL_CHARS);
     });
 
-    const timeoutMs = Number(options.timeoutMs);
+    const timeoutMs = options.deadline ? Math.max(1,Math.min(Number(options.timeoutMs) || Infinity,options.deadline.hardDeadlineAt-Date.now())) : Number(options.timeoutMs);
     const timer = Number.isFinite(timeoutMs) && timeoutMs > 0
       ? setTimeout(() => {
           interruptProcess("timeout");
@@ -216,6 +216,9 @@ export function classifyNeuralDeepRunnerFailure(result: NeuralDeepCliRunResult):
     return { kind: "interrupted", code: "interrupted", retryableBeforeToolActivity: false };
   }
   if (result.timedOut) return { kind: "timeout", code: "codex_cli_timeout", retryableBeforeToolActivity: false };
+  if (result.providerError?.class === "control" && ["provider_timeout", "iteration_deadline", "provider_iteration_deadline"].includes(result.providerError.code)) {
+    return { kind: "timeout", code: result.providerError.code, retryableBeforeToolActivity: false };
+  }
   if (result.providerError?.class === "input") return { kind: "input_rejected", code: result.providerError.code, retryableBeforeToolActivity: false };
   if (result.providerError?.class === "control") return { kind: "interrupted", code: result.providerError.code, retryableBeforeToolActivity: false };
   if (result.code === 0 && !result.failedEvent && result.completedEvent && result.threadId) {

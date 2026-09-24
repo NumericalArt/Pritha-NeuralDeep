@@ -334,6 +334,23 @@ test('known usage cannot release a creation step while a descendant remains aliv
   assert.equal(f.dispatches.length,0);
 });
 
+test('local adapter timeout keeps its cause and unknown usage after the process exits, without another dispatch',async t=>{
+ const f=fixture(t,{preparationV2:true}),turnId='turn_local_deadline';
+ let turn={turnId,status:'in_progress',items:[],executionIntent:{dispatchState:'dispatched'}};
+ Object.assign(f.gateway.store,{mutateTurn:async(_chat,_turn,update)=>(turn=update(turn)),getTurn:async()=>turn,
+   patch:async()=>{},historyStore:async()=>({liveTurns:()=>[]})});
+ f.jobs.update(f.chatId,job=>({...job,status:'running',activeTurnId:turnId}));
+ f.journal.beginRuntimeRun({runId:'local-deadline',requestHash:'c'.repeat(64),receipt:{workload_id:turnId}});
+ f.journal.updateRuntimeRun('local-deadline',{process_exited:true,process_tree_exited:true,adapter_closed:true,usage_record:{usageKnown:false}});
+ f.gateway.activeTurns.set(f.chatId,{turnId,admissionController:new AbortController(),admissionLease:{release:async()=>{}}});
+ await f.gateway.finishAttempt(f.chatId,'failed',{code:'iteration_deadline',message:'Local deadline'});
+ const job=f.jobs.get(f.chatId);
+ assert.equal(job.blocker.code,'iteration_deadline');assert.match(job.blocker.message,/локальному сроку/);
+ assert.equal(job.status,'blocked');assert.equal(job.autoContinue,false);assert.equal(job.activeTurnId,null);
+ assert.deepEqual(job.budget.unknownAttempts,[turnId]);assert.equal(job.budget.turns[turnId].tokens,null);
+ assert.equal(f.dispatches.length,0);
+});
+
 for(const stage of ['intent_recorded','drafts_archived','seed_written','receipt_completed']) {
   test(`UI revision retries the exact pending action after ${stage}`,async t=>{
     const f=fixture(t);

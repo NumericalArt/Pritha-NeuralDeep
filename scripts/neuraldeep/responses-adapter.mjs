@@ -87,7 +87,8 @@ export function createNeuralDeepAdapter(options = {}) {
   const upstreamOrigin = new URL(options.upstreamOrigin || DEFAULT_UPSTREAM);
   const requestLimit = options.requestLimit || DEFAULT_REQUEST_LIMIT;
   const responseLimit = options.responseLimit || DEFAULT_RESPONSE_LIMIT;
-  const upstreamTimeoutMs = options.upstreamTimeoutMs || DEFAULT_UPSTREAM_TIMEOUT_MS;
+  const upstreamTimeoutMs = options.upstreamTimeoutMs || (options.deadline?.version===2
+    ? options.deadline.requestTimeoutMs : DEFAULT_UPSTREAM_TIMEOUT_MS);
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   if (upstreamOrigin.protocol !== "https:") throw new Error("NeuralDeep upstream must use HTTPS");
   // Node fetch has separate 300-second header/body timers unless its dispatcher overrides them.
@@ -146,7 +147,7 @@ export function createNeuralDeepAdapter(options = {}) {
       const window=requestDeadlineWindow(options.deadline);
       timeout=setTimeout(()=>{
         timings.timedOut=true;
-        abort(window!==null && window<upstreamTimeoutMs?'iteration_deadline':'provider_timeout','Provider response did not finish in the permitted request window');
+        abort(window!==null?'iteration_deadline':'provider_timeout','Pritha stopped the response at its local request deadline');
       },Math.min(upstreamTimeoutMs,window ?? upstreamTimeoutMs));
       if(options.responsesOnly && requestUrl.pathname !== '/v1/responses')throw Object.assign(new Error('This budgeted adapter accepts only Responses requests.'),{code:'provider_budget_endpoint',statusCode:409});
       let body = await readNodeBody(request, requestLimit);

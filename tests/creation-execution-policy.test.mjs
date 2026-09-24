@@ -6,6 +6,25 @@ import { NeuralDeepCoordinationStore } from '../scripts/neuraldeep/coordination-
 import { CodexCliBuildExecutor } from '../scripts/agents-mother/build-executors.mjs';
 import {creationPreparationPolicy,assertPreparationPolicy} from '../scripts/neuraldeep/creation-preparation-policy.mjs';
 import {prepareBudgetedRequest} from '../scripts/neuraldeep/provider-budget.mjs';
+import * as deadlines from '../scripts/neuraldeep/creation-execution-policy.mjs';
+
+test('preparation uses the pinned step window, leaves settlement time and preserves legacy jobs',()=>{
+ const policy=creationExecutionPolicy({modelId:'qwen3.8-27b',timeoutMs:1_800_000});
+ const job={executionPolicy:policy,budget:{maxActiveMs:5_400_000,activeMs:0}};
+ const deadline=deadlines.preparationExecutionDeadline(job,1000);
+ assert.equal(deadline.version,2);
+ assert.equal(deadline.hardDeadlineAt,1_801_000);
+ assert.equal(requestDeadlineWindow(deadline,2000),1_769_000);
+ assert.equal(requestDeadlineWindow(deadline,deadline.softDeadlineAt),60_000);
+ assert.throws(()=>requestDeadlineWindow(deadline,deadline.softDeadlineAt+1),{code:'provider_iteration_deadline'});
+ assert.throws(()=>requestDeadlineWindow(deadline,deadline.hardDeadlineAt+100_000),{code:'provider_iteration_deadline'});
+ const short=deadlines.preparationExecutionDeadline({...job,budget:{maxActiveMs:5_400_000,activeMs:5_350_000}},1000);
+ assert.equal(short.hardDeadlineAt,51000);
+ assert.ok(requestDeadlineWindow(short,1000)<50000);
+ assert.equal(deadlines.preparationExecutionDeadline({...job,executionPolicy:{...policy,version:1}},1000),null);
+ assert.equal(deadlines.preparationExecutionDeadline({...job,executionPolicy:undefined},1000),null);
+ assert.throws(()=>deadlines.preparationExecutionDeadline({...job,budget:{maxActiveMs:10,activeMs:10}},1000),{code:'provider_iteration_deadline'});
+});
 
 test('larger Qwen response policy preserves older pinned caps and the million-token allocation',()=>{
  const next=creationExecutionPolicy({modelId:'qwen3.8-27b'});

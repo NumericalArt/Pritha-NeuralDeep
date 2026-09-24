@@ -17,9 +17,10 @@ function fixture() {
   const spawn = (_command, args) => {
     const child = new EventEmitter();
     child.stdout = new EventEmitter(); child.stderr = new EventEmitter();
+    child.stdin = new EventEmitter(); child.stdin.end = value => { child.input=value; };
     child.stdout.setEncoding = child.stderr.setEncoding = () => {};
     child.kill = () => { child.emit('close', null, 'SIGKILL'); return true; };
-    const call = { kind: args[1], finish(payload, code = 0) {
+    const call = { kind: args[1], args, child, finish(payload, code = 0) {
       child.stdout.emit('data', JSON.stringify(payload)); child.emit('close', code, null);
     }, fail() { child.emit('error', new Error('fixture spawn failure')); } };
     calls.push(call);
@@ -40,6 +41,17 @@ function fixture() {
   new Function('require', 'module', 'exports', 'Date', compiled)(id => dependencies[id] || require(id), module, module.exports, Clock);
   return { runtime: new module.exports.NeuralDeepCliRuntime(), calls, advance: ms => { now += ms; } };
 }
+
+test('chat runtime forwards the exact host deadline to initial and resumed CLI launches',()=>{
+ const f=fixture(),deadline={version:2,hardDeadlineAt:1_801_000,softDeadlineAt:1_711_000,requestTimeoutMs:1_770_000,settlementGraceMs:30_000};
+ for(const resume of [null,'saved_session']) {
+  f.runtime.startTurn({model:'fixture',sandbox:'workspace-write',cwd:'/fixture',prompt:'bounded request',network:false,resume,deadline});
+  const call=f.calls.at(-1),index=call.args.indexOf('--deadline-policy');
+  assert.ok(index>=0);assert.deepEqual(JSON.parse(call.args[index+1]),deadline);
+  if(resume)assert.equal(call.args[call.args.indexOf('--resume')+1],resume);
+  call.child.emit('close',0,null);
+ }
+});
 
 test('overlapping normal and forced provider checks use one live helper', async () => {
   const f = fixture();

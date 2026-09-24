@@ -167,6 +167,22 @@ test('one settled provider outage reopens the phase from checkpoint and the seco
   assert.equal(second.budget.maxTokens,1_000_000);
 });
 
+test('local request expiry preserves accounting and requires an explicit action even with settled usage',t=>{
+ const f=setup(t);f.start(1);f.complete(100);
+ const base=f.jobs.get(f.initial.chatId),options={root:f.options.root,stateRoot:f.options.stateRoot,phase:'interview'};
+ for(const code of ['provider_timeout','iteration_deadline','provider_iteration_deadline']) {
+  for(const known of [false,true]) {
+   const job={...base,budget:{...base.budget,unknownAttempts:known?[]:['turn_unknown']},autoContinue:true};
+   const receipt={processExited:true,tokens:known?100:null,blocker:{code}};
+   const next=settleCreationPreparation(job,receipt,options);
+   assert.equal(next.status,'blocked');assert.equal(next.autoContinue,false);assert.equal(next.blocker.code,code);
+   assert.deepEqual(next.budget,job.budget);assert.match(next.blocker.message,/локальному сроку/);
+   assert.doesNotMatch(next.blocker.message,/Сеть|оборвалась/);
+   assert.match(next.blocker.message,known?/действия оператора/:/новый запрос пока запрещён/);
+  }
+ }
+});
+
 test('a remaining host gate stops tool-free selection even when primary facts made progress',()=>{
   const base={preparationPolicyVersion:2,researchProtocolVersion:2,status:'pending',phase:'research',autoContinue:true,
     budget:{maxTokens:1000000,unknownAttempts:[]},contextPacket:{progressHash:'old'},preparation:{}};

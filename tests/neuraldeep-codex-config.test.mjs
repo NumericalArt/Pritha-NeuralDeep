@@ -211,17 +211,18 @@ process.stdin.on('end', async () => {
   t.mock.method(globalThis, "fetch", async () => Response.json({ ok: true, message: "fixture-private-answer" }));
   const runtime = neuralDeepRuntimeConfig({ PRITHA_STATE_ROOT: stateRoot, PRITHA_CODEX_BIN: binary,
     PRITHA_NEURALDEEP_KEYCHAIN_SERVICE: "unused-nd-unit-fixture", PRITHA_NEURALDEEP_UPSTREAM_ORIGIN: "https://neuraldeep.invalid" });
-  for (const [index, args] of [["exec"], ["exec", "resume", "synthetic-session"]].entries()) {
-    const result = await runCodexWithNeuralDeep(runtime, args, { input: "synthetic", runId: `timing-${index}`, model: "fixture" });
+  for (const [index, args] of [["exec"], ["exec", "resume", "synthetic-session"], ["exec"]].entries()) {
+    const now=Date.now(),deadline=index===2 ? {version:2,hardDeadlineAt:now+1_800_000,softDeadlineAt:now+1_710_000,requestTimeoutMs:1_770_000,settlementGraceMs:30_000} : undefined;
+    const result = await runCodexWithNeuralDeep(runtime, args, { input: "synthetic", runId: `timing-${index}`, model: "fixture", deadline });
     assert.equal(result.code, 0);
     const actual = JSON.parse(readFileSync(capturedArgs, "utf8"));
-    assert.ok(actual.includes("model_providers.neuraldeep.stream_idle_timeout_ms=960000"));
+    assert.ok(actual.includes(`model_providers.neuraldeep.stream_idle_timeout_ms=${deadline?1_800_000:960_000}`));
     assert.ok(actual.includes("model_providers.neuraldeep.request_max_retries=0"));
     assert.ok(actual.includes("model_providers.neuraldeep.stream_max_retries=0"));
   }
   const events = readFileSync(runtime.provenancePath, "utf8").trim().split("\n").map(line => JSON.parse(line));
   const timings = events.filter(event => event.event === "provider_request_finished");
-  assert.equal(timings.length, 2);
+  assert.equal(timings.length, 3);
   for (const event of timings) {
     assert.equal(event.status, 200);
     assert.match(event.request_hash, /^[a-f0-9]{64}$/);

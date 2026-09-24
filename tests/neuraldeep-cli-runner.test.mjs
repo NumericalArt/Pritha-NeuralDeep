@@ -62,6 +62,19 @@ const baseOptions = {
   network: false,
 };
 
+test('local request deadlines are timeouts, never provider outages or operator cancellation',async()=>{
+ const loaded=await loadRunner();
+ try {
+  for(const code of ['provider_timeout','iteration_deadline','provider_iteration_deadline']) {
+   const result=loaded.module.classifyNeuralDeepRunnerFailure({code:1,signal:null,stderrTail:'502 Bad Gateway',
+     timedOut:false,interrupted:false,handlerErrorCode:null,toolActivity:false,
+     providerError:{class:'control',code,status:502,retryAfter:null}});
+   assert.equal(result.kind,'timeout');assert.equal(result.code,code);
+   assert.equal(result.retryableBeforeToolActivity,false);
+  }
+ } finally {loaded.cleanup();}
+});
+
 test("shared runner parses ordered JSONL, retains private logs and classifies provider failures", async () => {
   const loaded = await loadRunner();
   const stateRoot = path.join(loaded.tmp, "state");

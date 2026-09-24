@@ -31,7 +31,7 @@ export function classifyNeuralDeepProviderError({ status, payload, transportCode
   const transport = safeCode(transportCode);
   const retry = retryAfter == null || retryAfter === "" ? null : String(retryAfter).slice(0, 80);
 
-  if (['provider_iteration_deadline','iteration_deadline','job_deadline','operator_cancel','client_disconnect','host_shutdown','host_signal'].includes(transport)) {
+  if (['provider_timeout','provider_iteration_deadline','iteration_deadline','job_deadline','operator_cancel','client_disconnect','host_shutdown','host_signal'].includes(transport)) {
     return {class:'control',code:transport,status:statusCode,retryAfter:null};
   }
 

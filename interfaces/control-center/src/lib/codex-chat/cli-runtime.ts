@@ -1,5 +1,6 @@
 import { searchIntent } from "../../../../../scripts/search/intent.mjs";
 import { neuralDeepRuntimeIdentity } from "../../../../../scripts/neuraldeep/runtime-identity.mjs";
+import type { ExecutionDeadline } from "../../../../../scripts/neuraldeep/creation-execution-policy.mjs";
 import { createHash } from "node:crypto";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import path from "node:path";
@@ -39,6 +40,7 @@ export type CliTurnOptions = {
   images?: string[];
   attachmentManifest?: string;
   admission?: { attemptId: string; ownerToken: string };
+  deadline?: ExecutionDeadline;
 };
 
 const CAPABILITIES: RuntimeCapabilityMap = {
@@ -228,6 +230,7 @@ export class NeuralDeepCliRuntime {
     if (options.effort && options.effort !== "none") args.push("--effort", options.effort);
     if (options.resume) args.push("--resume", options.resume);
     if (options.executionCodeRoot) args.push("--execution-code-root",options.executionCodeRoot);
+    if (options.deadline) args.push("--deadline-policy", JSON.stringify(options.deadline));
     args.push("--network", options.network ? "enabled" : "disabled");
     args.push("--usage-source", options.usageSource || "codex-chat");
     if (options.workloadId) args.push("--workload-id", options.workloadId);

@@ -233,13 +233,16 @@ async function readStdin() {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-function runtimeConfigArgs(runtime, adapterPort) {
+function runtimeConfigArgs(runtime, adapterPort, deadline) {
+  // Brief/research responses are buffered until validated: an idle CLI may still have a live upstream.
+  const streamIdleTimeoutMs=deadline?.version===2
+    ? Math.max(STREAM_IDLE_TIMEOUT_MS,deadline.requestTimeoutMs+deadline.settlementGraceMs) : STREAM_IDLE_TIMEOUT_MS;
   return [
     "-c", `model_provider=${tomlString("neuraldeep")}`,
     "-c", `model_providers.neuraldeep.base_url=${tomlString(`http://${runtime.host}:${adapterPort}/v1`)}`,
     "-c", "model_providers.neuraldeep.request_max_retries=0",
     "-c", "model_providers.neuraldeep.stream_max_retries=0",
-    "-c", `model_providers.neuraldeep.stream_idle_timeout_ms=${STREAM_IDLE_TIMEOUT_MS}`,
+    "-c", `model_providers.neuraldeep.stream_idle_timeout_ms=${streamIdleTimeoutMs}`,
     "-c", "analytics.enabled=false",
     "-c", "sandbox_workspace_write.exclude_slash_tmp=true",
     "-c", "sandbox_workspace_write.exclude_tmpdir_env_var=false",
@@ -250,11 +253,11 @@ function runtimeConfigArgs(runtime, adapterPort) {
   ];
 }
 
-function injectRuntimeArgs(args, runtime, adapterPort) {
+function injectRuntimeArgs(args, runtime, adapterPort, deadline) {
   if (args.some(value => /^(?:-c|--config=)?model_providers?(?:[.=]|$)/.test(String(value)))) throw new Error("neuraldeep_provider_override_forbidden");
   const next = [...args];
   const insertion = next[0] === "exec" && next[1] === "resume" ? 2 : next[0] === "exec" ? 1 : 0;
-  next.splice(insertion, 0, ...runtimeConfigArgs(runtime, adapterPort));
+  next.splice(insertion, 0, ...runtimeConfigArgs(runtime, adapterPort, deadline));
   return next;
 }
 
@@ -431,7 +434,7 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
     await closeNeuralDeepAdapter(server);
     throw new Error("neuraldeep_adapter_address_unavailable");
   }
-  const args = withTemporaryWritableRoot(injectRuntimeArgs(codexArgs, runtime, address.port), temporaryPath);
+  const args = withTemporaryWritableRoot(injectRuntimeArgs(codexArgs, runtime, address.port, options.deadline), temporaryPath);
   const searchInsert = args[0] === "exec" && args[1] === "resume" ? 2 : args[0] === "exec" ? 1 : 0;
   args.splice(searchInsert, 0, ...searchMcpArgs(runtime.projectRoot));
   // Keep budgeted work on this run's request ledger. Pritha Search remains

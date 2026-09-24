@@ -17,6 +17,7 @@ const signalDeskPreparation=process.argv.includes('--signal-desk-preparation');
 const expandedDialogue=process.argv.includes('--expanded-dialogue');
 const researchReadLoop=process.argv.includes('--research-read-loop');
 const hostResearchV2=process.argv.includes('--host-research-v2');
+const preparationDeadlineV2=process.argv.includes('--preparation-deadline-v2');
 if(hostResearchV2 && researchReadLoop)throw Error('incompatible_fixture_modes');
 const {preparationAnswers,detailedCriteria}=await import('../../tests/fixtures/creation-dialogue-sequence.mjs');
 const root=realpathSync(fileURLToPath(new URL('../..',import.meta.url))),load=relative=>import(pathToFileURL(path.join(root,relative)));
@@ -33,6 +34,7 @@ const {prepareCreationResearch,readCreationResearch}=await load('scripts/neurald
 const {collectCreationSources,readCreationSources,completeCreationSourceResearch}=await load('scripts/neuraldeep/creation-source-research.mjs');
 const {settleCreationPreparation}=await load('scripts/neuraldeep/creation-preparation-control.mjs');
 const {creationRuntimeReceipt}=await load('scripts/neuraldeep/creation-runtime-receipt.mjs');
+const {preparationExecutionDeadline}=await load('scripts/neuraldeep/creation-execution-policy.mjs');
 const {creationPreparationUsage}=await load('scripts/neuraldeep/creation-preparation-policy.mjs');
 const {runCreationDelivery}=await load('scripts/neuraldeep/creation-delivery.mjs');
 const {FunctionBuildExecutor}=await load('scripts/agents-mother/build-executors.mjs');
@@ -52,7 +54,8 @@ writeFileSync(path.join(home,'config.toml'),`model = "fixture-model"\nmodel_prov
 const runtime=neuralDeepRuntimeConfig(process.env),store=new NeuralDeepCoordinationStore(neuralDeepCoordinationPaths(stateRoot,root)),jobs=new AgentCreationStore(store);
 const chatId='chat_stockcreation',instanceId='stock-creation-fixture',draftRoot=creationDraftRoot(stateRoot,instanceId,chatId),target=path.join(agentParent,'stock-fixture');
 mkdirSync(draftRoot,{recursive:true});mkdirSync(target);
-let job=jobs.create({chatId,instanceId,agentId:'stock-fixture',target,draftRoot,releaseSha:sha,preparationPolicyVersion:2,briefProtocolVersion:1,researchProtocolVersion:hostResearchV2?2:1});
+let job=jobs.create({chatId,instanceId,agentId:'stock-fixture',target,draftRoot,releaseSha:sha,preparationPolicyVersion:2,briefProtocolVersion:1,researchProtocolVersion:hostResearchV2?2:1,
+  ...(preparationDeadlineV2?{executionSettings:{modelId:'fixture-model',timeoutMs:1_800_000}}:{})});
 const workspace=await new NeuralDeepExecutionWorkspaces(store,{stateRoot}).prepare({ownerId:chatId,sourcePath:root,mutating:true,expectedCommit:sha,requireClean:true});
 const options={root,stateRoot,sourceRoot:workspace.cwd,sourceRevision:sha,agentParent,model:'fixture-model',effort:null};
 const history=new NeuralDeepChatHistoryStore({databasePath:path.join(stateRoot,'history.sqlite'),instanceScope:instanceId});
@@ -184,11 +187,13 @@ async function prepRun(nextMode) {
   const claim=store.claim(attemptId,1);assert.ok(claim);
   process.env.PRITHA_AGENT_AUTHORING_ROOT=draftRoot;process.env.PRITHA_NEURALDEEP_ADMISSION_RECEIPT=JSON.stringify({attemptId,ownerToken:claim.ownerToken});
   const runOptions={cwd:draftRoot,executionCodeRoot:workspace.cwd,model:'fixture-model',sandbox:'workspace-write',network:false,workloadId:turnId,usageSource:'codex-chat',
+    ...(preparationDeadlineV2?{deadline:preparationExecutionDeadline(job)}:{}),
     input:readCreationContextPacket(job,{stateRoot}).text+'\n'+creationPrompt({...job,executionCodeRoot:workspace.cwd}),emitProviderEvents:true,
     onEvent:event=>{history.sourceRaw(chatId,turnId,JSON.stringify(event));const item=event.item?{...event.item,id:turnId+'_'+event.item.id}:null;if(event.type!=='item.completed'||!item)return;
       if(item.type==='agent_message')history.putItem(chatId,turnId,{id:item.id,kind:'assistant_message',message:{id:item.id,role:'assistant',markdown:item.text,status:'completed',phase:'final_answer',createdAt:new Date().toISOString()}},item.text);
       if(item.type==='command_execution')history.putItem(chatId,turnId,{id:item.id,kind:'command',status:'completed',commandPreview:item.command,outputPreview:item.aggregated_output||'',exitCode:item.exit_code},item.aggregated_output||'');}};
   const result=await runCodexWithNeuralDeep(runtime,buildCodexExecArgs(runOptions),runOptions);
+  if(preparationDeadlineV2)assert.deepEqual(store.runtimeRun(result.runId).execution_deadline,runOptions.deadline);
   delete process.env.PRITHA_AGENT_AUTHORING_ROOT;delete process.env.PRITHA_NEURALDEEP_ADMISSION_RECEIPT;
   assert.ok(result.processTreeExited);lastSession=result.sessionId;sessions.push(lastSession);
   const receipt=creationRuntimeReceipt(store,turnId);assert.ok(receipt.processExited);assert.notEqual(receipt.tokens,null);
@@ -288,6 +293,7 @@ try {
   const usage=creationPreparationUsage(store,job);assert.ok(usage.requests<=12);assert.ok(usage.total<=300000);assert.ok(usage.phase.brief<=100000);assert.ok(usage.phase.research<=200000);
   assert.ok([...history.audit({chatId})].some(row=>JSON.stringify(row).includes(hostResearchV2?'Current synthetic primary page':'OLD_LARGE_OUTPUT_')),'original research history is retained');
   const report={status:'pass',sha,cli:execFileSync(process.env.PRITHA_CODEX_BIN||'codex',['--version'],{encoding:'utf8'}).trim(),paidCalls:0,
+    preparationDeadlineVersion:preparationDeadlineV2?2:null,
     nativeSessions:sessions.length,preparation:usage,requests,builds,streamIdentityVariants:[...streamIdentityVariants],zeroOutcomeRequests:true,reviewedRevision:true,checkpointRotation:!hostResearchV2,researchProtocolVersion:hostResearchV2?2:1,independentNegativeControl:true,adopted:true,acceptance:'not_accepted'};
   if(reportPath){mkdirSync(path.dirname(reportPath),{recursive:true});writeFileSync(reportPath,JSON.stringify(report,null,2),{mode:0o600});}
   console.error(JSON.stringify(report));passed=true;

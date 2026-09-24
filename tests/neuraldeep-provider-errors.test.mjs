@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { classifyNeuralDeepProviderError } from "../scripts/neuraldeep/provider-error.mjs";
 
+test('local adapter timeout is a control stop while an upstream 504 remains an outage',()=>{
+ assert.deepEqual(classifyNeuralDeepProviderError({transportCode:'provider_timeout',status:502}),
+   {class:'control',code:'provider_timeout',status:502,retryAfter:null});
+ assert.equal(classifyNeuralDeepProviderError({status:504}).class,'outage');
+});
+
 test("provider status classification separates credentials, billing, rate limits, outages and missing models", () => {
   assert.equal(classifyNeuralDeepProviderError({ status: 401, payload: {} }).class, "credentials");
   assert.equal(classifyNeuralDeepProviderError({ status: 403, payload: { error: { code: "insufficient_balance" } } }).class, "billing");

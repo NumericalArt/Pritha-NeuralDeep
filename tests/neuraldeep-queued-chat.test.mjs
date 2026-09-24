@@ -17,6 +17,7 @@ import * as handoffs from '../scripts/neuraldeep/handoff-barriers.mjs';
 import * as creationStore from '../scripts/neuraldeep/agent-creation-store.mjs';
 import * as creation from '../scripts/neuraldeep/agent-creation.mjs';
 import * as creationReceipts from '../scripts/neuraldeep/creation-runtime-receipt.mjs';
+import * as creationDeadlines from '../scripts/neuraldeep/creation-execution-policy.mjs';
 import * as dispatchMessages from '../scripts/neuraldeep/dispatch-blocker-message.mjs';
 import * as creationDelivery from '../scripts/neuraldeep/creation-delivery.mjs';
 import * as targetManifest from '../scripts/neuraldeep/target-file-manifest.mjs';
@@ -67,6 +68,7 @@ async function fixture(t,{sourceProject=null}={}) {
     '../../../../../scripts/neuraldeep/agent-creation-store.mjs':creationStore,
     '../../../../../scripts/neuraldeep/agent-creation.mjs':creation,
     '../../../../../scripts/neuraldeep/creation-runtime-receipt.mjs':creationReceipts,
+    '../../../../../scripts/neuraldeep/creation-execution-policy.mjs':creationDeadlines,
     '../../../../../scripts/neuraldeep/dispatch-blocker-message.mjs':dispatchMessages,
     '../../../../../scripts/neuraldeep/creation-delivery.mjs':creationDelivery,
     '../../../../../scripts/neuraldeep/target-file-manifest.mjs':targetManifest,
@@ -120,6 +122,30 @@ async function fixture(t,{sourceProject=null}={}) {
   return {gateway,history,admission,runs,settings,chat,topics,journal,voice};
 }
 const message=(id,text=id,mode)=>({clientMessageId:`message_${id}`,input:[{type:'text',text}],...(mode?{mode}: {})});
+
+test('creation launch passes its pinned absolute deadline to the shared runner instead of current settings',async t=>{
+ const f=await fixture(t),chatId=f.chat('chat_deadline',null),turnId='turn_deadline';
+ f.settings.codexSandbox='workspace-write';
+ f.history.mutate(chatId,row=>({...row,creationWorkflowVersion:1,subject:{taskType:'agent_creation',subjectId:'deadline-agent'}}));
+ const jobs=new creationStore.AgentCreationStore(f.journal),stateRoot=f.gateway.store.stateRoot;
+ jobs.create({chatId,instanceId:f.gateway.store.stateIdentityHash,agentId:'deadline-agent',releaseSha:'a'.repeat(40),
+   target:path.join(stateRoot,'target'),draftRoot:path.join(stateRoot,'draft'),
+   executionSettings:{modelId:'fixture-model',effortId:null,timeoutMs:1_800_000}});
+ const intent=f.gateway.executionIntent(f.history.get(chatId),turnId),turn={turnId,status:'queued',items:[],
+   executionIntent:intent,userMessage:{id:'message_deadline',markdown:'Create the CLI.',attachments:[]}};
+ f.history.mutate(chatId,row=>({...row,turns:[turn]}));
+ const active=f.gateway.activeAttempt(turn,'hash','Create the CLI.');
+ active.admissionLease={launcherReceipt:{attemptId:intent.attemptId,ownerToken:'fixture'},release:async()=>{}};
+ f.gateway.activeTurns.set(chatId,active);
+ await f.gateway.launchAttempt(chatId);
+ assert.equal(f.runs.length,1,JSON.stringify(f.history.turn(chatId,turnId)));
+ const dispatched=f.runs[0].options,job=jobs.get(chatId);
+ assert.equal(dispatched.deadline.version,2);assert.equal(dispatched.timeoutMs,1_800_000);
+ assert.equal(dispatched.deadline.hardDeadlineAt-Date.parse(job.stepStartedAt),1_800_000);
+ assert.equal(dispatched.deadline.requestTimeoutMs,1_770_000);
+ assert.equal(f.settings.codexTimeoutMs,22_222,'queued settings do not replace the job policy');
+ f.gateway.activeTurns.delete(chatId);f.runs[0].finish({kind:'interrupted'});
+});
 
 for (const document of ['contract', 'outcome']) test(`queued creation input preserves the ${document} approval blocker without dispatch or document changes`, async t => {
   const f = await fixture(t), chatId = f.chat(), stateRoot = f.gateway.store.stateRoot;
