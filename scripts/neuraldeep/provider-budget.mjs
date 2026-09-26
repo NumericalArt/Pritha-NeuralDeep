@@ -93,7 +93,7 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
         assertPreparationPolicy(job);
         const binding=creation.preparation,phase=preparationPhase(job.phase);
         if(!binding || binding.policyVersion!==2 || binding.phase!==phase || binding.workUnitId!==workloadId
-          || binding.packetHash!==job.contextPacket?.hash || job.contextPacket.workUnitId!==workloadId || job.phase==='outcome')
+          || binding.packetHash!==job.contextPacket?.hash || job.contextPacket.workUnitId!==workloadId || job.phase==='outcome' && job.outcomeProtocolVersion!==1)
           fail('provider_budget_context_changed','The host preparation binding changed.');
         let packet;
         try {

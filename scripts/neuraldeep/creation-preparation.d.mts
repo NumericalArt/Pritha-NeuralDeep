@@ -3,3 +3,9 @@ export function prepareCreationContract(job:any,brief:any,options:any):{contract
 export function prepareCreationOutcome(job:any,options:any):{outcome:any};
 export function creationBriefPrompt(job:any):string;
 export function completeCreationBrief(job:any,answer:string,options:any):any;
+export const CREATION_INTERVIEW_ROUNDS:number;
+export function readCreationInterview(answer:string):{interview?:{questions:{id:string;question:string;why:string;options:string[];default:string}[];assumptions:string[];draft:string};issues:string[]}|null;
+export function readCreationOutcome(answer:string,preset:string):{authored?:any;hash?:string;issues:string[]};
+export function creationOutcomeAuthoringContext(job:any,options:any):any;
+export function completeCreationOutcome(job:any,answer:string,options:any):any;
+export function creationOutcomePrompt(job:any):string;

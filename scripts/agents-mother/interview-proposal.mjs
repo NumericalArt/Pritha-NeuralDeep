@@ -149,7 +149,7 @@ type: agent-contract
 contract_schema_version: ${CONTRACT_SCHEMA_VERSION}
 interview_brief_schema_version: 1
 interview_preset: ${data.interviewPreset || "generic"}
-outcome_trial_preset: ${data.interviewPreset === "llm-app" ? "llm-http-app-v1" : data.interviewPreset === "local-feed" && data.sourceFormat === "json" ? "public-json-feed-v1" : "none"}
+outcome_trial_preset: ${data.outcomeTrialPreset || (data.interviewPreset === "llm-app" ? "llm-http-app-v1" : data.interviewPreset === "local-feed" && data.sourceFormat === "json" ? "public-json-feed-v1" : "none")}
 init_request_fingerprint: ${data.initRequestFingerprint || "legacy"}
 agent_kind: ${agentKind}
 agent_id: ${data.agentId || `agent-${createHash("sha256").update(data.artifactId || `${date}-${agentSlug}-agent-contract`).digest("hex").slice(0, 24)}`}

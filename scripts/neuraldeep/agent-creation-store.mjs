@@ -50,6 +50,7 @@ export class AgentCreationStore {
   create(input) {
     if (input.preparationPolicyVersion !== undefined && input.preparationPolicyVersion !== 2) throw new AgentCreationError('creation_policy_invalid');
     if (input.briefProtocolVersion !== undefined && (input.briefProtocolVersion !== 1 || input.preparationPolicyVersion !== 2)) throw new AgentCreationError('creation_policy_invalid');
+    if (input.outcomeProtocolVersion !== undefined && (input.outcomeProtocolVersion !== 1 || input.briefProtocolVersion !== 1)) throw new AgentCreationError('creation_policy_invalid');
     if (input.researchProtocolVersion !== undefined && (![1,2].includes(input.researchProtocolVersion) || input.preparationPolicyVersion !== 2)) throw new AgentCreationError('creation_policy_invalid');
     if(input.researchTopicPolicyVersion!==undefined && (input.researchProtocolVersion!==2 || ![2,3].includes(input.researchTopicPolicyVersion)))throw new AgentCreationError('creation_policy_invalid');
     if(input.researchSelectionVersion!==undefined && (input.researchProtocolVersion!==2 || ![1,2,3].includes(input.researchSelectionVersion)))throw new AgentCreationError('creation_policy_invalid');
@@ -81,6 +82,8 @@ export class AgentCreationStore {
         record.documentIdentity = creationDocumentIdentity(record);
       }
       if (input.briefProtocolVersion === 1) record.briefProtocolVersion = 1;
+      // Protocol 1: the model authors product-specific Outcome content; the host renders and validates it.
+      if (input.outcomeProtocolVersion === 1 && input.briefProtocolVersion === 1) record.outcomeProtocolVersion = 1;
       if (input.researchProtocolVersion) record.researchProtocolVersion = input.researchProtocolVersion;
       if(input.researchProtocolVersion===2)record.researchTopicPolicyVersion=input.researchTopicPolicyVersion ?? 3;
       if(input.researchProtocolVersion===2)record.researchSelectionVersion=input.researchSelectionVersion ?? 3;

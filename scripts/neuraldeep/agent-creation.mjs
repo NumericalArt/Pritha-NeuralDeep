@@ -13,7 +13,7 @@ import { prepareOutcomeVerifierPreset } from '../agents-mother/outcome-verifier-
 import { readAgentCatalog } from '../agents-mother/identity.mjs';
 import { creationGeneration, creationCanonicalFilename } from './creation-generation.mjs';
 import { creationRevisionPending } from './creation-revision.mjs';
-import { creationBriefPrompt } from './creation-preparation.mjs';
+import { creationBriefPrompt, creationOutcomePrompt } from './creation-preparation.mjs';
 import { creationCheckpointSummary } from './creation-context-packet.mjs';
 import { AgentCreationError, creationBudgetBlocker, creationPhase } from './agent-creation-store.mjs';
 
@@ -258,6 +258,7 @@ export function approveCreationDocument(job,kind,request,options) {
 export function creationPrompt(job) {
   const phase=creationPhase(job);
   if(job.preparationPolicyVersion===2 && ['interview','contract'].includes(phase))return creationBriefPrompt(job);
+  if(job.outcomeProtocolVersion===1 && phase==='outcome')return creationOutcomePrompt(job);
   const quote=value=>`'${String(value).replaceAll("'", "'\\''")}'`;
   const cli=job.executionCodeRoot ? `node ${quote(path.join(job.executionCodeRoot,'scripts/pritha.mjs'))}` : 'node scripts/pritha.mjs';
   if(job.preparationPolicyVersion===2 && phase==='research')return [

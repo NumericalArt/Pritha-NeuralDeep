@@ -1,4 +1,5 @@
-import {creationBriefPrompt} from './creation-preparation.mjs';
+import {creationBriefPrompt,creationOutcomePrompt} from './creation-preparation.mjs';
+import {creationPhase} from './agent-creation-store.mjs';
 
 const fail = (code, message) => { throw Object.assign(new Error(message), {code, statusCode:409}); };
 
@@ -9,7 +10,8 @@ export function prepareCreationBriefRequest(payload, job, packet) {
   return {
     model:payload.model,
     stream:payload.stream === true,
-    instructions:creationBriefPrompt(job),
+    // The same tool-free host request authors the Outcome after contract approval.
+    instructions:job.outcomeProtocolVersion===1 && creationPhase(job)==='outcome' ? creationOutcomePrompt(job) : creationBriefPrompt(job),
     input:[{role:'user',content:[{type:'input_text',text:packet.text}]}],
     tools:[],
     tool_choice:'none',

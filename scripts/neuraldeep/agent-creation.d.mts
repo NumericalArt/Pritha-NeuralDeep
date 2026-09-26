@@ -10,7 +10,7 @@ export type CreationJobView = {
   budget:{tokensUsed:number;maxTokens:number;activeMs:number;maxActiveMs:number;unknownAttempts:string[];maxIterations:number;repeatedFailures:number};
   observedUsage?:import('./creation-runtime-receipt.mjs').CreationObservedUsage;
   executionPolicy?:import('./creation-execution-policy.mjs').CreationExecutionPolicy;
-  preparation?:{phase:{brief:number;research:number};phaseRemaining:{brief:number;research:number};total:number;remaining:number;
+  preparation?:{decision?:{decision:string;summary:string;relationship:string;alternatives:string[];tradeoffs:string[]}|null;interview?:{rounds:number;questions:{id:string;question:string;why:string;options:string[];default:string}[];assumptions:string[];draft:string}|null;phase:{brief:number;research:number};phaseRemaining:{brief:number;research:number};total:number;remaining:number;
     requests:number;requestsRemaining:number;pendingRequests:number;unknownRequests:number;deliveryProtected:number;availableForDelivery:number|null;
     limits:{briefTokens:number;researchTokens:number;totalTokens:number;maxRequests:number;freshBytes?:number;rotationBytes?:number;hardBytes?:number};research:{checked:string[];remaining:string[]}|null};
   context?:{bytes:number|null;packetBytes:number|null;reservation:number|null;outputLimit:number|null;freshLimit:number;rotationLimit:number;hardLimit:number;requestMode?:string;sourceBytes?:number};

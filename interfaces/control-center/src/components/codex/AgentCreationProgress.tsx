@@ -114,6 +114,18 @@ export function AgentCreationProgress({ chatId, refreshKey }: { chatId: string; 
   return <section className="codex-operation-card" aria-label="Создание агента" style={{ marginBottom: 16, padding: 16 }}>
     <h2>Создание агента · {creationPhaseLabel(job.phase)}</h2>
     <p role="status">{job.hostStepActive && job.status==='pending' ? 'Pritha выполняет подготовку текущего шага' : creationStatusLabel(job.status)}. Агент {job.agentId}.</p>
+    {job.status==='waiting_input' && job.preparation?.interview?.questions?.length ? <div role="group" aria-label="Уточняющие вопросы Pritha">
+      <p>Pritha уточняет задачу (раунд {job.preparation.interview.rounds} из 3). Ответьте в сообщении ниже или напишите «Согласен с вариантами по умолчанию».</p>
+      {job.preparation.interview.draft ? <p>Предварительная спецификация: {job.preparation.interview.draft}</p> : null}
+      <ol>{job.preparation.interview.questions.map(question=><li key={question.id}><strong>{question.question}</strong> {question.why} <em>По умолчанию: {question.default}</em>{question.options.length ? ` Варианты: ${question.options.join('; ')}.` : ''}</li>)}</ol>
+      {job.preparation.interview.assumptions.length ? <p>Допущения: {job.preparation.interview.assumptions.join('; ')}</p> : null}
+    </div> : null}
+    {job.preparation?.decision?.decision ? <details aria-label="Архитектурное решение по итогам исследования"><summary>Архитектурное решение по итогам исследования</summary>
+      <p>{job.preparation.decision.decision}</p>
+      {job.preparation.decision.alternatives.length ? <p>Рассмотренные альтернативы: {job.preparation.decision.alternatives.join('; ')}</p> : null}
+      {job.preparation.decision.tradeoffs.length ? <p>Компромиссы: {job.preparation.decision.tradeoffs.join('; ')}</p> : null}
+      {job.preparation.decision.summary ? <p>Сравнение с памятью Pritha: {job.preparation.decision.summary}</p> : null}
+    </details> : null}
     {job.executionPolicy ? <details aria-label="Эффективные настройки задачи"><summary>Модель и пределы: {job.executionPolicy.modelId}</summary>
       <p>Модель закреплена при создании задачи. Effort: настроено {job.executionPolicy.effortId || 'none'}; действует {job.executionPolicy.effectiveEffortId || 'не применяется'}. Отсутствие effort не выключает thinking; другая модель или noreason выбираются явно для новой задачи.</p>
       <p>Итерация: до {Math.round(job.executionPolicy.iterationTimeoutMs/60000)} мин. Запрос: до {job.executionPolicy.requestTimeoutMs/1000} с в оставшемся окне; запись расхода и завершение: {job.executionPolicy.settlementGraceMs/1000} с. Перед поздним запросом отправка остановится.</p>

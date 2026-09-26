@@ -221,6 +221,12 @@ export function completeCreationSourceResearch(job,answer,research,options) {
   atomicWriteFile(file,JSON.stringify(state));
   atomicCompareAndSwapFile(artifact.path,current,updated.text);
   state.completedTurn=options.turnId;atomicWriteFile(file,JSON.stringify(state));
+  // The operator sees the model's architecture decision; the locked report stays canonical.
+  const synthesis=value.synthesis||{};
+  const brief=(text,max)=>String(text||'').replace(/\s+/g,' ').trim().slice(0,max);
+  return {decision:brief(synthesis.architecture_decision,1600),summary:brief(synthesis.summary,1200),relationship:brief(synthesis.relationship,40),
+   alternatives:(Array.isArray(synthesis.alternatives)?synthesis.alternatives:[]).map(item=>brief(item,400)).filter(Boolean).slice(0,8),
+   tradeoffs:(Array.isArray(synthesis.tradeoffs)?synthesis.tradeoffs:[]).map(item=>brief(item,400)).filter(Boolean).slice(0,8)};
  }
  );
 }

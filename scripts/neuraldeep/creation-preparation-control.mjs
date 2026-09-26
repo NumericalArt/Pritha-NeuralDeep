@@ -107,7 +107,10 @@ export function creationPreparationView(store,job) {
   const row=turnId?store.db.prepare("SELECT receipt FROM runtime_receipts WHERE json_extract(receipt,'$.workload_id')=? ORDER BY rowid DESC LIMIT 1").get(turnId):null;
   const receipt=row?JSON.parse(row.receipt):null,prepared=receipt?.preparation;
   const blocker=job.preparationStop || job.blocker;
-  return {preparation:{...preparation,limits:job.preparationPolicy,research:job.researchProgress || null},
+  const interview=job.preparation?.interview;
+  return {preparation:{...preparation,limits:job.preparationPolicy,research:job.researchProgress || null,
+    interview:interview?{rounds:interview.rounds,questions:interview.questions,assumptions:interview.assumptions,draft:interview.draft}:null,
+    decision:job.researchDecision || null},
     context:{bytes:prepared?.bytes ?? null,packetBytes:job.contextPacket?.bytes ?? null,reservation:prepared?.reservation ?? null,
       requestMode:prepared?.requestMode,sourceBytes:prepared?.sourceBytes,
       outputLimit:prepared?.outputLimit ?? null,freshLimit:job.preparationPolicy.freshBytes,rotationLimit:job.preparationPolicy.rotationBytes,hardLimit:job.preparationPolicy.hardBytes},

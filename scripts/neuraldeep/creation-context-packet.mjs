@@ -9,6 +9,7 @@ import {readCreationSources} from './creation-source-research.mjs';
 import {creationGeneration} from './creation-generation.mjs';
 import {creationPhase,AgentCreationError} from './agent-creation-store.mjs';
 import {assertPreparationPolicy,preparationPhase} from './creation-preparation-policy.mjs';
+import {creationOutcomeAuthoringContext} from './creation-preparation.mjs';
 
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const read=(file,root,maxBytes=1024*1024)=>readBoundedRegularFile(file,{allowedRoots:[root],maxBytes}).text;
@@ -61,6 +62,10 @@ export function prepareCreationContextPacket(job,dialogue,options) {
     generation:creationGeneration(job),releaseSha:job.releaseSha,policyVersion:2,phase,workUnitId:options.turnId,
     ...(job.executionPolicy?{executionPolicy:job.executionPolicy}:{}),
     dialogue:JSON.parse(dialogue.text),brief:job.preparation?.brief||null,
+    // Structured questions and defaults from earlier interview rounds; answers are in the dialogue.
+    ...(job.outcomeProtocolVersion===1 && creationPhase(job)==='outcome' && !job.outcome ? {outcomeAuthoring:creationOutcomeAuthoringContext(job,options)} : {}),
+    ...(phase==='brief' && job.preparation?.interview ? {interview:{rounds:job.preparation.interview.rounds,questions:job.preparation.interview.questions,
+      assumptions:job.preparation.interview.assumptions,draft:job.preparation.interview.draft}} : {}),
     ...(job.proposalRevisionPending ? {proposalRevision:proposalRevision(job)} : {}),
     documents:{contract:evidenceRef(job.contract),outcome:evidenceRef(job.outcome)},approvals:job.approvals,
     research:research?{topics:research.topics,facts:research.facts,
@@ -69,7 +74,7 @@ export function prepareCreationContextPacket(job,dialogue,options) {
     checkpoint:creationCheckpointSummary(job),limits:job.preparationPolicy,progressHash,
     artifacts:artifacts.map(({id,hash,bytes,contentHash})=>({id,hash,bytes,contentHash}))};
   const text=JSON.stringify(packet),bytes=Buffer.byteLength(text);
-  if(bytes>job.preparationPolicy.freshBytes)fail('creation_context_requirements_too_large','Обязательные требования превышают 64 КиБ. Запрос не отправлен; исходное задание сохранено целиком.');
+  if(bytes>job.preparationPolicy.freshBytes)fail('creation_context_requirements_too_large',`Обязательные требования превышают ${job.preparationPolicy.freshBytes/1024} КиБ. Запрос не отправлен; исходное задание сохранено целиком.`);
   const packetHash=hash(text),file=path.join(directory,`${packetHash}.json`),index=path.join(directory,`${packetHash}.reader.json`);
   if(!existsSync(file))atomicWriteFile(file,text);
   if(!existsSync(index))atomicWriteFile(index,JSON.stringify({jobId:job.jobId,packetHash,artifacts}));

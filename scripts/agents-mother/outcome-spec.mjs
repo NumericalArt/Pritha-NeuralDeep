@@ -17,7 +17,7 @@ import { automatedTrialWaiver, automatedTrialWaiverIssues, hasAutomatedTrialWaiv
 import { trialInputDeclarations, trialInputDeclarationIssues } from "./trial-input-declarations.mjs";
 import { inspectProtectedTrialInputs } from "./delivery-worktree.mjs";
 import { approvalEventMatchesSpec, OUTCOME_APPROVAL_SCHEMA } from "./outcome-approval-match.mjs";
-import { OUTCOME_VERIFIER_PRESETS, renderOutcomeVerifierPreset } from "./outcome-verifier-presets.mjs";
+import { API_DECLARED_PRESETS, OUTCOME_VERIFIER_PRESETS, decodeProductApi, renderOutcomeVerifierPreset } from "./outcome-verifier-presets.mjs";
 export { outcomeDocumentLock, canonicalOutcomeDocument } from "./outcome-lock.mjs";
 export { approvalEventMatchesSpec } from "./outcome-approval-match.mjs";
 
@@ -442,7 +442,9 @@ export function validateOutcomeSpecText(text, options = {}) {
     const presetTrial = parsed.trials.find(trial => trial.id === "preset-behavior");
     const verifierPath = "tests/trials/pritha-outcome-verifier.mjs";
     if (!presetTrial || presetTrial.kind !== "automated" || presetTrial.thenExitCode !== 0
-      || JSON.stringify(presetTrial.argv) !== JSON.stringify(["node", verifierPath, preset])
+      || (API_DECLARED_PRESETS.has(preset)
+        ? presetTrial.argv?.length !== 4 || JSON.stringify(presetTrial.argv.slice(0, 3)) !== JSON.stringify(["node", verifierPath, preset]) || !decodeProductApi(presetTrial.argv[3])
+        : JSON.stringify(presetTrial.argv) !== JSON.stringify(["node", verifierPath, preset]))
       || !presetTrial.verifierInputs?.some(input => input.path === verifierPath && input.provenance === `host-template:${preset}`)) {
       issues.push(issue("OS024", "The selected preset requires its independent protected behavior Trial", "Trials.preset-behavior"));
     }
@@ -487,6 +489,71 @@ export function outcomeTechnicalSlug(data) {
   return slug(data.agentName, { fallback: 'agent' });
 }
 
+const transcriptLine = value => markdownScalar(value).replaceAll("`", "'");
+function authoredInterfaceSection(authored, data) {
+  const journey = authored.journey || {};
+  const surfaces = authored.surfaces?.length ? authored.surfaces : [{ surface: "web", purpose: data.primaryMission, primaryAction: authored.oneLiner }];
+  return `## User-facing outcome
+
+- Entry point: ${markdownScalar(journey.entryPoint || data.primaryInterface, "web")}
+- User journey goal: ${markdownScalar(journey.goal || authored.oneLiner)}
+- User journey start: ${markdownScalar(journey.start, "Open the application; use Pritha's managed start action when the local service is stopped.")}
+- User journey progress: ${markdownScalar(journey.progress)}
+- User journey approval: ${markdownScalar(journey.approval, "Personal acceptance of the finished result remains a separate operator decision.")}
+- User journey completion: ${markdownScalar(journey.completion)}
+- User journey recovery: ${markdownScalar(journey.recovery)}
+
+### Surfaces
+
+| Surface | Purpose | Primary action |
+| --- | --- | --- |
+${surfaces.map(item => `| ${markdownScalar(item.surface, "web")} | ${markdownScalar(item.purpose)} | ${markdownScalar(item.primaryAction)} |`).join("\n")}
+
+### Example sessions
+
+${authored.exampleSessions.map((session, index) => `#### Session: ${slug(session.name, { fallback: `session-${index + 1}` })}
+
+\`\`\`transcript
+${session.transcript.map(turn => `${turn.role === "agent" ? "agent" : "user"}: ${transcriptLine(turn.text)}`).join("\n")}
+\`\`\``).join("\n\n")}`;
+}
+
+/** Model-authored operator Trials; every contract function stays covered. */
+function authoredAcceptanceTrials(authored, core, deliverables) {
+  const trials = [], covered = new Set(), used = new Set();
+  let coversSuccess = false;
+  for (const [index, item] of authored.acceptance.entries()) {
+    const covers = [];
+    for (const reference of item.covers) {
+      const match = /^(core|success):(\d{1,2})$/.exec(reference);
+      if (!match) continue;
+      const position = Number(match[2]) - 1;
+      if (match[1] === "core" && core[position]) { covers.push(coverageId("core", core[position], position)); covered.add(position); }
+      if (match[1] === "success") { coversSuccess = true; covers.push(coverageId("deliverable", deliverables[0], 0)); }
+    }
+    if (index === 0) covers.push(coverageId("deliverable", deliverables[0], 0));
+    let id = `accept-${String(index + 1).padStart(2, "0")}-${slug(item.statement, { fallback: "outcome" })}`.slice(0, 96);
+    while (used.has(id)) id = `${id.slice(0, 90)}-${used.size}`;
+    used.add(id);
+    trials.push(`### Trial: ${id}
+
+- Statement: ${markdownScalar(item.statement)}
+- Kind: operator-judged
+${[...new Set(covers)].map(cover => `- Covers: ${cover}`).join("\n")}
+- Pass criteria: ${markdownScalar(item.passCriteria)}`);
+  }
+  for (const [position, value] of core.entries()) {
+    if (covered.has(position)) continue;
+    trials.push(`### Trial: core-${String(position + 1).padStart(2, "0")}-${slug(value, { fallback: "outcome" })}
+
+- Statement: ${markdownScalar(value)}
+- Kind: operator-judged
+- Covers: ${coverageId("core", value, position)}
+- Pass criteria: Demonstrate ${markdownScalar(value)} through the documented interface; no undocumented operator implementation step is required.`);
+  }
+  return { text: trials.join("\n\n"), coversSuccess };
+}
+
 export function renderOutcomeSpecFromContract(data, options = {}) {
   const date = options.date || today();
   const agentSlug = outcomeTechnicalSlug(data);
@@ -500,7 +567,9 @@ export function renderOutcomeSpecFromContract(data, options = {}) {
     "Working implementation of the approved V1 core functions",
     "Runnable project with a user guide and verification evidence",
   ];
-  const presetTrials = renderOutcomeVerifierPreset(String(data.fm?.outcome_trial_preset || "none"), deliverables.map((value, index) => coverageId("deliverable", value, index)));
+  const authored = options.authored || null;
+  const presetTrials = renderOutcomeVerifierPreset(String(data.fm?.outcome_trial_preset || "none"), deliverables.map((value, index) => coverageId("deliverable", value, index)),
+    { productApi: authored?.productApi });
   const harnessTrial = presetTrials ? "" : `### Trial: harness-smoke
 
 - Statement: The generated project passes its deterministic smoke test.
@@ -511,7 +580,8 @@ export function renderOutcomeSpecFromContract(data, options = {}) {
 - When cwd: .
 - Then exit code: 0
 - Timeout ms: 120000`;
-  const coreTrials = effectiveCore.map((value, index) => {
+  const authoredAcceptance = authored ? authoredAcceptanceTrials(authored, effectiveCore, deliverables) : null;
+  const coreTrials = authoredAcceptance ? authoredAcceptance.text : effectiveCore.map((value, index) => {
     const covers = [coverageId("core", value, index)];
     if (index === 0) covers.push(coverageId("deliverable", deliverables[0], 0));
     return `### Trial: ${`core-${String(index + 1).padStart(2, "0")}-${slug(value, { fallback: "outcome" })}`}
@@ -523,13 +593,13 @@ ${covers.map((item) => `- Covers: ${item}`).join("\n")}
     ? `Demonstrate ${markdownScalar(value)} through the web interface and verify the applicable contract success criteria below; no undocumented operator implementation step is required.`
     : "The demonstrated behavior completes this function through the documented interface without an undocumented implementation step."}`;
   }).join("\n\n");
-  const contractSuccessTrial = productInterface && !missing(data.successCriteria) ? `### Trial: contract-success-criteria
+  const contractSuccessTrial = productInterface && !missing(data.successCriteria) && !authoredAcceptance?.coversSuccess ? `### Trial: contract-success-criteria
 
 - Statement: Demonstrate every contract success criterion, including requirements outside the core function list.
 - Kind: operator-judged
 - Covers: ${coverageId("deliverable", deliverables[0], 0)}
 - Pass criteria: ${markdownScalar(data.successCriteria)}` : "";
-  const interfaceSection = productInterface ? `## User-facing outcome
+  const interfaceSection = authored && mode === "interface" ? authoredInterfaceSection(authored, data) : productInterface ? `## User-facing outcome
 
 - Entry point: web
 - User journey goal: ${markdownScalar(data.primaryMission)}
@@ -643,8 +713,8 @@ approved_at: pending
 
 ## Shape
 
-- One-liner: ${markdownScalar(data.primaryMission, "Deliver the requested agent outcome")}
-- Done when: ${markdownScalar(data.successCriteria, "The approved outcome is demonstrated and independently verified")}
+- One-liner: ${markdownScalar(authored?.oneLiner || data.primaryMission, "Deliver the requested agent outcome")}
+- Done when: ${markdownScalar(authored?.doneWhen?.length ? authored.doneWhen.join("; ") : data.successCriteria, "The approved outcome is demonstrated and independently verified")}
 - Interaction mode: ${mode}
 
 ${interfaceSection}
