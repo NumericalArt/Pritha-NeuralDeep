@@ -6,8 +6,7 @@ with access to the project files and a local terminal.
 
 NeuralDeep makes this edition convenient to set up and economical to use: a
 single provider connection serves models, Voice Control, and search. It is our
-preferred provider for the integrated Pritha experience. See the
-[model-written reviews](docs/model-reviews.md) for reports from actual sessions.
+preferred provider for the integrated Pritha experience.
 
 ## 1. Check prerequisites
 

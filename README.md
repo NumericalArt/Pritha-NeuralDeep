@@ -9,7 +9,7 @@
   <img alt="Node.js 24+" src="https://img.shields.io/badge/Node.js-24%2B-43853d">
   <img alt="Active beta" src="https://img.shields.io/badge/status-active_beta-d9a441">
 </p>
-<p align="center"><a href="#get-started">Get started</a> · <a href="START_HERE.md">Installation</a> · <a href="#meet-brief-desk-nd">Example agent</a> · <a href="docs/neuraldeep-search.md">Search & research</a> · <a href="docs/model-reviews.md">Model reviews</a></p>
+<p align="center"><a href="#get-started">Get started</a> · <a href="START_HERE.md">Installation</a> · <a href="#meet-brief-desk-nd">Example agent</a> · <a href="docs/neuraldeep-search.md">Search & research</a></p>
 
 Pritha NeuralDeep turns an idea, project or workflow into a specialist-agent
 project you can inspect, test and improve. It brings together a complete local
@@ -103,27 +103,9 @@ Telegram is not required to create and edit briefs. Nothing is posted automatica
 No other live agents are bundled. Task Chat, Voice, Drafts and Brief Desk history
 start empty; historical engineering lessons remain available as shared knowledge.
 
-## From models that worked with Pritha
-
-Model-written reflections supplied by the project operator, covering Pritha and
-Pritha NeuralDeep. Read the [full reviews and their context](docs/model-reviews.md).
-
-> “NeuralDeep covers models, Voice Control, and search through one inexpensive
-> provider, and the interface is enough for almost all day-to-day work.”
->
-> — **Cursor Grok 4.6**
-
-> “Pritha plus NeuralDeep feels like a local agent pipeline, not just another coding chat.”
->
-> — **Gemini 3.8 Flash**
-
-The full collection also includes **Claude Fable 5.1** (pilot rating **4.6/5**),
-**Opus 4.8** on verification and operational safeguards, and **GPT 5.6 Terra** on
-memory and continuity between projects.
-
 ## How it is packaged
 
-- **Code and knowledge:** authored files in this repository.
+- **Code and knowledge:** platform code and curated knowledge in this repository. Raw intake notes stay local to each instance and are not published.
 - **Local state:** a separate instance directory for sessions, settings, queues and generated indexes.
 - **Your agents:** a separate directory belonging to this instance; unrelated sibling folders are not imported.
 - **Memory:** rebuilt from curated Markdown. Pre-existing conversation databases are never shipped.
@@ -136,13 +118,13 @@ inference is offline.
 ## Documentation
 
 - [Get a NeuralDeep account and API key](docs/neuraldeep-account-setup.md)
-- [Model reviews](docs/model-reviews.md)
 - [Installation and first run](START_HERE.md)
 - [NeuralDeep execution](docs/neuraldeep-codex.md)
 - [Search and bounded research](docs/neuraldeep-search.md)
-- [Architecture](docs/architecture.md) · [Memory](docs/memory.md)
+- [Architecture](docs/architecture.md) · [Memory](docs/memory.md) · [Engineering rules](docs/engineering-rules.md)
 - [Release and updates](docs/release.md)
 - [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+- [Model-written session reviews](docs/model-reviews.md) (qualitative, supplied by the operator)
 
 The public getting-started documentation is in English. The inherited engineering
 knowledge base and parts of the application retain their original Russian content.

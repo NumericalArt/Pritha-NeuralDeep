@@ -78,3 +78,16 @@ interfaces/control-center/public/voice-vad/
 **/*.current-backup
 **/*.fixed
 *.zip
+
+# Raw intake is instance-local: indexed locally, never published with the platform.
+00_inbox/**
+!00_inbox/README.md
+!00_inbox/*/
+!00_inbox/*/.gitkeep
+01_sources/notes/**
+!01_sources/notes/.gitkeep
+01_sources/signals/**
+!01_sources/signals/.gitkeep
+12_marketing/**
+!12_marketing/*/
+!12_marketing/*/README.md
