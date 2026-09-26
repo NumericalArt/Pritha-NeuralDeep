@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import ts from '../interfaces/control-center/node_modules/typescript/lib/typescript.js';
+import * as creationContinue from '../scripts/neuraldeep/creation-continue.mjs';
 import * as coordination from '../scripts/neuraldeep/coordination-store.mjs';
 import * as creationStore from '../scripts/neuraldeep/agent-creation-store.mjs';
 import * as creation from '../scripts/neuraldeep/agent-creation.mjs';
@@ -67,6 +68,7 @@ function fixture(t, { hostStep, recoverDelivery, readDelivery, settlePreparation
     '../../../../../scripts/neuraldeep/coordination-store.mjs': coordination,
     '../../../../../scripts/neuraldeep/agent-creation-store.mjs': creationStore,
     '../../../../../scripts/neuraldeep/agent-creation.mjs': { ...creation, creationHostStep: hostStep || unexpected },
+    '../../../../../scripts/neuraldeep/creation-continue.mjs': creationContinue,
     '../../../../../scripts/neuraldeep/creation-runtime-receipt.mjs': {...runtimeReceipt,...(researchFailure?{creationRuntimeReceipt:()=>({tokens:100,processExited:true,blocker:null})}:{})},
     '../../../../../scripts/neuraldeep/creation-research-context.mjs': {readCreationResearch:()=>({})},
     '../../../../../scripts/neuraldeep/creation-source-research.mjs': {completeCreationSourceResearch:()=>{throw new creationStore.AgentCreationError(researchFailure,'Insufficient primary evidence; preserve the response.');}},
@@ -137,10 +139,16 @@ test('reconciling unknown spend never dispatches a model, clears debt or changes
   const first=await f.post(request);
   assert.equal(first.status,200,JSON.stringify(first.body));
   assert.deepEqual(first.body.data.job.budget.unknownAttempts,['unknown-turn']);
-  assert.deepEqual(first.body.data.job.approvals,before.approvals);assert.equal(first.body.data.job.actions.continue,false);
+  assert.deepEqual(first.body.data.job.approvals,before.approvals);
+  assert.equal(first.body.data.job.actions.continue,true,'an explicit Continue is always offered');
   assert.equal(f.dispatches.length,0);
   const revision=f.jobs.get(f.chatId).revision;
   assert.equal((await f.post(request)).status,200);assert.equal(f.jobs.get(f.chatId).revision,revision);
+  // The turn has no runtime receipt to bound it, so Continue explains and never dispatches.
+  const continued=await f.post(f.request('continue'));
+  assert.equal(continued.body.error.code,'creation_usage_unbounded');
+  assert.deepEqual(f.jobs.get(f.chatId).budget.unknownAttempts,['unknown-turn']);
+  assert.equal(f.dispatches.length,0);
 });
 
 test('creation API requires separate document approvals and repeated navigation has no side effect', async t => {

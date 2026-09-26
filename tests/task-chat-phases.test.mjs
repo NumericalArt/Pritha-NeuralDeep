@@ -43,7 +43,7 @@ test("taskChatTurnTimeoutMs caps agent_creation turns", () => {
   assert.equal(taskChatTurnTimeoutMs({ subject: agentSubject, settingsTimeoutMs: 1800000, environment: {} }), 720000);
   assert.equal(taskChatTurnTimeoutMs({ subject: agentSubject, settingsTimeoutMs: 1800000, environment: { PRITHA_TASK_CHAT_CHILD_TURN_TIMEOUT_MS: "300000" } }), 300000);
   assert.equal(taskChatTurnTimeoutMs({ subject: agentSubject, settingsTimeoutMs: 1800000, environment: { PRITHA_TASK_CHAT_CHILD_TURN_TIMEOUT_MS: "10" } }), 120000);
-  assert.equal(taskChatTurnTimeoutMs({ subject: agentSubject, settingsTimeoutMs: 3000000, environment: { PRITHA_TASK_CHAT_CHILD_TURN_TIMEOUT_MS: "5000000" } }), 1800000);
+  assert.equal(taskChatTurnTimeoutMs({ subject: agentSubject, settingsTimeoutMs: 3000000, environment: { PRITHA_TASK_CHAT_CHILD_TURN_TIMEOUT_MS: "5000000" } }), 3000000);
   assert.equal(taskChatTurnTimeoutMs({ subject: agentSubject, settingsTimeoutMs: 1800000, environment: { PRITHA_TASK_CHAT_CHILD_TURN_TIMEOUT_MS: "not-a-number" } }), 720000);
   assert.equal(taskChatTurnTimeoutMs({ subject: agentSubject, settingsTimeoutMs: 100000, environment: { PRITHA_TASK_CHAT_CHILD_TURN_TIMEOUT_MS: "720000" } }), 100000);
 });
@@ -51,7 +51,7 @@ test("taskChatTurnTimeoutMs caps agent_creation turns", () => {
 test("coordinated creation honors the configured step allowance while retaining hard and explicit caps", () => {
   assert.equal(taskChatTurnTimeoutMs({ subject: agentSubject, coordinated: true, settingsTimeoutMs: 1800000, environment: {} }), 1800000);
   assert.equal(taskChatTurnTimeoutMs({ subject: agentSubject, coordinated: true, settingsTimeoutMs: 60000, environment: {} }), 60000);
-  assert.equal(taskChatTurnTimeoutMs({ subject: agentSubject, coordinated: true, settingsTimeoutMs: 5400000, environment: {} }), 1800000);
+  assert.equal(taskChatTurnTimeoutMs({ subject: agentSubject, coordinated: true, settingsTimeoutMs: 5400000, environment: {} }), 3600000);
   assert.equal(taskChatTurnTimeoutMs({ subject: agentSubject, coordinated: true, settingsTimeoutMs: 1800000, environment: { PRITHA_TASK_CHAT_CHILD_TURN_TIMEOUT_MS: "300000" } }), 300000);
 });
 

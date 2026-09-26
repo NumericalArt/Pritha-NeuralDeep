@@ -161,8 +161,8 @@ export async function runCreationDelivery(job, options = {}) {
       receipt = { schema: "pritha-creation-delivery-v1", runId, jobId: job.jobId, releaseSha: job.releaseSha,
         sourceProject: realpathSync(job.target), scaffoldRevision: source.head, outcomePath: path.resolve(job.outcome.path), taskHash: taskHash(options.task),
         preparationTokens: budget.tokensUsed, preparationActiveMs: budget.activeMs,
-        totalMaxTokens: Math.min(budget.maxTokens, 1_000_000), totalMaxActiveMs: Math.min(budget.maxActiveMs, 5_400_000),
-        maxIterations: Math.min(budget.maxIterations, 6), repeatedFailureThreshold: Math.min(budget.repeatedFailureThreshold, 3),
+        totalMaxTokens: Math.min(budget.maxTokens, 4_000_000), totalMaxActiveMs: Math.min(budget.maxActiveMs, 10_800_000),
+        maxIterations: Math.min(budget.maxIterations, 12), repeatedFailureThreshold: Math.min(budget.repeatedFailureThreshold, 6),
         activeMs: 0, startedAt: null, adoptedHead: null };
     }
     // A stale startedAt is an interrupted run: charge its elapsed interval

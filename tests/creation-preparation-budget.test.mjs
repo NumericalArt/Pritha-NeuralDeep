@@ -19,7 +19,7 @@ function setup(t) {
   const store=new NeuralDeepCoordinationStore({databasePath:path.join(stateRoot,'coord.sqlite')});t.after(()=>store.close());
   const jobs=new AgentCreationStore(store),chatId='chat_phase_budget',draftRoot=creationDraftRoot(stateRoot,'fixture',chatId);
   mkdirSync(draftRoot,{recursive:true});
-  const initial=jobs.create({chatId,instanceId:'fixture',agentId:'phase-app',releaseSha:'a'.repeat(40),target:path.join(stateRoot,'phase-app'),draftRoot,preparationPolicyVersion:2});
+  const initial=jobs.create({chatId,instanceId:'fixture',agentId:'phase-app',releaseSha:'a'.repeat(40),target:path.join(stateRoot,'phase-app'),draftRoot,tokenBudget:1_000_000,preparationPolicyVersion:2,limitsProfile:'v2-base'});
   const options={root:process.cwd(),stateRoot};let current;
   const start=(n,generation=1)=>{
     let job=jobs.update(chatId,j=>({...j,generation,documentIdentity:creationDocumentIdentity({...j,generation}),phase:'interview',status:'running',activeTurnId:`turn_${n}`}));

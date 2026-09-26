@@ -9,6 +9,7 @@ import {applyExternalResearchEvidence} from '../agents-mother/external-research.
 import {researchGateDecisionForReport} from '../agents-mother/research-gate.mjs';
 import {creationHostDirectory} from './creation-research.mjs';
 import {AgentCreationError} from './agent-creation-store.mjs';
+import {preparationLimit} from './creation-preparation-policy.mjs';
 import {rankedSourceQuotes} from './source-passages.mjs';
 
 const hash=value=>createHash('sha256').update(typeof value==='string'?value:JSON.stringify(value)).digest('hex');
@@ -125,11 +126,11 @@ export async function collectCreationSources(job,research,options) {
     if(state.sources.some(source=>source.topicId===topic.id))continue;
     const item=state.topics[topic.id] ||= {attempts:0,status:'pending'};
     if(item.status==='started')fail('creation_research_source_unconfirmed',`Завершение получения источника для ${topic.topic} не подтверждено. Повторный сетевой вызов остановлен.`);
-    if(item.attempts>=2)fail('creation_research_source_limit',`Не удалось получить первичный источник: ${topic.topic}. Две попытки сохранены; уточните требование или источник.`);
+    if(item.attempts>=preparationLimit(job,'sourceAttemptsPerTopic'))fail('creation_research_source_limit',`Не удалось получить первичный источник: ${topic.topic}. Все попытки сохранены; уточните требование или источник.`);
     if(!topic.primaryDomains?.length)fail('creation_research_authority_needed',`Для темы ${topic.topic} нужно выбрать первичный источник. Уточните техническое решение в задании.`);
     const modern=job.researchTopicPolicyVersion===3;
     const context={owner:job.jobId,turn:`${job.generation||1}:${topic.id}`,surface:'research',explicit:true,signal:options.signal};
-    while(item.attempts<2 && item.status!=='completed') {
+    while(item.attempts<preparationLimit(job,'sourceAttemptsPerTopic') && item.status!=='completed') {
     if(options.signal?.aborted)fail('creation_paused');
     item.attempts++;item.status='started';
     const attempt={number:item.attempts,status:'started',searchCalls:0,readCalls:0};
@@ -164,8 +165,8 @@ export async function collectCreationSources(job,research,options) {
      if(options.signal?.aborted)fail('creation_paused');
      // Only a confirmed unusable page can advance automatically to a different
      // source. Credential/quota/uncertain transport failures require a decision.
-     if(modern && item.attempts<2 && ['primary_page_empty','primary_page_not_read','primary_source_missing'].includes(item.error))continue;
-     const exhausted=item.attempts>=2;
+     if(modern && item.attempts<preparationLimit(job,'sourceAttemptsPerTopic') && ['primary_page_empty','primary_page_not_read','primary_source_missing'].includes(item.error))continue;
+     const exhausted=item.attempts>=preparationLimit(job,'sourceAttemptsPerTopic');
      fail(modern && exhausted?'creation_research_source_limit':'creation_research_source_unavailable',
       `Источник для «${topic.topic}» недоступен (${item.error}). Уже полученные страницы сохранены; ${exhausted?'обе попытки исчерпаны. Уточните требование или источник.':'доступна одна ограниченная повторная попытка.'}`);}
     }

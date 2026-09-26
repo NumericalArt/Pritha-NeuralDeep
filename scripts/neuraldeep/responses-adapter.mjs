@@ -16,6 +16,31 @@ const DEFAULT_RESPONSE_LIMIT = 32 * 1024 * 1024;
 // NeuralDeep advertises a 900-second gateway deadline; allow its terminal response to arrive.
 const DEFAULT_UPSTREAM_TIMEOUT_MS = 930_000;
 const upstreamDispatchers = new WeakMap();
+// A complete provider rejection carries no output. Resend the identical bytes a
+// bounded number of times before the turn fails; every attempt is admitted and
+// settled separately (see recordProviderResponse).
+const PROVIDER_RETRY_ATTEMPTS = 3;
+const RETRYABLE_PROVIDER_STATUS = new Set([429, 502, 503, 504]);
+const PROVIDER_RETRY_DELAYS_MS = [5_000, 20_000];
+const PROVIDER_RETRY_AFTER_CAP_MS = 60_000;
+
+export function providerRetryRequestHash(requestHash, attempt) {
+  return createHash("sha256").update(`${requestHash}:provider-retry:${attempt}`).digest("hex");
+}
+
+export function providerRetryDelayMs(attempt, status, retryAfter) {
+  const seconds = Number(retryAfter);
+  if (status === 429 && Number.isFinite(seconds) && seconds >= 0) return Math.min(PROVIDER_RETRY_AFTER_CAP_MS, Math.max(1_000, seconds * 1000));
+  return PROVIDER_RETRY_DELAYS_MS[Math.min(attempt, PROVIDER_RETRY_DELAYS_MS.length) - 1];
+}
+
+function abortableDelay(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) { reject(signal.reason); return; }
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
+  });
+}
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
   "content-length",
@@ -127,7 +152,7 @@ export function createNeuralDeepAdapter(options = {}) {
     };
     response.once("close", abortIfClientLeaves);
     let upstreamAttempted = false;
-    let requestHash = null;
+    let requestHash = null, dispatchHash = null, responsesPayload = null;
     let providerUsage = null;
     let responseSummary = null, outputLimit = null;
     const progress=(state,force=false)=>{
@@ -142,9 +167,10 @@ export function createNeuralDeepAdapter(options = {}) {
       progress('receiving',first);
     };
     const notifyRequest=event=>{if(!notified){notified=true;options.onRequest?.({method:request.method,path:requestUrl.pathname,
-      durationMs:Date.now()-startedAt,timings:{...timings},cancellationReason,requestHash,upstreamAttempted,usage:providerUsage,responseSummary,...event});}};
+      durationMs:Date.now()-startedAt,timings:{...timings},cancellationReason,requestHash:dispatchHash,upstreamAttempted,usage:providerUsage,responseSummary,...event});}};
     try {
       const window=requestDeadlineWindow(options.deadline);
+      const requestDeadlineAt=startedAt+Math.min(upstreamTimeoutMs,window ?? upstreamTimeoutMs);
       timeout=setTimeout(()=>{
         timings.timedOut=true;
         abort(window!==null?'iteration_deadline':'provider_timeout','Pritha stopped the response at its local request deadline');
@@ -167,23 +193,57 @@ export function createNeuralDeepAdapter(options = {}) {
         body = Buffer.from(JSON.stringify(payload));
         requestDeadlineWindow(options.deadline);
         if(controller.signal.aborted) throw controller.signal.reason;
+        dispatchHash = requestHash;
+        responsesPayload = payload;
         await options.beforeResponsesDispatch?.({ requestHash, model: payload.model, bytes: body.length, payload });
       }
       const target = new URL(`${requestUrl.pathname}${requestUrl.search}`, upstreamOrigin);
-      upstreamAttempted = true;
-      const upstreamStartedAt = Date.now();
-      timings.upstreamStartedAt = new Date(upstreamStartedAt).toISOString();
-      progress('waiting',true);
-      heartbeat=setInterval(()=>progress(timings.firstByteMs===null?'waiting':'receiving'),options.heartbeatMs || 5000);heartbeat.unref?.();
-      const upstream = await fetchImpl(target, {
-        method: request.method,
-        headers: upstreamHeaders(request.headers),
-        body,
-        redirect: "error",
-        signal: controller.signal,
-        dispatcher,
-      });
       const isResponses = requestUrl.pathname === "/v1/responses";
+      const maxAttempts = isResponses && requestHash ? Math.max(1, options.providerRetryAttempts ?? PROVIDER_RETRY_ATTEMPTS) : 1;
+      let upstream, upstreamStartedAt, rejectedBody = null;
+      for (let attempt = 1; ; attempt += 1) {
+        upstreamAttempted = true;
+        upstreamStartedAt = Date.now();
+        Object.assign(timings, { upstreamStartedAt: new Date(upstreamStartedAt).toISOString(), firstByteMs: null, lastByteMs: null, responseCompletedMs: null, responseBytes: 0 });
+        progress('waiting',true);
+        clearInterval(heartbeat);
+        heartbeat=setInterval(()=>progress(timings.firstByteMs===null?'waiting':'receiving'),options.heartbeatMs || 5000);heartbeat.unref?.();
+        upstream = await fetchImpl(target, {
+          method: request.method,
+          headers: upstreamHeaders(request.headers),
+          body,
+          redirect: "error",
+          signal: controller.signal,
+          dispatcher,
+        });
+        if (upstream.ok || !isResponses || !RETRYABLE_PROVIDER_STATUS.has(upstream.status) || attempt >= maxAttempts) break;
+        // The provider rejected the request completely. Settle this attempt,
+        // then resend the identical bytes under a derived dispatch identity.
+        const attemptBody = await readWebBody(upstream, responseLimit, received);
+        timings.responseCompletedMs = Date.now() - upstreamStartedAt;
+        const retryAfter = upstream.headers.get("retry-after");
+        const delayMs = options.providerRetryDelayMs ? options.providerRetryDelayMs(attempt, upstream.status, retryAfter) : providerRetryDelayMs(attempt, upstream.status, retryAfter);
+        options.onRequest?.({ method: request.method, path: requestUrl.pathname, status: upstream.status, durationMs: Date.now() - startedAt,
+          timings: { ...timings }, cancellationReason: null, requestHash: dispatchHash, upstreamAttempted: true, usage: null, responseSummary: null,
+          providerRejected: true, retry: { attempt, maxAttempts, nextDelayMs: delayMs },
+          error: classifyNeuralDeepProviderError({ status: upstream.status, payload: parseProviderErrorPayload(attemptBody), retryAfter }) });
+        const retryHash = providerRetryRequestHash(requestHash, attempt + 1);
+        // Start another attempt only when it can finish inside this request's window.
+        const fits = Date.now() + delayMs + (Date.now() - upstreamStartedAt) + 5_000 < requestDeadlineAt;
+        try {
+          if (!fits) throw Object.assign(new Error("No time remains for another provider attempt."), { code: "provider_retry_window" });
+          await abortableDelay(delayMs, controller.signal);
+          requestDeadlineWindow(options.deadline);
+          await options.beforeResponsesDispatch?.({ requestHash: retryHash, model: responsesPayload?.model, bytes: body.length, payload: responsesPayload, retryOf: requestHash, attempt: attempt + 1 });
+        } catch (error) {
+          if (controller.signal.aborted) throw controller.signal.reason ?? error;
+          // Another attempt was not admitted: return the rejection already recorded.
+          notified = true;
+          rejectedBody = attemptBody;
+          break;
+        }
+        dispatchHash = retryHash;
+      }
       const isEventStream = upstream.headers.get("content-type")?.includes("text/event-stream");
       const stream=isResponses && upstream.ok && isEventStream && typeof response.write==='function'
         && (!options.validateResponsesResponse || options.requiresBufferedResponse?.()===false);
@@ -207,8 +267,8 @@ export function createNeuralDeepAdapter(options = {}) {
         notifyRequest({status:upstream.status,error});
         await normalizer.flush(events);response.end();progress('finished',true);return;
       }
-      const upstreamBody = await readWebBody(upstream, responseLimit, received);
-      timings.responseCompletedMs = Date.now() - upstreamStartedAt;
+      const upstreamBody = rejectedBody ?? await readWebBody(upstream, responseLimit, received);
+      if (!rejectedBody) timings.responseCompletedMs = Date.now() - upstreamStartedAt;
       if(isResponses)providerUsage=responsesUsage(upstreamBody.toString('utf8'),upstream.headers.get('content-type') || '');
       if(isResponses)responseSummary=responsesSummary(upstreamBody.toString('utf8'),upstream.headers.get('content-type') || '',{outputLimit});
       if(isResponses && upstream.ok)await options.validateResponsesResponse?.(upstreamBody.toString('utf8'),upstream.headers.get('content-type') || '');
@@ -226,7 +286,7 @@ export function createNeuralDeepAdapter(options = {}) {
         durationMs: Date.now() - startedAt,
         timings: { ...timings },
         cancellationReason,
-        requestHash,
+        requestHash: dispatchHash,
         upstreamAttempted,
         usage: providerUsage,
         // The provider's complete error response reached us; no output was streamed to Codex.
@@ -259,7 +319,7 @@ export function createNeuralDeepAdapter(options = {}) {
         durationMs: Date.now() - startedAt,
         timings: { ...timings },
         cancellationReason: cancellationReason || (error?.code==='provider_iteration_deadline'?'iteration_deadline':null),
-        requestHash,
+        requestHash: dispatchHash,
         upstreamAttempted,
         usage: providerUsage,
         error: classifyNeuralDeepProviderError({

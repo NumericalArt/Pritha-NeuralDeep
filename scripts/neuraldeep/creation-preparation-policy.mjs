@@ -1,16 +1,28 @@
 export const CREATION_PREPARATION_POLICY_VERSION=2;
-export const PREPARATION_LIMITS=Object.freeze({maxRequests:12,freshBytes:64*1024,rotationBytes:96*1024,hardBytes:128*1024,
-  outputTokens:8192,maxRotationsPerPhase:1});
-export function creationPreparationPolicy(budget,executionPolicy=null) {
-  const cap=executionPolicy?.modelProfile?.applicationOutputCap ?? PREPARATION_LIMITS.outputTokens;
-  if(![8192,16384].includes(cap))throw Object.assign(new Error('Invalid pinned output limit.'),{code:'provider_budget_policy_changed',statusCode:409});
-  return {version:CREATION_PREPARATION_POLICY_VERSION,...PREPARATION_LIMITS,outputTokens:cap,briefTokens:Math.floor(budget/10),
+// The v2 protocol is unchanged; a job pins the limits profile it was created
+// with. Jobs saved without a profile keep the base limits.
+export const PREPARATION_LIMITS_PROFILES=Object.freeze({
+  'v2-base':Object.freeze({maxRequests:12,freshBytes:64*1024,rotationBytes:96*1024,hardBytes:128*1024,outputTokens:8192,maxRotationsPerPhase:1}),
+  'v2-double':Object.freeze({maxRequests:24,freshBytes:128*1024,rotationBytes:192*1024,hardBytes:256*1024,outputTokens:16384,maxRotationsPerPhase:2,
+    localReadsWithoutProgress:4,sourceAttemptsPerTopic:4,providerOutageContinuations:2}),
+});
+// Limits added after v2-base; a base-profile job keeps these original values.
+export const BASE_PROFILE_EXTRA_LIMITS=Object.freeze({localReadsWithoutProgress:2,sourceAttemptsPerTopic:2,providerOutageContinuations:1});
+export const preparationLimit=(job,key)=>job?.preparationPolicy?.[key] ?? BASE_PROFILE_EXTRA_LIMITS[key];
+export const CURRENT_PREPARATION_LIMITS_PROFILE='v2-double';
+export const PREPARATION_LIMITS=PREPARATION_LIMITS_PROFILES[CURRENT_PREPARATION_LIMITS_PROFILE];
+export function creationPreparationPolicy(budget,executionPolicy=null,limitsProfile=CURRENT_PREPARATION_LIMITS_PROFILE) {
+  const limits=PREPARATION_LIMITS_PROFILES[limitsProfile];
+  if(!limits)throw Object.assign(new Error('Unknown preparation limits profile.'),{code:'provider_budget_policy_changed',statusCode:409});
+  const cap=executionPolicy?.modelProfile?.applicationOutputCap ?? limits.outputTokens;
+  if(![8192,16384,32768].includes(cap))throw Object.assign(new Error('Invalid pinned output limit.'),{code:'provider_budget_policy_changed',statusCode:409});
+  return {version:CREATION_PREPARATION_POLICY_VERSION,...(limitsProfile==='v2-base'?{}:{limitsProfile}),...limits,outputTokens:cap,briefTokens:Math.floor(budget/10),
     researchTokens:Math.floor(budget/5),totalTokens:Math.floor(budget*3/10),deliveryTokens:budget-Math.floor(budget*3/10)};
 }
 export const preparationPhase=phase=>['interview','contract','outcome'].includes(phase)?'brief':phase==='research'?'research':null;
 export function assertPreparationPolicy(job) {
   if(job.preparationPolicyVersion!==2)return;
-  if(JSON.stringify(job.preparationPolicy)!==JSON.stringify(creationPreparationPolicy(job.budget.maxTokens,job.executionPolicy)))
+  if(JSON.stringify(job.preparationPolicy)!==JSON.stringify(creationPreparationPolicy(job.budget.baseMaxTokens ?? job.budget.maxTokens,job.executionPolicy,job.preparationPolicy?.limitsProfile ?? 'v2-base')))
     throw Object.assign(new Error('The saved preparation policy changed.'),{code:'provider_budget_policy_changed',statusCode:409});
 }
 
@@ -26,7 +38,9 @@ export function creationPreparationUsage(store,job) {
     if(entry.phase!==metadata.creation.phase)throw new Error('creation_request_phase_changed');
     const completion=metadata.completion,tokens=completion?.usage?.totalTokens;
     if(Number.isSafeInteger(tokens)&&tokens>=0)entry.tokens+=tokens;
-    else if(!completion && !runtime.process_exited)pending++;else unknown++;
+    else if(!completion && !runtime.process_exited)pending++;
+    // A turn settled at its upper bound by an operator Continue is no longer unknown.
+    else if(!Number.isSafeInteger(job.budget.turns[key]?.tokens))unknown++;
     byTurn.set(key,entry);
   }
   for(const [turnId,turn] of Object.entries(job.budget.turns)) {

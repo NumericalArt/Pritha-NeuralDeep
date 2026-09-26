@@ -79,7 +79,7 @@ export function prepareCreationContextPacket(job,dialogue,options) {
 export function readCreationContextPacket(job,options) {
   const ref=job.contextPacket;
   if(!ref || path.dirname(ref.path)!==path.join(path.resolve(options.stateRoot),'audit','creation-context',job.jobId))fail('creation_context_identity');
-  const text=read(ref.path,options.stateRoot,128*1024),packet=JSON.parse(text);
+  const text=read(ref.path,options.stateRoot,256*1024),packet=JSON.parse(text);
   if(hash(text)!==ref.hash || packet.jobId!==job.jobId || packet.instanceId!==job.instanceId || packet.generation!==creationGeneration(job)
     || packet.releaseSha!==job.releaseSha || packet.policyVersion!==2 || packet.workUnitId!==ref.workUnitId
     || packet.phase!==preparationPhase(creationPhase(job)) || packet.briefProtocolVersion!==job.briefProtocolVersion

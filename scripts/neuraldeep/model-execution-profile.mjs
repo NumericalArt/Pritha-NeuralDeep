@@ -6,7 +6,7 @@ export function neuralDeepExecutionProfile(modelId) {
   thinking:noreason?'disabled-by-selected-alias':qwen?'provider-default-enabled':'provider-default',
   thinkingBudgetControl:'not-verified-for-responses',transportVerified:false,
   declaredContextTokens:qwen?262144:oss?131072:null,
-  applicationOutputCap:qwen && !noreason?16384:8192,reservationBasis:'utf8-text-plus-framing-v1',
+  applicationOutputCap:qwen && !noreason?32768:16384,reservationBasis:'utf8-text-plus-framing-v1',
   note:qwen?'Qwen ignores reasoning_effort. No effort parameter does not disable thinking; a noreason alias must be selected explicitly.':
    oss?'Effort is documented by the provider; Responses transport and phase quality still need acceptance evidence.':'Effort control has not been verified for this Responses route.'};
 }

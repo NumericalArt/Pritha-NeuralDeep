@@ -29,14 +29,15 @@ test('preparation uses the pinned step window, leaves settlement time and preser
 test('larger Qwen response policy preserves older pinned caps and the million-token allocation',()=>{
  const next=creationExecutionPolicy({modelId:'qwen3.8-27b'});
  const old={...next,modelProfile:{...next.modelProfile,version:1,applicationOutputCap:8192}};
- for(const [executionPolicy,cap] of [[old,8192],[next,16384]]) {
+ for(const [executionPolicy,cap] of [[old,8192],[next,32768]]) {
   const preparationPolicy=creationPreparationPolicy(1000000,executionPolicy);
   assert.equal(preparationPolicy.outputTokens,cap);assert.equal(preparationPolicy.totalTokens,300000);assert.equal(preparationPolicy.deliveryTokens,700000);
   assert.doesNotThrow(()=>assertPreparationPolicy({preparationPolicyVersion:2,preparationPolicy,executionPolicy,budget:{maxTokens:1000000}}));
   assert.equal(prepareBudgetedRequest({model:'qwen3.8-27b',input:'x'},100000,executionPolicy.modelProfile).max_output_tokens,cap);
  }
- assert.equal(creationPreparationPolicy(1000000).outputTokens,8192);
- assert.equal(creationExecutionPolicy({modelId:'qwen3.8-27b-noreason'}).modelProfile.applicationOutputCap,8192);
+ assert.equal(creationPreparationPolicy(1000000).outputTokens,16384,'the doubled profile is the default for new jobs');
+ assert.equal(creationPreparationPolicy(1000000,null,'v2-base').outputTokens,8192,'base-profile jobs keep their original cap');
+ assert.equal(creationExecutionPolicy({modelId:'qwen3.8-27b-noreason'}).modelProfile.applicationOutputCap,16384);
  assert.throws(()=>prepareBudgetedRequest({model:'different',input:'x'},100000,old.modelProfile),{code:'provider_budget_policy_changed'});
  assert.throws(()=>assertPreparationPolicy({preparationPolicyVersion:2,preparationPolicy:creationPreparationPolicy(1000000,next),executionPolicy:old,budget:{maxTokens:1000000}}),{code:'provider_budget_policy_changed'});
 });

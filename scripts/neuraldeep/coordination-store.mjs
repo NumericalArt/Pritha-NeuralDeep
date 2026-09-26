@@ -440,6 +440,12 @@ export class NeuralDeepCoordinationStore {
     });
   }
 
+  /** Requests the provider did not reject; a settled rejection may be resent. */
+  acceptedProviderRequests(runId) {
+    return this.db.prepare('SELECT metadata FROM provider_dispatches WHERE run_id=?').all(runId)
+      .filter(row=>JSON.parse(row.metadata).completion?.usageBasis!=='reservation_upper_bound').length;
+  }
+
   providerUsageSummary(runId) {
     const rows=this.db.prepare('SELECT metadata FROM provider_dispatches WHERE run_id=? ORDER BY request_hash').all(runId);
     const usage=normalizeNeuralDeepUsage();let unknownRequests=0;

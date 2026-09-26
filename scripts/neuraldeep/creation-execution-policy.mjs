@@ -1,11 +1,13 @@
 import {neuralDeepExecutionProfile,effectiveNeuralDeepEffort} from './model-execution-profile.mjs';
 const positive = value => Number.isSafeInteger(value) && value > 0;
+// One creation iteration may use up to the Settings task timeout maximum (60 min).
+export const ITERATION_TIMEOUT_CAP_MS = 3_600_000;
 
 export function creationExecutionPolicy({modelId,effortId=null,timeoutMs=1_800_000,promptTokenBudget=48_000}={}) {
   if (typeof modelId!=='string' || !modelId || modelId.length>200) throw new Error('creation_model_policy_invalid');
   return {schema:'pritha-creation-execution-policy-v2',version:2,modelId,effortId,
     effectiveEffortId:effectiveNeuralDeepEffort(modelId,effortId),modelProfile:neuralDeepExecutionProfile(modelId),
-    iterationTimeoutMs:positive(timeoutMs)?Math.min(timeoutMs,1_800_000):1_800_000,
+    iterationTimeoutMs:positive(timeoutMs)?Math.min(timeoutMs,ITERATION_TIMEOUT_CAP_MS):1_800_000,
     requestTimeoutMs:930_000,settlementGraceMs:30_000,
     configuredPromptTokenBudget:positive(promptTokenBudget)?promptTokenBudget:48_000,
     promptBudgetApplicability:'general-chat setting; creation uses pinned preparation byte caps and measured request accounting',
@@ -16,7 +18,7 @@ export function creationExecutionPolicy({modelId,effortId=null,timeoutMs=1_800_0
 export function preparationExecutionDeadline(job,now=Date.now()) {
   const policy=job?.executionPolicy;
   if (!policy || policy.version===1) return null;
-  if (policy.version!==2 || !positive(policy.iterationTimeoutMs) || policy.iterationTimeoutMs>1_800_000
+  if (policy.version!==2 || !positive(policy.iterationTimeoutMs) || policy.iterationTimeoutMs>ITERATION_TIMEOUT_CAP_MS
     || !positive(policy.settlementGraceMs) || !positive(job.budget?.maxActiveMs) || !positive(now)
     || !Number.isSafeInteger(job.budget?.activeMs) || job.budget.activeMs<0) throw new Error('execution_deadline_invalid');
   const remaining=Math.min(policy.iterationTimeoutMs,job.budget.maxActiveMs-job.budget.activeMs);
@@ -43,7 +45,7 @@ export function requestDeadlineWindow(deadline,now=Date.now()) {
   if (!deadline) return null;
   if (![1,2].includes(deadline.version) || !['hardDeadlineAt','softDeadlineAt','requestTimeoutMs','settlementGraceMs'].every(key=>positive(deadline[key]))
     || (deadline.version===1 ? deadline.softDeadlineAt+deadline.requestTimeoutMs+deadline.settlementGraceMs>deadline.hardDeadlineAt
-      : deadline.requestTimeoutMs>1_800_000 || deadline.softDeadlineAt+deadline.settlementGraceMs>=deadline.hardDeadlineAt
+      : deadline.requestTimeoutMs>ITERATION_TIMEOUT_CAP_MS || deadline.softDeadlineAt+deadline.settlementGraceMs>=deadline.hardDeadlineAt
         || deadline.hardDeadlineAt-deadline.softDeadlineAt-deadline.settlementGraceMs>deadline.requestTimeoutMs)) throw new Error('execution_deadline_invalid');
   if (now>deadline.softDeadlineAt) throw Object.assign(new Error('Not enough iteration time remains for a complete provider request and accounting. Saved work is preserved.'),{code:'provider_iteration_deadline',statusCode:409});
   return Math.min(deadline.requestTimeoutMs,deadline.hardDeadlineAt-deadline.settlementGraceMs-now);

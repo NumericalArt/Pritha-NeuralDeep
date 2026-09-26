@@ -6,6 +6,8 @@ import { creationExecutionPolicy } from './creation-execution-policy.mjs';
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const now = () => new Date().toISOString();
+export const CREATION_DEFAULT_TOKEN_BUDGET = 2_000_000;
+export const CREATION_MAX_TOKEN_BUDGET = 4_000_000;
 export const CREATION_ACTIONS = ['approve_contract', 'approve_outcome', 'continue', 'pause', 'cancel', 'revise_proposal', 'verify_saved', 'adopt_verified', 'reconcile_usage'];
 export class AgentCreationError extends Error {
   constructor(code, message = code, status = 409) { super(message); this.code = code; this.status = status; }
@@ -53,8 +55,8 @@ export class AgentCreationStore {
     if(input.researchSelectionVersion!==undefined && (input.researchProtocolVersion!==2 || ![1,2,3].includes(input.researchSelectionVersion)))throw new AgentCreationError('creation_policy_invalid');
     if (![input.chatId,input.instanceId,input.agentId].every(value => ID.test(value || ''))
       || !/^[a-f0-9]{40}$/.test(input.releaseSha || '')) throw new AgentCreationError('creation_identity_invalid');
-    const tokenBudget = input.tokenBudget === undefined ? 1_000_000 : input.tokenBudget;
-    if (!Number.isSafeInteger(tokenBudget) || tokenBudget < 1 || tokenBudget > 1_000_000) throw new AgentCreationError('creation_budget_invalid', 'Лимит создания должен быть целым числом от 1 до 1 000 000 токенов.', 400);
+    const tokenBudget = input.tokenBudget === undefined ? CREATION_DEFAULT_TOKEN_BUDGET : input.tokenBudget;
+    if (!Number.isSafeInteger(tokenBudget) || tokenBudget < 1 || tokenBudget > CREATION_MAX_TOKEN_BUDGET) throw new AgentCreationError('creation_budget_invalid', 'Лимит создания должен быть целым числом от 1 до 4 000 000 токенов.', 400);
     return this.store.transaction(() => {
       const existing = this.get(input.chatId);
       if (existing) {
@@ -70,12 +72,12 @@ export class AgentCreationStore {
         target: input.target, draftRoot: input.draftRoot, generation: 1, revision: 1, createdAt: now(), updatedAt: now(),
         phase: 'interview', status: 'pending', autoContinue: true, contract: null, outcome: null,
         approvals: {}, deliveryRunId: null, checkpoint: null, blocker: null, activeTurnId: null,
-        budget: { maxTokens: tokenBudget, maxActiveMs: 90*60*1000, maxIterations: 6, repeatedFailureThreshold: 3,
+        budget: { maxTokens: tokenBudget, maxActiveMs: 180*60*1000, maxIterations: 12, repeatedFailureThreshold: 6,
           tokensUsed: 0, activeMs: 0, turns: {}, unknownAttempts: [], repeatedFailures: 0, lastFailureSignature: null } };
       if (input.executionSettings) record.executionPolicy=creationExecutionPolicy(input.executionSettings);
       if (input.preparationPolicyVersion === 2) {
         record.preparationPolicyVersion = 2;
-        record.preparationPolicy = creationPreparationPolicy(tokenBudget,record.executionPolicy);
+        record.preparationPolicy = creationPreparationPolicy(tokenBudget,record.executionPolicy,input.limitsProfile);
         record.documentIdentity = creationDocumentIdentity(record);
       }
       if (input.briefProtocolVersion === 1) record.briefProtocolVersion = 1;
@@ -188,10 +190,10 @@ export class AgentCreationStore {
 
 export function creationBudgetBlocker(job) {
   const b = job.budget;
-  if (b.unknownAttempts.length) return {code:'creation_usage_unknown',message:'Расход предыдущего исполнения ещё не подтверждён.'};
-  if (b.tokensUsed >= b.maxTokens) return {code:'creation_token_budget',message:'Достигнут бюджет создания.'};
-  if (b.activeMs >= b.maxActiveMs) return {code:'creation_time_budget',message:'Достигнут лимит активного времени.'};
-  if (b.repeatedFailures >= b.repeatedFailureThreshold) return {code:'creation_repeated_failure',message:'Повторилась ошибка. Требуется диагностика перед продолжением.'};
+  if (b.unknownAttempts.length) return {code:'creation_usage_unknown',message:'Расход предыдущего исполнения ещё не подтверждён. «Продолжить» засчитает его по резерву запросов как верхнюю границу.'};
+  if (b.tokensUsed >= b.maxTokens) return {code:'creation_token_budget',message:'Достигнут бюджет создания. «Продолжить» продлит его на половину исходного.'};
+  if (b.activeMs >= b.maxActiveMs) return {code:'creation_time_budget',message:'Достигнут лимит активного времени. «Продолжить» продлит его на половину исходного.'};
+  if (b.repeatedFailures >= b.repeatedFailureThreshold) return {code:'creation_repeated_failure',message:'Повторилась ошибка. Проверьте причину; «Продолжить» сбросит счётчик и попробует снова.'};
   if(job.preparationPolicyVersion===2 && job.preparationStop)return {code:job.preparationStop.code,message:job.preparationStop.message};
   return null;
 }

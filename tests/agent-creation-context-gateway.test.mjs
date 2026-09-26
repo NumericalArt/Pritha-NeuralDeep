@@ -7,6 +7,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, realpathSy
 import os from 'node:os';
 import path from 'node:path';
 import ts from '../interfaces/control-center/node_modules/typescript/lib/typescript.js';
+import * as creationContinue from '../scripts/neuraldeep/creation-continue.mjs';
 import * as coordination from '../scripts/neuraldeep/coordination-store.mjs';
 import * as creationStore from '../scripts/neuraldeep/agent-creation-store.mjs';
 import * as creation from '../scripts/neuraldeep/agent-creation.mjs';
@@ -79,6 +80,7 @@ async function fixture(t,preparationVersion) {
     '../../../../../scripts/neuraldeep/task-chat-phases.mjs': phases,
     '../../../../../scripts/neuraldeep/creation-preflight.mjs': preflight,
     '../../../../../scripts/neuraldeep/target-file-manifest.mjs': manifest,
+    '../../../../../scripts/neuraldeep/creation-continue.mjs': creationContinue,
     '../../../../../scripts/neuraldeep/creation-runtime-receipt.mjs': receipts,
     '../../../../../scripts/neuraldeep/agent-creation.mjs': { ...creation, creationHostStep: job => runCreationScaffoldStep(job, options, args => cli(args)) },
     '../../../../../scripts/neuraldeep/creation-delivery.mjs': { ...delivery, runCreationDelivery: (job, input) => delivery.runCreationDelivery(job, {
@@ -280,23 +282,31 @@ test('a settled NeuralDeep outage continues creation from checkpoint instead of 
   assert.equal(continued.status, 'running', JSON.stringify(continued.blocker));
   assert.equal(continued.autoContinue, true);
   assert.equal(continued.providerOutageContinuations.brief, 1);
-  assert.equal(continued.budget.maxTokens, 1_000_000);
+  assert.equal(continued.budget.maxTokens, 2_000_000);
   assert.equal(f.launches.length, 2);
   assert.match(f.history.turn(f.chatId, 'turn_context_2').userMessage.markdown, /checkpoint/);
   assert.match(f.history.turn(f.chatId, 'turn_context_2').userMessage.markdown, /не повторяй/);
-  f.journal.updateRuntimeRun('synthetic-run-2', { status: 'failed', process_exited: true, process_tree_exited: true, adapter_closed: true,
-    usage_record: { usageKnown: true, usage: { totalTokens: 40 } } });
-  const second = f.gateway.activeTurns.get(f.chatId);
-  second.toolStarted = true;
-  await f.gateway.handleRunnerComplete(f.chatId, second, { code: 1, signal: null, stderrTail: 'unexpected status 502 Bad Gateway', timedOut: false,
-    interrupted: false, toolActivity: true, threadId: 'synthetic-session-2', failedEvent: true, completedEvent: false, malformedEventCount: 0,
-    handlerErrorCode: null, providerError: { class: 'outage', code: 'neuraldeep_unavailable' } });
+  const outage = async n => {
+    f.journal.updateRuntimeRun(`synthetic-run-${n}`, { status: 'failed', process_exited: true, process_tree_exited: true, adapter_closed: true,
+      usage_record: { usageKnown: true, usage: { totalTokens: 40 } } });
+    const active = f.gateway.activeTurns.get(f.chatId);
+    active.toolStarted = true;
+    await f.gateway.handleRunnerComplete(f.chatId, active, { code: 1, signal: null, stderrTail: 'unexpected status 502 Bad Gateway', timedOut: false,
+      interrupted: false, toolActivity: true, threadId: `synthetic-session-${n}`, failedEvent: true, completedEvent: false, malformedEventCount: 0,
+      handlerErrorCode: null, providerError: { class: 'outage', code: 'neuraldeep_unavailable' } });
+    for (let k = 0; k < 2000 && f.gateway.creationAdvances.size; k++) await tick();
+  };
+  await outage(2);
+  const again = f.jobs.get(f.chatId);
+  assert.equal(again.providerOutageContinuations.brief, 2, 'the host continues a phase twice after settled outages');
+  assert.equal(f.launches.length, 3);
+  await outage(3);
   const stopped = f.jobs.get(f.chatId);
   assert.equal(stopped.status, 'blocked');
   assert.equal(stopped.autoContinue, false);
   assert.equal(stopped.blocker.code, 'neuraldeep_unavailable');
-  assert.equal(f.launches.length, 2);
-  assert.equal(f.history.turn(f.chatId, 'turn_context_2').error.code, 'neuraldeep_unavailable');
+  assert.equal(f.launches.length, 3);
+  assert.equal(f.history.turn(f.chatId, 'turn_context_3').error.code, 'neuraldeep_unavailable');
 });
 
 test('typing another creation message cannot bypass unsettled process or unknown usage gates', async t => {

@@ -42,7 +42,7 @@ test('adapter records each final response before an interrupted turn and preserv
 test('a complete provider error response settles at its reservation; interrupted transport stays unknown',async t=>{
   const store=new NeuralDeepCoordinationStore();t.after(()=>store.close());
   let current={run:null,budgeted:false,interrupted:false};
-  const server=await listenNeuralDeepAdapter({port:0,
+  const server=await listenNeuralDeepAdapter({port:0,providerRetryAttempts:1,
     beforeResponsesDispatch:event=>store.claimProviderRequest(current.run,event.requestHash,{model:event.model,bytes:event.bytes,
       ...(current.budgeted?{budget:{reservation:5000,outputLimit:1000}}:{})}),
     onRequest:event=>store.recordProviderResponse(current.run,event),
@@ -71,6 +71,53 @@ test('a complete provider error response settles at its reservation; interrupted
   assert.equal(await send('interrupted-run',{interrupted:true}),502);
   assert.equal(store.providerUsageSummary('interrupted-run').usageKnown,false,'a broken transport is not a provider rejection');
   assert.equal(creationRuntimeReceipt(store,'turn-interrupted-run').tokens,null);
+});
+
+test('complete provider rejections are resent with identical bytes and each attempt is settled',async t=>{
+  const store=new NeuralDeepCoordinationStore();t.after(()=>store.close());
+  let run=null,script=[],bodies=[],delays=[],admit=()=>true;
+  const server=await listenNeuralDeepAdapter({port:0,providerRetryDelayMs:(attempt,status,retryAfter)=>{delays.push([attempt,status,retryAfter]);return 0;},
+    beforeResponsesDispatch:event=>{
+      if(!admit(event))throw Object.assign(new Error('no budget for another attempt'),{code:'provider_token_budget',statusCode:409});
+      return store.claimProviderRequest(run,event.requestHash,{model:event.model,bytes:event.bytes,budget:{reservation:5000,outputLimit:1000}});
+    },
+    onRequest:event=>store.recordProviderResponse(run,event),
+    fetchImpl:async(_url,init)=>{
+      bodies.push(Buffer.from(init.body).toString('utf8'));
+      const next=script.shift();
+      if(next===200)return new Response(sse(measured),{headers:{'content-type':'text/event-stream'}});
+      return new Response(JSON.stringify({error:{message:'gateway'}}),{status:next.status,headers:{'content-type':'application/json',...(next.retryAfter?{'retry-after':next.retryAfter}:{})}});
+    }});
+  t.after(()=>closeNeuralDeepAdapter(server));
+  const send=async(id,steps,admission=()=>true)=>{
+    run=id;script=[...steps];bodies=[];delays=[];admit=admission;
+    store.beginRuntimeRun({runId:id,requestHash:'a'.repeat(64),receipt:{workload_id:`turn-${id}`}});
+    const response=await fetch(`http://127.0.0.1:${server.address().port}/v1/responses`,{method:'POST',body:JSON.stringify({model:'fixture',input:id})});
+    await response.text();
+    return response.status;
+  };
+
+  assert.equal(await send('recovered',[{status:504},{status:502},200]),200,'Codex receives the successful third attempt');
+  assert.equal(new Set(bodies).size,1,'every attempt resends the identical request bytes');
+  assert.deepEqual(delays.map(([attempt,status])=>[attempt,status]),[[1,504],[2,502]]);
+  let summary=store.providerUsageSummary('recovered');
+  assert.equal(summary.providerRequests,3);assert.equal(summary.usageKnown,true);
+  assert.equal(summary.usage.totalTokens,5000*2+140,'two rejections at their bound plus the measured answer');
+  assert.equal(store.acceptedProviderRequests('recovered'),1);
+
+  assert.equal(await send('exhausted',[{status:504},{status:504},{status:504}]),504);
+  summary=store.providerUsageSummary('exhausted');
+  assert.equal(summary.providerRequests,3);assert.equal(summary.usageKnown,true);assert.equal(summary.usage.totalTokens,15000);
+
+  assert.equal(await send('limited',[{status:429,retryAfter:'7'},200]),200);
+  assert.deepEqual(delays,[[1,429,'7']],'a rate limit passes Retry-After to the delay policy');
+
+  assert.equal(await send('refused',[{status:503},200],event=>!event.retryOf),503,'an attempt without admission returns the recorded rejection');
+  summary=store.providerUsageSummary('refused');
+  assert.equal(summary.providerRequests,1);assert.equal(summary.usageKnown,true);
+
+  assert.equal(await send('client-error',[{status:400}]),400);
+  assert.equal(store.providerUsageSummary('client-error').providerRequests,1,'a request error is not retried');
 });
 
 test('durable request usage is scoped to each run, including exact-session continuation',()=>{

@@ -1,3 +1,4 @@
+import * as creationContinue from '../scripts/neuraldeep/creation-continue.mjs';
 import * as maintenance from '../scripts/neuraldeep/release-maintenance.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -67,6 +68,7 @@ async function fixture(t,{sourceProject=null}={}) {
     '../../../../../scripts/neuraldeep/execution-resources.mjs':resources,
     '../../../../../scripts/neuraldeep/agent-creation-store.mjs':creationStore,
     '../../../../../scripts/neuraldeep/agent-creation.mjs':creation,
+    '../../../../../scripts/neuraldeep/creation-continue.mjs': creationContinue,
     '../../../../../scripts/neuraldeep/creation-runtime-receipt.mjs':creationReceipts,
     '../../../../../scripts/neuraldeep/creation-execution-policy.mjs':creationDeadlines,
     '../../../../../scripts/neuraldeep/dispatch-blocker-message.mjs':dispatchMessages,

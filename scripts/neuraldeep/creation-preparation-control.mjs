@@ -1,6 +1,6 @@
 import {readCreationResearch} from './creation-research-context.mjs';
 import {creationSemanticProgress} from './creation-context-packet.mjs';
-import {creationPreparationUsage,preparationPhase} from './creation-preparation-policy.mjs';
+import {creationPreparationUsage,preparationPhase,preparationLimit} from './creation-preparation-policy.mjs';
 import {dispatchBlockerMessage} from './dispatch-blocker-message.mjs';
 
 /** Rotation is a host decision after exit, final usage and semantic progress, never a model request. */
@@ -32,7 +32,7 @@ export function settleCreationPreparation(job,receipt,options) {
     const phaseKey=phase || 'brief';
     const used=job.providerOutageContinuations?.[phaseKey] || 0;
     const settled=receipt.processExited && receipt.tokens!==null && !job.budget.unknownAttempts.length;
-    if(settled && used<1) {
+    if(settled && used<preparationLimit(job,'providerOutageContinuations')) {
       next.providerOutageContinuations={...job.providerOutageContinuations,[phaseKey]:used+1};
       next.preparationStop=null;
       next.checkpoint={...next.checkpoint,progressHash,providerOutage:{phase:phaseKey,continued:true}};
@@ -43,7 +43,7 @@ export function settleCreationPreparation(job,receipt,options) {
       next.status='blocked';
       next.autoContinue=false;
       next.blocker={code:'neuraldeep_unavailable',message:settled
-        ? 'Сеть NeuralDeep оборвалась повторно на этом шаге. Хост уже продолжил один раз с checkpoint и не повторял команды. Можно продолжить создание с карточки, приостановить или отменить. Общий лимит токенов не увеличивается.'
+        ? 'Сеть NeuralDeep оборвалась повторно на этом шаге. Хост уже продолжил с checkpoint и не повторял команды. Можно продолжить создание с карточки, приостановить или отменить. Общий лимит токенов не увеличивается.'
         : 'Сеть NeuralDeep оборвалась, но расход или завершение процесса ещё не подтверждены. Продолжение откроется после сверки, без повтора команд и без увеличения лимита.'};
     }
     return next;

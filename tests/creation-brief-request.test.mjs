@@ -40,13 +40,13 @@ test('new Qwen reasoning brief reserves its larger output within the original ph
   const f=setup(t,{executionSettings:{modelId:'qwen3.8-27b',effortId:'none'}});
   const payload=f.gate.prepare({...executorPayload,model:'qwen3.8-27b'});
   assert.equal(f.job.executionPolicy.modelProfile.version,2);
-  assert.equal(f.job.preparationPolicy.outputTokens,16384);
-  assert.equal(payload.max_output_tokens,16384);
+  assert.equal(f.job.preparationPolicy.outputTokens,32768);
+  assert.equal(payload.max_output_tokens,32768);
   assert.equal(f.job.preparationPolicy.briefTokens,53172);
   assert.equal(payload.chat_template_kwargs,undefined,'unverified thinking control is not silently injected');
   f.claim(payload);
   const metadata=JSON.parse(f.store.db.prepare('SELECT metadata FROM provider_dispatches').get().metadata);
-  assert.equal(metadata.budget.reservation,Buffer.byteLength(JSON.stringify(payload))+8192+16384);
+  assert.equal(metadata.budget.reservation,Buffer.byteLength(JSON.stringify(payload))+8192+32768);
   assert.ok(metadata.budget.reservation<=53172);
 });
 
@@ -58,7 +58,7 @@ test('brief sends exact host dialogue without executor overhead and reserves the
   assert.ok(Buffer.byteLength(JSON.stringify(payload))<8000);
   f.claim(payload);
   const metadata=JSON.parse(f.store.db.prepare('SELECT metadata FROM provider_dispatches').get().metadata);
-  assert.equal(metadata.budget.reservation,Buffer.byteLength(JSON.stringify(payload))+8192+8192);
+  assert.equal(metadata.budget.reservation,Buffer.byteLength(JSON.stringify(payload))+8192+16384);
   assert.ok(metadata.budget.reservation<53172);
   assert.equal(f.store.runtimeRun(f.runId).preparation.requestMode,'host-brief-v1');
   assert.equal(f.store.runtimeRun(f.runId).preparation.sourceBytes,Buffer.byteLength(JSON.stringify(executorPayload)));
@@ -121,7 +121,7 @@ test('existing jobs retain their request protocol and cannot silently opt into t
 test('compact brief never silently removes attachments or oversized mandatory requirements',t=>{
   const f=setup(t);
   assert.throws(()=>f.gate.prepare({...executorPayload,input:[{role:'user',content:[{type:'input_image',image_url:'https://example.test/image'}]}]}),{code:'provider_budget_input_unbounded'});
-  const oversized={restart:true,text:JSON.stringify([{role:'user',text:'я'.repeat(33000)}])};
+  const oversized={restart:true,text:JSON.stringify([{role:'user',text:'я'.repeat(66000)}])};
   assert.throws(()=>prepareCreationContextPacket(f.job,oversized,{root:process.cwd(),stateRoot:path.dirname(path.dirname(f.job.draftRoot)),turnId:'turn_brief'}),{code:'creation_context_requirements_too_large'});
   assert.equal(f.store.providerUsageSummary(f.runId).providerRequests,0);
 });

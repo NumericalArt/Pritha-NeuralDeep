@@ -12,7 +12,7 @@ export type CreationJobView = {
   executionPolicy?:import('./creation-execution-policy.mjs').CreationExecutionPolicy;
   preparation?:{phase:{brief:number;research:number};phaseRemaining:{brief:number;research:number};total:number;remaining:number;
     requests:number;requestsRemaining:number;pendingRequests:number;unknownRequests:number;deliveryProtected:number;availableForDelivery:number|null;
-    limits:{briefTokens:number;researchTokens:number;totalTokens:number;maxRequests:number};research:{checked:string[];remaining:string[]}|null};
+    limits:{briefTokens:number;researchTokens:number;totalTokens:number;maxRequests:number;freshBytes?:number;rotationBytes?:number;hardBytes?:number};research:{checked:string[];remaining:string[]}|null};
   context?:{bytes:number|null;packetBytes:number|null;reservation:number|null;outputLimit:number|null;freshLimit:number;rotationLimit:number;hardLimit:number;requestMode?:string;sourceBytes?:number};
   nextDispatch?:{status:string;reason:string};
   deliveryRunId:string|null;actions:Record<CreationAction,boolean>;

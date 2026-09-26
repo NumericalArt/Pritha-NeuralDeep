@@ -312,7 +312,7 @@ export function CodexChatPage() {
   const activeNewDraftRef = useRef(activeNewDraft);
   const [newChatKind, setNewChatKind] = useState<"self" | "child">("self");
   const [newChatSlug, setNewChatSlug] = useState("");
-  const [newChatTokenBudget, setNewChatTokenBudget] = useState("1000000");
+  const [newChatTokenBudget, setNewChatTokenBudget] = useState("2000000");
   const revisionsRef = useRef<Record<string, number>>({});
   const persistDraftsRef = useRef<() => Promise<void>>(async () => {});
   const [error, setError] = useState<ChatFailure | null>(null);
@@ -1066,7 +1066,7 @@ export function CodexChatPage() {
   const startNewDraft = useCallback(() => {
     setNewChatKind("self");
     setNewChatSlug("");
-    setNewChatTokenBudget("1000000");
+    setNewChatTokenBudget("2000000");
     openNewDraft(`draft_${crypto.randomUUID()}`);
   }, [openNewDraft]);
 
@@ -1689,7 +1689,7 @@ export function CodexChatPage() {
                     onChange={(event) => setNewChatSlug(event.target.value)}
                   />
                   <label className="codex-subject-budget">Лимит токенов создания
-                    <input className="codex-subject-slug" aria-label="Лимит токенов создания" type="number" min="1" max="1000000" step="1" value={newChatTokenBudget} onChange={event => setNewChatTokenBudget(event.target.value)} />
+                    <input className="codex-subject-slug" aria-label="Лимит токенов создания" type="number" min="1" max="4000000" step="1" value={newChatTokenBudget} onChange={event => setNewChatTokenBudget(event.target.value)} />
                   </label>
                   </>
                 ) : null}

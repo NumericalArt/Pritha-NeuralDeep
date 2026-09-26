@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {creationPreparationUsage,preparationPhase,assertPreparationPolicy} from './creation-preparation-policy.mjs';
+import {creationPreparationUsage,preparationPhase,assertPreparationPolicy,preparationLimit} from './creation-preparation-policy.mjs';
 import {readCreationContextPacket,creationSemanticProgress} from './creation-context-packet.mjs';
 import {readCreationResearch} from './creation-research-context.mjs';
 import {reconcileCreationArtifacts} from './agent-creation.mjs';
@@ -7,11 +7,10 @@ import {prepareCreationBriefRequest,validateCreationBriefResponse} from './creat
 import {prepareCreationResearchRequest} from './creation-research-request.mjs';
 import {neuralDeepExecutionProfile} from './model-execution-profile.mjs';
 
-const OUTPUT_LIMIT = 16_384;
+const OUTPUT_LIMIT = 32_768;
 const FRAMING_RESERVE = 8_192;
 // Two local read follow-ups can clarify an evidence reference. A third requires
 // a host-validated brief/document/fact, not a new cursor or native session.
-const LOCAL_READS_WITHOUT_PROGRESS = 2;
 const fail = (code, message) => { throw Object.assign(new Error(message), { code, statusCode: 409 }); };
 const count = value => Number.isSafeInteger(value) && value >= 0;
 
@@ -61,7 +60,7 @@ export function prepareBudgetedRequest(payload, available, pinnedProfile=null) {
     fail('provider_budget_invalid', 'Invalid response token limit.');
   const inputReservation = Buffer.byteLength(JSON.stringify(payload)) + FRAMING_RESERVE;
   const profile=pinnedProfile || neuralDeepExecutionProfile(String(payload.model||''));
-  if(pinnedProfile && (profile.modelId!==payload.model || ![8192,16384].includes(profile.applicationOutputCap)))
+  if(pinnedProfile && (profile.modelId!==payload.model || ![8192,16384,32768].includes(profile.applicationOutputCap)))
     fail('provider_budget_policy_changed','Pinned model output policy does not match the request.');
   const output = Math.min(payload.max_output_tokens ?? OUTPUT_LIMIT, profile.applicationOutputCap, OUTPUT_LIMIT, available - inputReservation - 64);
   const context=profile.declaredContextTokens;
@@ -138,15 +137,15 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
     const declared=current.job.executionPolicy?.modelProfile?.declaredContextTokens;
     if(declared && bytes+FRAMING_RESERVE+(payload.max_output_tokens||policy.outputTokens)>declared)
       fail('provider_budget_model_context','Conservative request reservation exceeds the declared model context.');
-    const requestCount=store.providerUsageSummary(runId).providerRequests;
+    const requestCount=store.acceptedProviderRequests(runId);
     const state={policyVersion:2,phase:current.phase,workUnitId:workloadId,packetHash:current.job.contextPacket.hash,
       bytes,reservation:bytes+FRAMING_RESERVE+(payload.max_output_tokens||policy.outputTokens),
       requestMode:isBrief()?'host-brief-v1':isResearch()?`host-research-v${current.job.researchProtocolVersion}`:'executor',sourceBytes:sourceBytes ?? bytes,reservationBasis:'utf8-text-plus-framing-v1',
       outputLimit:payload.max_output_tokens||policy.outputTokens,progressHash:current.progressHash,preparedAt:new Date().toISOString()};
     if(persist)store.updateRuntimeRun(runId,{preparation:state});
-    if(bytes>policy.hardBytes)fail('provider_budget_context_hard','Preparation request exceeds 128 KiB; no provider call was made.');
-    if(!requestCount && bytes>policy.freshBytes)fail('provider_budget_context_initial','The full initial request exceeds 64 KiB; requirements were preserved.');
-    if(requestCount && bytes>=policy.rotationBytes)fail('provider_budget_context_boundary','Preparation reached the 96 KiB checkpoint boundary.');
+    if(bytes>policy.hardBytes)fail('provider_budget_context_hard',`Preparation request exceeds ${policy.hardBytes/1024} KiB; no provider call was made.`);
+    if(!requestCount && bytes>policy.freshBytes)fail('provider_budget_context_initial',`The full initial request exceeds ${policy.freshBytes/1024} KiB; requirements were preserved.`);
+    if(requestCount && bytes>=policy.rotationBytes)fail('provider_budget_context_boundary',`Preparation reached the ${policy.rotationBytes/1024} KiB checkpoint boundary.`);
     const calls=Array.isArray(payload.input)?payload.input.filter(item=>['function_call','custom_tool_call'].includes(item.type)):[];
     const readCounts={};
     for(const call of calls) {
@@ -166,7 +165,7 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
     const progressChanged=phaseBudget && phaseBudget.progressHash!==current.progressHash;
     const priorDebt=phaseBudget?.localReadsWithoutProgress ?? Object.values(phaseBudget?.readCounts||{}).reduce((sum,n)=>sum+n,0);
     current.localReadsWithoutProgress=progressChanged?0:priorDebt+newReads;
-    if(current.localReadsWithoutProgress>LOCAL_READS_WITHOUT_PROGRESS)
+    if(current.localReadsWithoutProgress>preparationLimit(current.job,'localReadsWithoutProgress'))
       fail('provider_budget_no_progress','Local evidence paging produced no verified preparation progress.');
     const newRepeatedRead=Object.entries(readCounts).some(([signature,count])=>count>1 && count>(previousBudget?.readCounts?.[signature]||0));
     if(newRepeatedRead && previousBudget?.progressHash===current.progressHash)
@@ -180,12 +179,12 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
         sourceBytes=Buffer.byteLength(JSON.stringify(payload));
         if(isBrief()) {
           assertTextInput(payload);
-          if(store.providerUsageSummary(runId).providerRequests>0)
+          if(store.acceptedProviderRequests(runId)>0)
             fail('provider_budget_brief_request_limit','A brief step allows one response. Structural correction belongs to the host.');
           payload=prepareCreationBriefRequest(payload,current.job,current.packet);
         }
         if(isResearch()) {
-          if(current.job.researchProtocolVersion===2 && store.providerUsageSummary(runId).providerRequests>0)
+          if(current.job.researchProtocolVersion===2 && store.acceptedProviderRequests(runId)>0)
             fail('provider_budget_research_request_limit','One host research selection response is allowed per work unit.');
           payload=prepareCreationResearchRequest(payload,current.job,current.packet,creation.codeRoot);
         }
@@ -203,7 +202,7 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
     claim: event => store.claimProviderRequest(runId, event.requestHash, {}, () => {
       const available = remaining();
       if(isBrief()) {
-        if(store.providerUsageSummary(runId).providerRequests>0)
+        if(store.acceptedProviderRequests(runId)>0)
           fail('provider_budget_brief_request_limit','A brief response has already been requested.');
         if(createHash('sha256').update(JSON.stringify(event.payload)).digest('hex')!==briefRequestHash
           || JSON.stringify(event.payload)!==JSON.stringify(prepareCreationBriefRequest(event.payload,current.job,current.packet)))
@@ -212,7 +211,7 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
       if(isResearch() && (createHash('sha256').update(JSON.stringify(event.payload)).digest('hex')!==briefRequestHash
         || JSON.stringify(event.payload)!==JSON.stringify(prepareCreationResearchRequest(event.payload,current.job,current.packet,creation.codeRoot))))
         fail('provider_budget_context_changed','The host research request was changed before dispatch.');
-      if(isResearch() && current.job.researchProtocolVersion===2 && store.providerUsageSummary(runId).providerRequests>0)
+      if(isResearch() && current.job.researchProtocolVersion===2 && store.acceptedProviderRequests(runId)>0)
         fail('provider_budget_research_request_limit','A research selection response has already been requested.');
       checkRequest(event.payload,false);
       const output = event.payload?.max_output_tokens;

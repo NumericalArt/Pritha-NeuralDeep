@@ -43,7 +43,7 @@ test('a smaller initial allocation is immutable on replay and does not settle an
   assert.equal(job.budget.maxTokens,351052);
   assert.deepEqual(store.create(bounded),job);
   assert.throws(()=>store.create({...bounded,tokenBudget:1000000}),{code:'creation_budget_conflict'});
-  for(const tokenBudget of [null,0,-1,1.2,1000001,'351052',NaN])assert.throws(()=>store.create({...bounded,tokenBudget}),{code:'creation_budget_invalid'});
+  for(const tokenBudget of [null,0,-1,1.2,4000001,'351052',NaN])assert.throws(()=>store.create({...bounded,tokenBudget}),{code:'creation_budget_invalid'});
   assert.equal(creationBudgetBlocker(store.get(previous.chatId)).code,'creation_usage_unknown');
   assert.deepEqual(store.get(previous.chatId).budget.unknownAttempts,['old-unknown']);
  }finally{coordination.close();}
@@ -99,14 +99,16 @@ test('unknown usage is settled only by an explicit bound terminal receipt and re
   assert.throws(()=>store.reconcileTurnUsage(input.chatId,{...receipt,tokens:65}),{code:'creation_usage_receipt_conflict'});
  }finally{coordination.close();}
 });
-test('diagnostic threshold counts three identical failures, resets on success and distinguishes phase',()=>{
+test('diagnostic threshold counts six identical failures, resets on success and distinguishes phase',()=>{
  const {coordination,store}=make();try{
   store.create(input);
   const fail=(turnId,code)=>store.recordTurn(input.chatId,{turnId,code,tokens:1,ok:false,dispatched:true});
   fail('one','source_unavailable');fail('two','provider_timeout');let job=fail('three','invalid_result');
   assert.equal(job.budget.repeatedFailures,1);assert.equal(creationBudgetBlocker(job),null);
   fail('four','invalid_result');job=fail('five','invalid_result');
-  assert.equal(job.budget.repeatedFailures,3);assert.equal(creationBudgetBlocker(job).code,'creation_repeated_failure');
+  assert.equal(job.budget.repeatedFailures,3);assert.equal(creationBudgetBlocker(job),null,'the doubled threshold still allows work');
+  fail('five-b','invalid_result');fail('five-c','invalid_result');job=fail('five-d','invalid_result');
+  assert.equal(job.budget.repeatedFailures,6);assert.equal(creationBudgetBlocker(job).code,'creation_repeated_failure');
   store.recordTurn(input.chatId,{turnId:'success',tokens:1,ok:true});
   job=fail('six','invalid_result');assert.equal(job.budget.repeatedFailures,1);
   store.update(input.chatId,current=>({...current,phase:'research'}));

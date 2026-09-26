@@ -30,7 +30,7 @@ function fixture(t,{researchProtocolVersion,researchTopicPolicyVersion=2,researc
   const store=new NeuralDeepCoordinationStore({databasePath:path.join(stateRoot,'coord.sqlite')});t.after(()=>store.close());
   const jobs=new AgentCreationStore(store),chatId='chat_research_context',draftRoot=creationDraftRoot(stateRoot,'fixture',chatId),target=path.join(stateRoot,'children','feed');
   mkdirSync(draftRoot,{recursive:true});mkdirSync(target,{recursive:true});
-  let job=jobs.create({chatId,instanceId:'fixture',agentId:'feed',target,draftRoot,releaseSha:'a'.repeat(40),preparationPolicyVersion:2,researchProtocolVersion,
+  let job=jobs.create({chatId,instanceId:'fixture',agentId:'feed',target,draftRoot,releaseSha:'a'.repeat(40),preparationPolicyVersion:2,limitsProfile:'v2-base',researchProtocolVersion,
    ...(researchProtocolVersion===2?{researchTopicPolicyVersion,researchSelectionVersion}:{})});
   const contract=prepareCreationContract(job,brief,options);job={...job,contract:contract.contract,preparation:{brief:contract.brief,briefHash:contract.briefHash}};
   const approve=kind=>{job=reconcileCreationArtifacts({...job,status:'pending'},options);job=approveCreationDocument(job,kind,{action:`approve_${kind}`,requestId:`approve_${kind}`,expectedRevision:job.revision,actor:'user'},options);};

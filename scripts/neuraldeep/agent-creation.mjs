@@ -181,7 +181,8 @@ export function creationJobView(job,options) {
       verify_saved:inactive && !job.activeTurnId && job.delivery?.recovery?.verifySaved===true,
       adopt_verified:inactive && !job.activeTurnId && job.delivery?.recovery?.adoptVerified===true,
       reconcile_usage:!hostStepActive && !['running','cancelled'].includes(job.status) && !job.activeTurnId && job.budget.unknownAttempts.length>0,
-      continue:inactive && !job.activeTurnId && !budgetBlocker && !approvalBlocked && !job.status.startsWith('awaiting_'),
+      // Budget blockers never end a job: an explicit Continue resolves them (creation-continue.mjs).
+      continue:inactive && !job.activeTurnId && !approvalBlocked && !job.status.startsWith('awaiting_'),
       pause:job.status==='running' || (hostStepActive && job.status==='pending'),cancel:!['cancelled','ready'].includes(job.status)}};
 }
 export function approveCreationDocument(job,kind,request,options) {
@@ -274,7 +275,7 @@ export function creationPrompt(job) {
     'Only host UI actions approve documents. Never use outcome approve, draft-scaffold or research bypass flags. Do not write canonical contracts/audit or run scaffold/deliver/start yourself.',
     'Propose defaults from Pritha standards. Ask a question only for a missing material product decision. Keep authored success criteria, sources, rights and constraints.',
     `Use ${cli} validate for reported issues; ${cli} questions lists supported interview values if a value really needs to change. Do not read CLI implementation. Commands must preserve their true exit status (no failure-masking pipelines).`,
-    `Accounted preparation tokens: ${job.budget?.tokensUsed ?? 0}; total creation limit: ${job.budget?.maxTokens ?? 1_000_000}. Read each relevant document once, batch independent reads, and avoid unrelated source discovery. The host can stop before another request when its reservation exceeds the remaining budget.`,
+    `Accounted preparation tokens: ${job.budget?.tokensUsed ?? 0}; total creation limit: ${job.budget?.maxTokens ?? 2_000_000}. Read each relevant document once, batch independent reads, and avoid unrelated source discovery. The host can stop before another request when its reservation exceeds the remaining budget.`,
     'Never modify Pritha platform source in the execution workspace. Product implementation is owned by the host delivery loop after approvals.'];
   if(job.proposalRevisionPending) details.push(`The operator requested an explicit proposal revision: ${JSON.stringify(job.revisionInstruction)}. Edit the seeded contract ${job.contract?.path} in place; do not run init or copy the accepted canonical document back. Keep creation_generation=${creationGeneration(job)} and its unique id ending -revision-${creationGeneration(job)}. Preserve target and identity; revise the product/port/adapter as requested. Validate the draft and stop for new contract approval. The new Outcome will be authored only after that approval. Earlier draft history is contextual and cannot supply current approval or research.`);
   else if(phase==='interview' || phase==='contract') {
@@ -288,7 +289,7 @@ export function creationPrompt(job) {
     details.push('Prepare the proposal directly from the product request. The complete supported brief shape is below; replace the angle-bracket values, use empty arrays when a field does not apply, and preserve the exact slug and target. Choose preset llm-app for an LLM application, local-feed for a feed application without an LLM, otherwise generic. Presets supply valid runtime, service, provider and test defaults. Do not invent technical enum values or inspect CLI implementation to discover them.',
       `\`\`\`pritha-brief-json\n${JSON.stringify(brief,null,2)}\n\`\`\``,
       'Set sourceFormat to json, rss, atom or mixed. When the user declines repository discovery, set repositoryResearchPolicy to not-applicable and state the reason in repositoryResearchWaiverReason; provider/API/source verification remains required. Set design.memoryModel to the requested storage (for example SQLite). These structured values are rendered into the contract; do not plan a second manual rewrite of generic defaults.',
-      `Save this JSON as brief.json in the authoring root, then run: ${cli} init --no-input --brief brief.json --contract-only --build-token-budget ${job.budget?.maxTokens ?? 1_000_000}`,
+      `Save this JSON as brief.json in the authoring root, then run: ${cli} init --no-input --brief brief.json --contract-only --build-token-budget ${job.budget?.maxTokens ?? 2_000_000}`,
       'The brief supplies name and mission; additional --name or --mission flags are unnecessary. Init prints the draft contract path and keeps its status draft. It writes under the authoring root, not the child target. Do not add approval or token-budget-confirmation flags.',
       `Validate the printed contract path with: ${cli} validate <contract-path>`,
       'Read the printed draft once to verify storage, provider/fallback, harness boundaries, permissions and risks against the brief; validation alone does not check meaning. App/feed presets provide a product-only runtime table and complete safe harness defaults. Correct only a material mismatch. Avoid overlapping patch hunks or repeated whole-file reads. Validate the absolute printed path, then stop and present the proposal for host approval. Current API/source research belongs to the separate research phase after both approvals. Do not read unrelated platform source, prepare the Outcome or implement the product in this step.');

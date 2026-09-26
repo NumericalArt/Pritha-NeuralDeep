@@ -25,6 +25,7 @@ import { resolveTaskChatPhase, taskChatPhasePreamble, taskChatTimeoutCheckpoint,
 import { privateUserContextFor } from "@/lib/private-user-context";
 import { AgentCreationStore, AgentCreationError, creationBudgetBlocker, creationPhase } from "../../../../../scripts/neuraldeep/agent-creation-store.mjs";
 import { creationRuntimeReceipt, creationObservedUsage } from "../../../../../scripts/neuraldeep/creation-runtime-receipt.mjs";
+import { resolveCreationContinue } from "../../../../../scripts/neuraldeep/creation-continue.mjs";
 import { preparationExecutionDeadline } from "../../../../../scripts/neuraldeep/creation-execution-policy.mjs";
 import { dispatchBlockerMessage } from "../../../../../scripts/neuraldeep/dispatch-blocker-message.mjs";
 import { reviseCreationProposal, creationRevisionPending } from "../../../../../scripts/neuraldeep/creation-revision.mjs";
@@ -358,10 +359,8 @@ export class CodexChatGateway {
           return store.update(chatId,()=>next,job.revision);
         });
       } else {
-        const blocker=request.action==='continue' ? creationBudgetBlocker(job) : null;
-        if(blocker)throw new AgentCreationError(blocker.code,blocker.message);
         if(request.action==='continue' && job.activeTurnId)throw new AgentCreationError('creation_execution_unconfirmed','Предыдущее исполнение ещё не завершено или его завершение не подтверждено.');
-        this.withCreationStore(store=>store.update(chatId,current=>({...current,
+        this.withCreationStore(store=>store.update(chatId,current=>({...(request.action==='continue'?resolveCreationContinue(current,{coordination:store.store,request}):current),
           status:request.action==='cancel'?'cancelled':request.action==='pause'?'paused':'pending',
           autoContinue:request.action==='continue',blocker:null,lastAction:request.requestId}),request.expectedRevision));
         if(['pause','cancel'].includes(request.action) && this.activeTurns.has(chatId))await this.interruptTurn(chatId);
@@ -408,11 +407,8 @@ export class CodexChatGateway {
       if(job.lastAction!==request.requestId)await this.applyCreationRecovery(chatId,await this.requireBinding(chatId),request);
     } else if(job.lastAction!==request.requestId) {
       if(job.revision!==request.expectedRevision)throw new CodexChatGatewayError('creation_action_unconfirmed','Состояние изменилось до завершения действия. Нужна проверка сохранённой операции.',503,true);
-      if(request.action==='continue') {
-        const blocker=creationBudgetBlocker(job);
-        if(blocker || job.activeTurnId)throw new AgentCreationError(blocker?.code || 'creation_execution_unconfirmed',blocker?.message);
-      }
-      this.withCreationStore(store=>store.update(chatId,current=>({...current,status:request.action==='cancel'?'cancelled':request.action==='pause'?'paused':'pending',
+      if(request.action==='continue' && job.activeTurnId)throw new AgentCreationError('creation_execution_unconfirmed','Предыдущее исполнение ещё не завершено или его завершение не подтверждено.');
+      this.withCreationStore(store=>store.update(chatId,current=>({...(request.action==='continue'?resolveCreationContinue(current,{coordination:store.store,request}):current),status:request.action==='cancel'?'cancelled':request.action==='pause'?'paused':'pending',
         autoContinue:request.action==='continue',lastAction:request.requestId,blocker:null}),request.expectedRevision));
     }
     this.withCreationStore(store=>store.finishAction(chatId,request.requestId,{ok:true}));
@@ -743,7 +739,7 @@ export class CodexChatGateway {
     }
     if(subject?.taskType==='agent_creation') {
       if(!subject.subjectId)throw new AgentCreationError('creation_name_required','Укажите имя нового агента.',400);
-      if(subject.tokenBudget !== undefined && (!Number.isSafeInteger(subject.tokenBudget) || subject.tokenBudget < 1 || subject.tokenBudget > 1_000_000))throw new AgentCreationError('creation_budget_invalid','Лимит создания должен быть целым числом от 1 до 1 000 000 токенов.',400);
+      if(subject.tokenBudget !== undefined && (!Number.isSafeInteger(subject.tokenBudget) || subject.tokenBudget < 1 || subject.tokenBudget > 4_000_000))throw new AgentCreationError('creation_budget_invalid','Лимит создания должен быть целым числом от 1 до 4 000 000 токенов.',400);
       const release=creationReleaseIdentity(this.root);
       if(release.sourceDirty || !release.source || release.source!==release.runtime)throw new AgentCreationError('creation_release_mismatch','Для нового агента нужен чистый проверенный выпуск: исходники и работающая Pritha должны совпадать.');
     }
