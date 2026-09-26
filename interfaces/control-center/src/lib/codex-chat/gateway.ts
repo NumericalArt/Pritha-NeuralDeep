@@ -290,7 +290,7 @@ export class CodexChatGateway {
       const settings=getPrithaRuntimeSettings();
       return store.create({chatId:binding.chatId,instanceId,agentId:binding.subject!.subjectId,releaseSha:versions.source,
         executionSettings:{modelId:binding.modelId,effortId:binding.effortId,timeoutMs:settings.codexTimeoutMs,promptTokenBudget:settings.codexPromptTokenBudget},
-        tokenBudget:binding.subject!.tokenBudget,preparationPolicyVersion:2,briefProtocolVersion:1,researchProtocolVersion:2,
+        tokenBudget:binding.subject!.tokenBudget,preparationPolicyVersion:2,briefProtocolVersion:1,outcomeProtocolVersion:1,researchProtocolVersion:2,
         target:path.join(resolvePrithaAgentParent(this.root),binding.subject!.subjectId!),draftRoot:creationDraftRoot(this.store.stateRoot,instanceId,binding.chatId)});
     });
   }

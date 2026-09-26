@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { NeuralDeepCoordinationStore } from '../scripts/neuraldeep/coordination-store.mjs';
@@ -67,4 +67,11 @@ test('an invalid authored Outcome gets one repair turn, then a visible blocker; 
   // A valid answer after an explicit Continue still publishes: no half-written document blocks it.
   job = reconcileCreationArtifacts(completeCreationOutcome({ ...job, status: 'pending' }, authored(outcome), { ...options, turnId: 'turn_three' }), options);
   assert.equal(job.status, 'awaiting_outcome_approval', JSON.stringify(job.blocker));
+});
+
+test('every place that creates a UI creation job selects the model-authored Outcome protocol', () => {
+  const gateway = readFileSync(new URL('../interfaces/control-center/src/lib/codex-chat/gateway.ts', import.meta.url), 'utf8');
+  const creates = gateway.match(/preparationPolicyVersion:2,briefProtocolVersion:1[^\n]*/g);
+  assert.ok(creates.length >= 2);
+  for (const call of creates) assert.match(call, /outcomeProtocolVersion:1/);
 });
