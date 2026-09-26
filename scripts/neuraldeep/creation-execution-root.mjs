@@ -48,7 +48,8 @@ export async function assertCreationExecutionRoot(store, runtime, options, envir
       assertPreparationPolicy(job);
       if(intent.creationPreparation?.policyVersion!==2 || intent.creationPreparation.phase!==preparationPhase(job.phase)
         || intent.creationPreparation.workUnitId!==options.workloadId || intent.creationPreparation.packetHash!==job.contextPacket?.hash
-        || job.phase==='outcome')throw new Error();
+        // Outcome protocol 1 authors the Outcome in a tool-free model turn; older jobs keep it host-only.
+        || job.phase==='outcome' && job.outcomeProtocolVersion!==1)throw new Error();
     }
     if (intent.creationSession && (intent.creationSession.mode !== 'checkpoint'
       || !/^[a-f0-9]{64}$/.test(intent.creationSession.contextHash || '')
