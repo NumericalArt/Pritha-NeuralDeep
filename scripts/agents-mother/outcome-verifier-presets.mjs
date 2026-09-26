@@ -110,7 +110,8 @@ export function verifyPreparedOutcomeVerifierPreset(projectPath, preset, options
   return receipt;
 }
 function declaredApiProtocol(api) {
-  const operation = `${api.operation.method} ${api.operation.path} accepts JSON {${api.operation.inputField}: <user text>${api.operation.extraBody ? `, ${Object.keys(api.operation.extraBody).join(", ")}` : ""}} and returns 2xx JSON {id, ...result}`;
+  const extra = Object.keys(api.operation.extraBody || {});
+  const operation = `${api.operation.method} ${api.operation.path} accepts JSON {${api.operation.inputField}: <user text>${extra.length ? `, ${extra.join(", ")}` : ""}} and returns 2xx JSON {id, ...result}`;
   return [`scripts/server.mjs binds 127.0.0.1 at PORT and stores durable product data under PRITHA_DATA_DIR. GET /health returns {status:ok}; GET / serves HTML.`,
     `Declared product API: ${operation}; the result contains content derived from the model reply. GET ${api.list.path} returns {${api.list.itemsField}:[{id, ...}]} including every saved result.`,
     api.item ? `GET ${api.item.path} returns the saved result.` : "",

@@ -73,6 +73,21 @@ function compact(value, maxChars = 2000) {
   return `${text.slice(0, Math.max(0, maxChars - 3)).trim()}...`;
 }
 
+const QUARANTINE_MARKER = "[QUARANTINED_UNTRUSTED_INSTRUCTION]";
+/**
+ * Model-written synthesis quarantines instruction-like sentences individually,
+ * so a security rationale ("would expose the credential to the browser") does
+ * not erase a whole decision. Returns the text and what substance remains.
+ */
+function sentenceQuarantinedNarrative(value, maxChars) {
+  const clean = String(value || "").replace(/\s+/g, " ").trim();
+  const sentences = clean.split(/(?<=[.!?;])\s+/).filter(Boolean);
+  const kept = sentences.map((sentence) => containsHighRiskInstruction(sentence) ? QUARANTINE_MARKER : quarantineUntrustedInstructionText(sentence));
+  const text = kept.join(" ");
+  const bounded = text.length <= maxChars ? text : `${text.slice(0, Math.max(0, maxChars - 3)).trim()}...`;
+  return { text: bounded, quarantined: kept.includes(QUARANTINE_MARKER), remaining: kept.filter((sentence) => sentence !== QUARANTINE_MARKER).join(" ") };
+}
+
 function compactUntrustedNarrative(value, maxChars = 2000) {
   const text = quarantineUntrustedInstructionText(String(value || "").replace(/\s+/g, " ").trim());
   if (text.length <= maxChars) return text;
@@ -660,9 +675,10 @@ export function normalizeExternalResearchSynthesis(input, context = {}) {
   const raw = payload.synthesis && typeof payload.synthesis === "object" ? payload.synthesis : payload;
   const provided = Boolean(raw && Object.keys(raw).length);
   const relationship = normalizedEnum(raw.relationship || raw.memory_relationship || raw.memoryRelationship || "");
-  const memoryComparison = compactUntrustedNarrative(raw.memory_comparison || raw.memoryComparison || "", 2400);
-  const summary = compactUntrustedNarrative(raw.summary || raw.synthesis_summary || raw.synthesisSummary || "", 1600);
-  const architectureDecision = compactUntrustedNarrative(raw.architecture_decision || raw.architectureDecision || raw.decision || "", 1600);
+  const memoryNarrative = sentenceQuarantinedNarrative(raw.memory_comparison || raw.memoryComparison || "", 2400);
+  const summaryNarrative = sentenceQuarantinedNarrative(raw.summary || raw.synthesis_summary || raw.synthesisSummary || "", 1600);
+  const decisionNarrative = sentenceQuarantinedNarrative(raw.architecture_decision || raw.architectureDecision || raw.decision || "", 1600);
+  const memoryComparison = memoryNarrative.text, summary = summaryNarrative.text, architectureDecision = decisionNarrative.text;
   const repositoryAdoptionRecommendation = normalizedUntrustedEnum(
     raw.repository_adoption_recommendation
       || raw.repositoryAdoptionRecommendation
@@ -679,22 +695,23 @@ export function normalizeExternalResearchSynthesis(input, context = {}) {
     .filter(Boolean))].sort();
   const repositoryAdoptionMode = normalizedEnum(context.repositoryAdoptionMode || "");
   const errors = [];
+  const warnings = [];
+  const narratives = [memoryNarrative, summaryNarrative, decisionNarrative];
+  const listValues = [
+    ...(Array.isArray(raw.alternatives) ? raw.alternatives : []),
+    ...(Array.isArray(raw.tradeoffs) ? raw.tradeoffs : []),
+    ...(Array.isArray(raw.trade_offs) ? raw.trade_offs : []),
+  ];
+  // A decision field that is an instruction, or a narrative with no substance
+  // left after quarantine, fails; quarantined sentences elsewhere are warnings.
   const untrustedInstructionDetected = [
-    raw.memory_comparison,
-    raw.memoryComparison,
-    raw.summary,
-    raw.synthesis_summary,
-    raw.architecture_decision,
-    raw.architectureDecision,
-    raw.decision,
     raw.repository_adoption_recommendation,
     raw.repositoryAdoptionRecommendation,
     raw.scaffold_recommendation,
     raw.scaffoldRecommendation,
-    ...(Array.isArray(raw.alternatives) ? raw.alternatives : []),
-    ...(Array.isArray(raw.tradeoffs) ? raw.tradeoffs : []),
-    ...(Array.isArray(raw.trade_offs) ? raw.trade_offs : []),
-  ].some((value) => containsHighRiskInstruction(value));
+  ].some((value) => containsHighRiskInstruction(value))
+    || narratives.some((narrative) => narrative.quarantined && !hasDetailedValue(narrative.remaining, 20));
+  if (narratives.some((narrative) => narrative.quarantined) || listValues.some((value) => containsHighRiskInstruction(value))) warnings.push("synthesis_sentences_quarantined");
   if (!provided) errors.push("synthesis_missing");
   if (!SYNTHESIS_RELATIONSHIPS.has(relationship)) errors.push("synthesis_relationship_invalid");
   if (!hasDetailedValue(memoryComparison, 20)) errors.push("synthesis_memory_comparison_missing");
@@ -727,6 +744,7 @@ export function normalizeExternalResearchSynthesis(input, context = {}) {
     provided,
     complete: errors.length === 0,
     errors,
+    warnings,
     lock: provided ? deterministicLock(synthesisLockPayload(normalized)) : "pending",
   };
 }

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { AgentCreationError, creationBudgetBlocker } from './agent-creation-store.mjs';
 
+const RESEARCH_ANSWER_BLOCKERS = new Set(['creation_research_selection_invalid', 'creation_research_quote_unbound']);
 const exited = receipt => receipt.process_exited === true && receipt.process_tree_exited === true && receipt.adapter_closed === true;
 
 /**
@@ -36,6 +37,12 @@ export function creationUpperBoundReceipt(coordination, turnId) {
  */
 export function resolveCreationContinue(job, { coordination, request, now = new Date().toISOString() }) {
   const next = structuredClone(job), budget = next.budget, resolved = [];
+  // A research answer that failed validation after its repair is not re-validated
+  // forever: Continue discards it so a new selection request is made.
+  if (next.preparation?.pendingResearchTurnId && RESEARCH_ANSWER_BLOCKERS.has(next.blocker?.code)) {
+    next.preparation = { ...next.preparation, pendingResearchTurnId: null, researchRepairCount: 0 };
+    resolved.push('research_answer_discarded');
+  }
   for (let blocker = creationBudgetBlocker(next), guard = 0; blocker; blocker = creationBudgetBlocker(next), guard += 1) {
     if (guard >= 16) throw new AgentCreationError(blocker.code, blocker.message);
     if (blocker.code === 'creation_usage_unknown') {

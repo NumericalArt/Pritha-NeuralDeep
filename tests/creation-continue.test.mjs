@@ -68,3 +68,12 @@ test('Continue lifts only a queue pause left by a finished attempt', t => {
     store.resume('b'.repeat(24));
   }
 });
+
+test('Continue discards a research answer that keeps failing validation', () => {
+  const store = { db: { prepare: () => ({ all: () => [] }) } };
+  const stuck = job({}, { blocker: { code: 'creation_research_selection_invalid', message: 'quarantined' }, preparation: { pendingResearchTurnId: 'turn_research', researchRepairCount: 1 } });
+  const next = resolveCreationContinue(stuck, { coordination: store, request });
+  assert.equal(next.preparation.pendingResearchTurnId, null);
+  assert.equal(next.preparation.researchRepairCount, 0);
+  assert.deepEqual(next.budget.continueDecisions[0].resolved, ['research_answer_discarded']);
+});
