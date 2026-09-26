@@ -48,6 +48,7 @@ jobs:
       - name: Bootstrap plan and verify
         run: |
           node scripts/bootstrap.mjs plan --profile minimal --json
+          node scripts/rebuild-memory.mjs
           node scripts/bootstrap.mjs verify --profile minimal --json
 
       - name: Run setup wizard in a clean temp state

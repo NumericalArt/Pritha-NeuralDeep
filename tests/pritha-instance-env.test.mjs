@@ -35,9 +35,20 @@ test("requirePrithaInstanceEnv reads .pritha-instance.json into env", () => {
 });
 
 test("deliver --dry-run in a clean shell prints the instance id from the pointer", () => {
-  const root = path.resolve(".");
+  // A clean checkout (CI, ZIP) has no pointer, so the test owns a synthetic one.
+  const root = mkdtempSync(path.join(os.tmpdir(), "pritha-instance-deliver-"));
+  const stateRoot = path.join(root, "state");
+  mkdirSync(stateRoot);
+  writeFileSync(path.join(root, ".pritha-instance.json"), JSON.stringify({
+    schema: "pritha-instance-v1",
+    id: "nd-deliver-test",
+    stateRoot,
+    agentParent: path.join(root, "agents"),
+    port: 3520,
+    keychainService: "pritha-neuraldeep:nd-deliver-test",
+  }));
   const pointer = JSON.parse(readFileSync(path.join(root, ".pritha-instance.json"), "utf8"));
-  const result = spawnSync(process.execPath, ["scripts/pritha.mjs", "deliver", "--dry-run"], {
+  const result = spawnSync(process.execPath, [path.resolve("scripts/pritha.mjs"), "deliver", "--dry-run"], {
     encoding: "utf8",
     env: {
       PATH: process.env.PATH,
