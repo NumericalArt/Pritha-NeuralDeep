@@ -412,7 +412,7 @@ export class NeuralDeepCoordinationStore {
   }
 
   /** Persist only counts and transport status; never a prompt, response or credential. */
-  recordProviderResponse(runId, { requestHash, status, usage, upstreamAttempted }) {
+  recordProviderResponse(runId, { requestHash, status, usage, upstreamAttempted, providerRejected }) {
     // A rejected replay is not evidence about the earlier accepted request.
     if (upstreamAttempted !== true) return false;
     if (!/^[a-f0-9]{64}$/.test(requestHash || '') || !Number.isInteger(status)) throw new Error('provider_response_identity_invalid');
@@ -420,7 +420,16 @@ export class NeuralDeepCoordinationStore {
       const row=this.db.prepare('SELECT metadata FROM provider_dispatches WHERE run_id=? AND request_hash=?').get(runId,requestHash);
       if(!row)throw new Error('provider_dispatch_missing');
       const metadata=JSON.parse(row.metadata);
-      const completion={status,usage:neuralDeepUsageKnown(usage)?normalizeNeuralDeepUsage(usage):null};
+      let completion={status,usage:neuralDeepUsageKnown(usage)?normalizeNeuralDeepUsage(usage):null};
+      // A complete provider error response (e.g. gateway 504) carries no usage.
+      // Settle it at its admission reservation, an upper bound, so one gateway
+      // error cannot leave spend unknown forever. Broken streams and local
+      // aborts are not provider rejections and stay unknown.
+      const reservation=metadata.budget?.reservation,outputLimit=metadata.budget?.outputLimit;
+      if(!completion.usage && providerRejected===true && status>=400 && Number.isSafeInteger(reservation) && reservation>0) {
+        const output=Number.isSafeInteger(outputLimit) && outputLimit>=0 && outputLimit<=reservation ? outputLimit : 0;
+        completion={status,usage:normalizeNeuralDeepUsage({input_tokens:reservation-output,output_tokens:output}),usageBasis:'reservation_upper_bound'};
+      }
       if(metadata.completion) {
         if(JSON.stringify(metadata.completion)!==JSON.stringify(completion))throw new Error('provider_response_receipt_conflict');
         return false;

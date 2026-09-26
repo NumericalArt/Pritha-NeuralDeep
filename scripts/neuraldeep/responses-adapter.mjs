@@ -229,6 +229,8 @@ export function createNeuralDeepAdapter(options = {}) {
         requestHash,
         upstreamAttempted,
         usage: providerUsage,
+        // The provider's complete error response reached us; no output was streamed to Codex.
+        providerRejected: isResponses && !upstream.ok,
         error: upstream.ok ? responseSummary && responseSummary.status!=='completed'
           ? classifyNeuralDeepProviderError({status:upstream.status,transportCode:responseSummary.incompleteReason==='max_output_tokens'?'neuraldeep_output_limit':`neuraldeep_response_${responseSummary.status}`}) : null : classifyNeuralDeepProviderError({
           status: upstream.status,
