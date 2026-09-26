@@ -84,7 +84,7 @@ function fixture(t, { hostStep, recoverDelivery, readDelivery, settlePreparation
     gateway = Object.create(gatewayModule.CodexChatGateway.prototype);
     Object.assign(gateway, { root, store: { stateRoot, stateIdentityHash: instanceId, get: async id => id === chatId ? binding : null },
       activeTurns: new Map(), waitingTurns: new Map(), events: new Map(), subscribers: new Map(), creationAdvances: new Set(), creationDeliveries: new Map(), recoveryComplete: true,
-      runtime: new Proxy({}, { get: () => unexpected }), runner: { start: unexpected }, admission: { reconcileWorkload: unexpected }, emitThreadUpdated: async () => {},
+      runtime: new Proxy({}, { get: () => unexpected }), runner: { start: unexpected }, admission: { reconcileWorkload: unexpected, resumeFinishedCoordinationKey: () => false }, emitThreadUpdated: async () => {},
       startTurn: async (id, input) => { dispatches.push({ chatId: id, input }); gateway.activeTurns.set(id, { turnId: 'fixture-turn' }); },
     });
     return gateway;

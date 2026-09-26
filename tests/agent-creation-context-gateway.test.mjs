@@ -118,7 +118,7 @@ async function fixture(t,preparationVersion) {
         leases.push(input); journal.enqueue({ ...input, coordinationKeyHash: hash(input.coordinationKey).slice(0, 24), queuedAt: new Date().toISOString() });
         const claim = journal.claim(input.attemptId, 1); assert.ok(claim);
         return { launcherReceipt: { attemptId: input.attemptId, ownerToken: claim.ownerToken }, release: async status => journal.finish(input.attemptId, claim.ownerToken, status) };
-      }, reconcileWorkload: (...args) => journal.reconcileWorkload(...args) },
+      }, reconcileWorkload: (...args) => journal.reconcileWorkload(...args), resumeFinishedCoordinationKey: () => false },
       runner: { start: async input => {
         launches.push(input); const sessionId = `synthetic-session-${launches.length}`, runId = `synthetic-run-${launches.length}`;
         journal.beginRuntimeRun({ runId, requestHash: hash(input.prompt), receipt: { workload_id: input.workloadId, status: 'running', process_exited: false } });

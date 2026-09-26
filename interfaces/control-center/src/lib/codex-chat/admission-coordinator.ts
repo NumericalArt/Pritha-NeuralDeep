@@ -166,6 +166,7 @@ export class NeuralDeepAdmissionCoordinator {
 
   pauseCoordinationKey(key: string, reason: "waiting_for_operator" | "waiting_for_approval") { this.getStore().pause(coordinationHash(key), reason); }
   resumeCoordinationKey(key: string) { this.getStore().resume(coordinationHash(key)); this.scheduleDrain(); }
+  resumeFinishedCoordinationKey(key: string) { const resumed = this.getStore().resumeFinished(coordinationHash(key)); if (resumed) this.scheduleDrain(); return resumed; }
   holdLogicalOwner(key: string, owner: string) { return this.getStore().holdLogicalOwner(coordinationHash(key), safeWorkloadId(owner)); }
   releaseLogicalOwner(key: string, owner: string, generation: number) {
     const released = this.getStore().releaseLogicalOwner(coordinationHash(key), safeWorkloadId(owner), generation);

@@ -267,6 +267,8 @@ export class NeuralDeepCoordinationStore {
   }
 
   resume(scope) { this.db.prepare("DELETE FROM paused_scopes WHERE scope=?").run(scope); }
+  /** Lift only a pause left by an attempt that already finished; unconfirmed exits and operator waits stay. */
+  resumeFinished(scope) { return this.db.prepare("DELETE FROM paused_scopes WHERE scope=? AND reason IN ('failed','cancelled','interrupted')").run(scope).changes > 0; }
 
   holdLogicalOwner(scope, owner, expectedGeneration = null) {
     if (!SCOPE.test(scope) || !ID.test(owner)) throw new Error("admission_owner_invalid");

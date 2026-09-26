@@ -58,3 +58,13 @@ test('Continue extends exhausted budgets from the original size and clears failu
   assert.equal(stopped.preparationStop, null);
   assert.deepEqual(resolveCreationContinue(job(), { coordination: store, request }).budget.continueDecisions, undefined, 'nothing to resolve, nothing recorded');
 });
+
+test('Continue lifts only a queue pause left by a finished attempt', t => {
+  const store = new NeuralDeepCoordinationStore(); t.after(() => store.close());
+  for (const reason of ['failed', 'cancelled', 'interrupted']) { store.pause('a'.repeat(24), reason); assert.equal(store.resumeFinished('a'.repeat(24)), true, reason); }
+  for (const reason of ['runtime_exit_unconfirmed', 'worker_exit_requires_reconciliation', 'waiting_for_operator', 'resume_confirmation_required']) {
+    store.pause('b'.repeat(24), reason);
+    assert.equal(store.resumeFinished('b'.repeat(24)), false, `${reason} still needs its own decision`);
+    store.resume('b'.repeat(24));
+  }
+});

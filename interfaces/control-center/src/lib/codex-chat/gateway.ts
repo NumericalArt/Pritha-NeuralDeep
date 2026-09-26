@@ -365,6 +365,8 @@ export class CodexChatGateway {
           autoContinue:request.action==='continue',blocker:null,lastAction:request.requestId}),request.expectedRevision));
         if(['pause','cancel'].includes(request.action) && this.activeTurns.has(chatId))await this.interruptTurn(chatId);
         if(['pause','cancel'].includes(request.action))this.creationDeliveries.get(chatId)?.abort();
+        // An explicit Continue also lifts a queue pause left by a finished failed attempt.
+        if(request.action==='continue' && !this.activeTurns.has(chatId))this.admission.resumeFinishedCoordinationKey(binding.voiceTopicId || `${binding.stateIdentityHash}:${binding.chatId}`);
       }
       this.withCreationStore(store=>store.finishAction(chatId,request.requestId,{ok:true}));
       if(!['pause','cancel','verify_saved','adopt_verified','reconcile_usage'].includes(request.action))void this.advanceCreation(chatId);
@@ -1145,6 +1147,8 @@ export class CodexChatGateway {
         } else {
           const intent = this.executionIntent(binding,turnId);
           intent.voiceHandoff=turn.executionIntent?.voiceHandoff;
+          // A retried host creation step stays a host step (e.g. the model-authored Outcome turn).
+          if(turn.executionIntent?.creationOrigin)intent.creationOrigin=turn.executionIntent.creationOrigin;
           intent.predecessorTurnId=turn.executionIntent?.predecessorTurnId;
           intent.queueRevision = (turn.executionIntent?.queueRevision || 0)+1;
           const original = database.originalUserText(chatId,turnId);
