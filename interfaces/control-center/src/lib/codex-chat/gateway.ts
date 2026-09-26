@@ -1336,6 +1336,10 @@ export class CodexChatGateway {
             ? { code: "queued_cancelled", message: "Queued message cancelled before dispatch." }
             : error instanceof AgentCreationError
               ? { code: error.code, message: error.message }
+              : error instanceof ExecutionWorkspaceError
+                ? { code: error.code, message: error.code === "workspace_source_revision_mismatch"
+                  ? "This creation task is pinned to an earlier Pritha release than the running one. Its saved work is preserved; start a new task on the current release or return to the pinned release."
+                  : "The execution workspace could not be prepared. Saved work is preserved." }
               : { code: "admission_reconciliation_required", message: active.intent?.voiceHandoff
                 ? "The Voice predecessor or saved handoff needs an operator decision before this message can run. The original input is preserved."
                 : "The saved queue needs reconciliation before dispatch." };
