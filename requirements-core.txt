@@ -1,2 +1,2 @@
-sentence-transformers==5.1.2
+sentence-transformers==6.1.0
 imageio-ffmpeg==0.6.0
