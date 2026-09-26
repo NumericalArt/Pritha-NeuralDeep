@@ -421,14 +421,12 @@ export class NeuralDeepCoordinationStore {
       if(!row)throw new Error('provider_dispatch_missing');
       const metadata=JSON.parse(row.metadata);
       let completion={status,usage:neuralDeepUsageKnown(usage)?normalizeNeuralDeepUsage(usage):null};
-      // A complete provider error response (e.g. gateway 504) carries no usage.
-      // Settle it at its admission reservation, an upper bound, so one gateway
-      // error cannot leave spend unknown forever. Broken streams and local
-      // aborts are not provider rejections and stay unknown.
-      const reservation=metadata.budget?.reservation,outputLimit=metadata.budget?.outputLimit;
-      if(!completion.usage && providerRejected===true && status>=400 && Number.isSafeInteger(reservation) && reservation>0) {
-        const output=Number.isSafeInteger(outputLimit) && outputLimit>=0 && outputLimit<=reservation ? outputLimit : 0;
-        completion={status,usage:normalizeNeuralDeepUsage({input_tokens:reservation-output,output_tokens:output}),usageBasis:'reservation_upper_bound'};
+      // A complete provider error response (e.g. a gateway 504 before any model
+      // byte, 429, 503) reports that no completion was produced: settle it at
+      // zero so outages neither leave spend unknown nor drain phase budgets.
+      // Broken streams and local aborts are not provider rejections and stay unknown.
+      if(!completion.usage && providerRejected===true && status>=400) {
+        completion={status,usage:normalizeNeuralDeepUsage({input_tokens:0,output_tokens:0}),usageBasis:'provider_rejected'};
       }
       if(metadata.completion) {
         if(JSON.stringify(metadata.completion)!==JSON.stringify(completion))throw new Error('provider_response_receipt_conflict');
@@ -443,7 +441,7 @@ export class NeuralDeepCoordinationStore {
   /** Requests the provider did not reject; a settled rejection may be resent. */
   acceptedProviderRequests(runId) {
     return this.db.prepare('SELECT metadata FROM provider_dispatches WHERE run_id=?').all(runId)
-      .filter(row=>JSON.parse(row.metadata).completion?.usageBasis!=='reservation_upper_bound').length;
+      .filter(row=>JSON.parse(row.metadata).completion?.usageBasis!=='provider_rejected').length;
   }
 
   providerUsageSummary(runId) {

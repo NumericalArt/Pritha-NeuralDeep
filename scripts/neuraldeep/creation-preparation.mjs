@@ -19,15 +19,19 @@ const fail = (code, message) => { throw new AgentCreationError(code, message); }
 
 export const CREATION_INTERVIEW_ROUNDS = 3;
 const INTERVIEW_QUESTIONS = 5;
+/** A fenced JSON block; models also write the JSON on the fence line after "name:" or a space. */
+function fencedJsonBlocks(answer, name) {
+  return [...String(answer).matchAll(new RegExp('```' + name + '[:\\t ]*(\\{[\\s\\S]*?\\}|\\n[\\s\\S]*?)\\s*```', 'g'))].map(match => match[1].trim());
+}
 const text = (value, max) => typeof value === 'string' && value.trim() && value.length <= max;
 
 /** Clarifying questions with proposed defaults. Questions never authorize or skip approvals. */
 export function readCreationInterview(answer) {
-  const blocks = [...String(answer).matchAll(/```pritha-interview-json\s*\n([\s\S]*?)\n```/g)];
+  const blocks = fencedJsonBlocks(answer, 'pritha-interview-json');
   if (!blocks.length) return null;
   if (blocks.length !== 1) return {issues:['Return exactly one pritha-interview-json block.']};
   try {
-    const value = JSON.parse(blocks[0][1]), issues = [];
+    const value = JSON.parse(blocks[0]), issues = [];
     if (value?.schemaVersion !== 1) issues.push('pritha-interview-json requires schemaVersion 1.');
     const questions = Array.isArray(value?.questions) ? value.questions : [];
     if (!questions.length || questions.length > INTERVIEW_QUESTIONS) issues.push(`Ask between 1 and ${INTERVIEW_QUESTIONS} questions.`);
@@ -164,10 +168,10 @@ export function creationOutcomeAuthoringContext(job, options) {
 const outcomeText = (value, max = 2000) => typeof value === 'string' && value.trim() && value.length <= max;
 /** Product-specific Outcome content authored by the model; the host owns format, locks and verifiers. */
 export function readCreationOutcome(answer, preset) {
-  const blocks = [...String(answer).matchAll(/```pritha-outcome-json\s*\n([\s\S]*?)\n```/g)];
+  const blocks = fencedJsonBlocks(answer, 'pritha-outcome-json');
   if (blocks.length !== 1) return {issues:['Return exactly one pritha-outcome-json fenced block.']};
   try {
-    const value = JSON.parse(blocks[0][1]), issues = [];
+    const value = JSON.parse(blocks[0]), issues = [];
     if (value?.schemaVersion !== 1) issues.push('schemaVersion must be 1.');
     if (!outcomeText(value?.oneLiner, 600)) issues.push('oneLiner must describe the visible result.');
     if (!Array.isArray(value?.doneWhen) || !value.doneWhen.length || value.doneWhen.some(item => !outcomeText(item, 600))) issues.push('doneWhen must list observable conditions.');
@@ -223,7 +227,7 @@ export function creationOutcomePrompt(job) {
   return [
     'You are Pritha\'s specification author. The operator approved the architecture contract. Write the product-specific Outcome Spec content from packet.outcomeAuthoring (numbered contract functions and success criteria), packet.brief and the dialogue. Do not run tools or author files; the host renders the document, locks it and installs protected verifiers, and the operator approves it separately.',
     'Make it concrete for this product, never generic: realistic example sessions with actual sample data and the exact visible result; acceptance checks an operator can perform in the product with a precise expected outcome (what to enter or click and what must appear, persist, download or fail clearly). Cover every core:N at least once and every success:N. Respect constraints and non-goals; add nothing the contract excludes.',
-    'Return a short summary for the operator, then exactly one fenced block starting with ```pritha-outcome-json: {"schemaVersion":1,"oneLiner":"...","doneWhen":["..."],"journey":{"entryPoint":"web","goal":"...","start":"...","progress":"...","approval":"...","completion":"...","recovery":"..."},"surfaces":[{"surface":"web","purpose":"...","primaryAction":"..."}],"exampleSessions":[{"name":"...","transcript":[{"role":"user","text":"..."},{"role":"agent","text":"..."}]}],"acceptance":[{"statement":"...","covers":["core:1","success:2"],"passCriteria":"..."}]' +
+    'Return a short summary for the operator, then exactly one fenced block: a line ```pritha-outcome-json, then the JSON on the following lines, then a closing line ```. JSON shape: {"schemaVersion":1,"oneLiner":"...","doneWhen":["..."],"journey":{"entryPoint":"web","goal":"...","start":"...","progress":"...","approval":"...","completion":"...","recovery":"..."},"surfaces":[{"surface":"web","purpose":"...","primaryAction":"..."}],"exampleSessions":[{"name":"...","transcript":[{"role":"user","text":"..."},{"role":"agent","text":"..."}]}],"acceptance":[{"statement":"...","covers":["core:1","success:2"],"passCriteria":"..."}]' +
       ',"productApi":{...only for llm-operation-v1}}.',
     'When packet.outcomeAuthoring.preset is llm-operation-v1, also declare productApi — the HTTP API the protected verifier will call on scripts/server.mjs: {"operation":{"method":"POST","path":"/api/<resource>","inputField":"<field holding the user text>","extraBody":{optional constant fields}},"list":{"path":"/api/<resource>","itemsField":"<array field>"},"item":{"path":"/api/<resource>/:id"} (optional),"export":{"path":"/api/<resource>/:id/export"} (optional, required when the product exports),"sampleInput":"<realistic user input>","providerResponse":"<the exact model reply your product prompt expects, e.g. the JSON it parses, containing {{nonce}} inside a value that is saved and returned>"}. The operation makes one model call through the Pritha binding, returns {id,...result} and saves it; the list returns saved results. Use the same API in the UI.',
     ...(job.preparation?.outcomeErrors?.length ? [`Correct only these errors: ${JSON.stringify(job.preparation.outcomeErrors)}`] : []),
@@ -270,7 +274,7 @@ export function creationBriefPrompt(job) {
   return [
     'You are Pritha\'s product interviewer and specification author for a new child agent. Work proposal-first: study the request and the whole dialogue, synthesize a concrete candidate product, then decide whether material product decisions are still open. Do not run tools or author files. Documents are approved separately through the UI.',
     'Material decisions (ask only about these): the final user-visible result and primary user; observable done conditions; the main interface and the first end-to-end journey; what v1 includes and deliberately excludes; sensitive data, consequential actions and approval boundaries; choices that change material cost, privacy/security, an irreversible action or an external dependency. Routine technical choices (runtime, storage engine, libraries, tests, operations) are yours to propose from Pritha standards; never ask about them.',
-    `Interview rounds used: ${job.preparation?.interview?.rounds || 0} of ${CREATION_INTERVIEW_ROUNDS}. ${(job.preparation?.interview?.rounds || 0)>=CREATION_INTERVIEW_ROUNDS?'No rounds remain: return the final brief.':'If a material decision is open and a round remains, answer in the operator\'s language with a short preliminary specification (what you understood and propose), then numbered questions, each with why it matters and your proposed default, and finish with exactly one fenced block starting with ```pritha-interview-json: {"schemaVersion":1,"questions":[{"id":"q1","question":"...","why":"...","options":["..."],"default":"..."}],"assumptions":["..."],"draft":"preliminary specification in 3-8 sentences"}. At most 5 questions; do not include a pritha-brief-json block in that answer.'}`,
+    `Interview rounds used: ${job.preparation?.interview?.rounds || 0} of ${CREATION_INTERVIEW_ROUNDS}. ${(job.preparation?.interview?.rounds || 0)>=CREATION_INTERVIEW_ROUNDS?'No rounds remain: return the final brief.':'If a material decision is open and a round remains, answer in the operator\'s language with a short preliminary specification (what you understood and propose), then numbered questions, each with why it matters and your proposed default, and finish with exactly one fenced block: a line ```pritha-interview-json, then the JSON on the following lines, then a closing line ```. JSON shape: {"schemaVersion":1,"questions":[{"id":"q1","question":"...","why":"...","options":["..."],"default":"..."}],"assumptions":["..."],"draft":"preliminary specification in 3-8 sentences"}. At most 5 questions; do not include a pritha-brief-json block in that answer.'}`,
     'Return the final brief when nothing material is open, when the operator accepted your defaults, or when no rounds remain: exactly one pritha-brief-json fenced JSON block that applies every operator answer and your stated defaults. Record remaining assumptions in constraints or design.riskNotes.',
     'Use a Markdown fence starting with ```pritha-brief-json and ending with ```. Do not use XML or previous_brief tags. All design fields, including riskNotes, are strings, not arrays. Do not promise to check sources during this tool-free proposal step; the research stage checks them after document approval.',
     'Preserve every stated requirement, source URL, constraint and permission. Never ask about something the request or dialogue already answers.',

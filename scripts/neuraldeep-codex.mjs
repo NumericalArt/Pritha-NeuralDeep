@@ -396,9 +396,7 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
     },
     beforeResponsesDispatch: (event) => {
       if(providerAccountingError || journal.providerUsageSummary(runId).unknownRequests>0) throw Object.assign(new Error('Previous provider response accounting is unresolved.'), {code:'provider_usage_unconfirmed',statusCode:409});
-      providerRequests = budgetGate ? budgetAction(()=>budgetGate.claim(event)) : journal.claimProviderRequest(runId, event.requestHash, { model:event.model, bytes:event.bytes,
-        // Only a complete provider rejection is ever settled at this bound (see recordProviderResponse).
-        budget:{ reservation:event.bytes+8_192+(event.payload?.max_output_tokens ?? 32_768), outputLimit:event.payload?.max_output_tokens ?? 32_768, basis:'unbudgeted-rejection-bound' } });
+      providerRequests = budgetGate ? budgetAction(()=>budgetGate.claim(event)) : journal.claimProviderRequest(runId, event.requestHash, { model:event.model, bytes:event.bytes });
     },
     onRequest: (requestEvent) => {
       if(requestEvent.upstreamAttempted === false && /^provider_(?:token_budget|budget_|usage_unconfirmed|iteration_deadline)/.test(requestEvent.error?.code || '')) {

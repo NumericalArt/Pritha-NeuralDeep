@@ -39,7 +39,7 @@ test('adapter records each final response before an interrupted turn and preserv
   assert.doesNotMatch(row.metadata,/first|Bearer|response-fixture/,'receipt contains no source content or credentials');
 });
 
-test('a complete provider error response settles at its reservation; interrupted transport stays unknown',async t=>{
+test('a complete provider error response settles at zero; interrupted transport stays unknown',async t=>{
   const store=new NeuralDeepCoordinationStore();t.after(()=>store.close());
   let current={run:null,budgeted:false,interrupted:false};
   const server=await listenNeuralDeepAdapter({port:0,providerRetryAttempts:1,
@@ -61,12 +61,12 @@ test('a complete provider error response settles at its reservation; interrupted
   };
 
   assert.equal(await send('gateway-run'),504);
-  assert.deepEqual(store.providerUsageSummary('gateway-run'),{providerRequests:1,unknownRequests:0,usageKnown:true,usage:{inputTokens:4000,cachedInputTokens:0,outputTokens:1000,reasoningTokens:0,totalTokens:5000}});
-  assert.equal(creationRuntimeReceipt(store,'turn-gateway-run').tokens,5000,'the upper bound settles the step without inventing a smaller spend');
-  assert.match(store.db.prepare('SELECT metadata FROM provider_dispatches WHERE run_id=?').get('gateway-run').metadata,/reservation_upper_bound/);
+  assert.deepEqual(store.providerUsageSummary('gateway-run'),{providerRequests:1,unknownRequests:0,usageKnown:true,usage:{inputTokens:0,cachedInputTokens:0,outputTokens:0,reasoningTokens:0,totalTokens:0}});
+  assert.equal(creationRuntimeReceipt(store,'turn-gateway-run').tokens,0,'the provider reported that no completion was produced');
+  assert.match(store.db.prepare('SELECT metadata FROM provider_dispatches WHERE run_id=?').get('gateway-run').metadata,/provider_rejected/);
 
   assert.equal(await send('unbudgeted-run',{budgeted:false}),504);
-  assert.equal(store.providerUsageSummary('unbudgeted-run').usageKnown,false,'without a reservation there is no bound to settle at');
+  assert.equal(store.providerUsageSummary('unbudgeted-run').usageKnown,true,'a rejection needs no reservation to settle');
 
   assert.equal(await send('interrupted-run',{interrupted:true}),502);
   assert.equal(store.providerUsageSummary('interrupted-run').usageKnown,false,'a broken transport is not a provider rejection');
@@ -102,12 +102,12 @@ test('complete provider rejections are resent with identical bytes and each atte
   assert.deepEqual(delays.map(([attempt,status])=>[attempt,status]),[[1,504],[2,502]]);
   let summary=store.providerUsageSummary('recovered');
   assert.equal(summary.providerRequests,3);assert.equal(summary.usageKnown,true);
-  assert.equal(summary.usage.totalTokens,5000*2+140,'two rejections at their bound plus the measured answer');
+  assert.equal(summary.usage.totalTokens,140,'rejections cost nothing; only the measured answer counts');
   assert.equal(store.acceptedProviderRequests('recovered'),1);
 
   assert.equal(await send('exhausted',[{status:504},{status:504},{status:504}]),504);
   summary=store.providerUsageSummary('exhausted');
-  assert.equal(summary.providerRequests,3);assert.equal(summary.usageKnown,true);assert.equal(summary.usage.totalTokens,15000);
+  assert.equal(summary.providerRequests,3);assert.equal(summary.usageKnown,true);assert.equal(summary.usage.totalTokens,0);
 
   assert.equal(await send('limited',[{status:429,retryAfter:'7'},200]),200);
   assert.deepEqual(delays,[[1,429,'7']],'a rate limit passes Retry-After to the delay policy');

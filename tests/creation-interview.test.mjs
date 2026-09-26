@@ -23,6 +23,14 @@ test('an interview round records questions with defaults and waits for the opera
   assert.match(creationAssistantDialogue(block(interview)), /Кто основной пользователь/);
 });
 
+test('questions written on the fence line after a colon are still recognized (kimi-k2.6, 2026-09-26)', () => {
+  const inline = 'Уточните, пожалуйста:\n\n1. Нужна ли выгрузка?\n\n```pritha-interview-json: ' + JSON.stringify(interview) + '\n```';
+  const next = completeCreationBrief(job(), inline, { turnId: 'turn_inline' });
+  assert.equal(next.status, 'waiting_input');
+  assert.equal(next.preparation.interview.questions.length, 1);
+  assert.doesNotMatch(creationAssistantDialogue(inline), /pritha-interview-json/);
+});
+
 test('invalid questions and exhausted rounds ask for the final brief instead of waiting', () => {
   for (const bad of [{ ...interview, questions: [] }, { ...interview, questions: [{ question: 'Без обоснования?' }] },
     { ...interview, questions: Array.from({ length: 6 }, (_, i) => ({ ...interview.questions[0], id: `q${i}` })) }]) {

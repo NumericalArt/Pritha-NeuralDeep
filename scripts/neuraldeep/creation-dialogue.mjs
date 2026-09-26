@@ -4,7 +4,7 @@ export function hasCreationBriefCandidate(text) {
 }
 
 export function creationAssistantDialogue(text, hasCanonicalBrief = false) {
-  let result = String(text).replace(/```pritha-(?:brief|research|interview)-json[^\S\n]*\n[\s\S]*?```/g, '');
+  let result = String(text).replace(/```pritha-(?:brief|research|interview|outcome)-json[:\t ]*[\s\S]*?```/g, '');
   if (!hasCanonicalBrief) return result;
   // Only complete, recognizable proposal data is superseded by the validated
   // host brief. Surrounding questions and every operator message remain exact.
