@@ -193,6 +193,13 @@ function failureContext(text, maxLines = 18) {
   return selected.join("\n").trim();
 }
 
+function failingTests(text, max = 12) {
+  const names = String(text || "").split(/\r?\n/)
+    .map((line) => line.match(/^\s*(?:✖|not ok \d+ -)\s+(.+?)(?: \([\d.]+m?s\))?$/)?.[1])
+    .filter((name) => name && name !== "failing tests:");
+  return [...new Set(names)].slice(0, max);
+}
+
 function githubEscape(value, property = false) {
   let text = String(value || "")
     .replaceAll("%", "%25")
@@ -207,8 +214,10 @@ function githubEscape(value, property = false) {
 function failureText(check) {
   const lines = [
     `${check.name} failed with exit code ${check.exitCode}.`,
-    `Command: ${check.command}`,
+    `Command: ${compact(check.command, 240)}`,
   ];
+  const failing = failingTests(check.stdout);
+  if (failing.length) lines.push(`Failing tests: ${failing.join(" | ")}`);
   const stderrContext = failureContext(check.stderr);
   const stdoutContext = failureContext(check.stdout);
   if (stderrContext) lines.push(`stderr failure context: ${compactTail(stderrContext, 2000)}`);
@@ -266,6 +275,10 @@ function printHuman() {
     if (check.status === "fail") {
       console.log(`  command: ${check.command}`);
       console.log(`  exit: ${check.exitCode}`);
+      const failing = failingTests(check.stdout);
+      if (failing.length) console.log(`  failing tests: ${failing.join(" | ")}`);
+      const context = failureContext(check.stdout);
+      if (context) console.log(context.split("\n").slice(0, 60).map((line) => `    ${line}`).join("\n"));
       if (check.stderr) console.log(`  stderr: ${check.stderr.split("\n").slice(-4).join(" | ")}`);
       if (check.stdout) console.log(`  stdout: ${check.stdout.split("\n").slice(-4).join(" | ")}`);
       if (check.error) console.log(`  error: ${check.error}`);
