@@ -71,6 +71,17 @@ test("host verifier source has an exact protected hash and is never silently ove
   assert.throws(() => renderOutcomeVerifierPreset("invented-api-v7", "core:01-flow"), /Unsupported/);
 });
 
+test("an LLM app Outcome declares the model call limits the Pritha broker enforces (Action Items Desk review, 2026-09-27)", () => {
+  const api = { operation: { method: "POST", path: "/api/analyses", inputField: "notes" }, list: { path: "/api/analyses", itemsField: "analyses" },
+    sampleInput: "Weekly sync: Maria sends the budget by Oct 3.", providerResponse: "[{\"action\":\"Send the budget {{nonce}}\"}]" };
+  const trial = renderOutcomeVerifierPreset("llm-operation-v1", "deliverable:01-working", { productApi: api });
+  const broker = readFileSync("scripts/neuraldeep/agent-provider-broker.mjs", "utf8");
+  assert.equal(Number(trial.match(/max_tokens:1\.\.(\d+)/)[1]), Number(broker.match(/input\.max_tokens > (\d+)/)[1]),
+    "a product built to its Outcome must not be rejected by the broker at runtime");
+  assert.match(trial, /ends a call after 60 seconds/);
+  assert.match(broker, /Math\.min\(options\.timeoutMs \|\| 60000, 60000\)/);
+});
+
 // Purpose-built test product with a real server and durable JSON state. This
 // exercises the verifier protocol; it does not claim the operator SQLite/UI
 // acceptance criteria of an eventual child application.
