@@ -5,7 +5,7 @@ import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { preflightAgentCreation, probeCreationPort } from "../scripts/neuraldeep/creation-preflight.mjs";
+import { chooseCreationPort, preflightAgentCreation, probeCreationPort } from "../scripts/neuraldeep/creation-preflight.mjs";
 import { validateContract } from "../scripts/agents-mother/contract.mjs";
 const hash = text => createHash("sha256").update(text).digest("hex");
 function fixture(t) {
@@ -112,4 +112,20 @@ test("bounded port probe detects a real occupied port and releases its temporary
   assert.equal((await probeCreationPort(port)).ok, true);
   assert.equal((await probeCreationPort(port)).ok, true, "the prior probe released the port");
   assert.equal((await probeCreationPort(0)).code, "creation_port_invalid");
+});
+
+test("a new API agent gets a port no other agent declares and nothing listens on (action-desk-gemma1, 2026-09-27)", async t => {
+  const f = fixture(t);
+  for (const [name, port] of [["day-board", 3010], ["action-desk-qwen10", 3011]]) {
+    mkdirSync(path.join(f.agentParent, name, "operations"), { recursive: true });
+    writeFileSync(path.join(f.agentParent, name, "operations", "manifest.json"), JSON.stringify({ health_url: `http://127.0.0.1:${port}/health` }));
+  }
+  const other = path.join(f.stateRoot, "creation-drafts", "creation_other", "contracts");
+  mkdirSync(other, { recursive: true }); writeFileSync(path.join(other, "contract.md"), "- `.env.example` variables: OTHER_DESK_PORT=3012\n");
+  writeFileSync(path.join(f.job.draftRoot, "contracts", "contract.md"), "- `.env.example` variables: SIGNAL_DESK_PORT=3013\n");
+  const probed = [];
+  const port = await chooseCreationPort({ agentParent: f.agentParent, stateRoot: f.stateRoot, exceptTarget: f.job.target, exceptDraftRoot: f.job.draftRoot },
+    { portProbe: async candidate => { probed.push(candidate); return candidate === 3013 ? { ok: false, code: "creation_port_in_use" } : { ok: true, code: null }; } });
+  assert.deepEqual(probed, [3013, 3014], "declared ports are skipped; the job's own draft may be chosen again when free");
+  assert.equal(port, 3014);
 });

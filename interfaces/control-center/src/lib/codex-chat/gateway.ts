@@ -34,7 +34,7 @@ import { prepareCreationResearch,readCreationResearch } from "../../../../../scr
 import { collectCreationSources,completeCreationSourceResearch } from "../../../../../scripts/neuraldeep/creation-source-research.mjs";
 import { prepareCreationContextPacket, readCreationContextPacket } from "../../../../../scripts/neuraldeep/creation-context-packet.mjs";
 import { acceptVerifiedResearchProgress, settleCreationPreparation, creationPreparationView } from "../../../../../scripts/neuraldeep/creation-preparation-control.mjs";
-import { preflightAgentCreation } from "../../../../../scripts/neuraldeep/creation-preflight.mjs";
+import { chooseCreationPort,preflightAgentCreation } from "../../../../../scripts/neuraldeep/creation-preflight.mjs";
 export { AgentCreationError };
 import { runCreationDelivery as deliverCreation, readCreationDelivery, recoverCreationDelivery, CreationDeliveryError, type CreationDeliveryResult } from "../../../../../scripts/neuraldeep/creation-delivery.mjs";
 import { creationDraftRoot, creationReleaseIdentity, reconcileCreationArtifacts, creationJobView, approveCreationDocument, creationPrompt, creationHostStep, type CreationRequest } from "../../../../../scripts/neuraldeep/agent-creation.mjs";
@@ -1912,8 +1912,10 @@ export class CodexChatGateway {
       const receipt=this.withCreationStore(store=>creationRuntimeReceipt(store.store,turnId));
       if(!receipt.processExited || receipt.tokens===null || receipt.blocker)throw new AgentCreationError('creation_execution_unconfirmed','Документы ожидают подтверждения завершения и расхода шага.');
       const answer=(await this.store.historyStore()).originalAssistantText(chatId,turnId);
+      // A new process agent gets a local port no other agent declares and nothing listens on now.
+      const localPort=await chooseCreationPort({agentParent:resolvePrithaAgentParent(this.root),stateRoot:this.store.stateRoot,exceptTarget:job.target,exceptDraftRoot:job.draftRoot});
       this.withCreationStore(store=>store.update(chatId,current=>reconcileCreationArtifacts(
-        completeCreationBrief(current,answer,{root:this.root,stateRoot:this.store.stateRoot,turnId}),{root:this.root,stateRoot:this.store.stateRoot})));
+        completeCreationBrief(current,answer,{root:this.root,stateRoot:this.store.stateRoot,turnId,...(localPort===null?{}:{localPort})}),{root:this.root,stateRoot:this.store.stateRoot})));
     } catch(error) {
       this.withCreationStore(store=>store.update(chatId,current=>({...current,status:['paused','cancelled'].includes(current.status)?current.status:'blocked',
         autoContinue:false,blocker:{code:error instanceof AgentCreationError?error.code:'creation_preparation_failed',message:error instanceof Error?error.message:'Подготовка документа остановлена.'}})));

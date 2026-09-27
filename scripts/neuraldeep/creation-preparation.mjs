@@ -12,6 +12,7 @@ import { creationDocumentIdentity, creationGeneration } from './creation-generat
 import { creationHostDirectory } from './creation-research.mjs';
 import { AgentCreationError } from './agent-creation-store.mjs';
 import { isCreationClarification } from './creation-dialogue.mjs';
+import { slug } from '../lib/slug.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const read = (file, root) => readBoundedRegularFile(file, {allowedRoots:[root],maxBytes:512*1024}).text;
@@ -125,6 +126,14 @@ export function prepareCreationContract(job, brief, options) {
     // The contract states the job's real build budget; delivery enforces the same numbers.
     applyInterviewTechnicalProposal(data,{...cliOptions,...repository,'build-token-budget':String(job.budget.maxTokens),'build-iterations':String(job.budget.maxIterations),
       'build-elapsed-ms':String(job.budget.maxActiveMs),'repeated-failure-threshold':String(job.budget.repeatedFailureThreshold),'target-folder':job.target});
+    // A process agent declares its own local port: the brief has no port field and the scaffold
+    // default 3000 collides with every other API agent. An operator's explicit port wins.
+    if (data.runtimeFamily === 'api' && data.serviceMode === 'process' && !/\b[A-Z][A-Z0-9_]*_PORT\s*=\s*\d+\b/.test(data.envExampleVariables || '')) {
+      const explicit = normalized.brief.constraints.join('\n').match(/\b([A-Z][A-Z0-9_]*_PORT)\s*=\s*(\d+)\b/);
+      const port = explicit ? Number(explicit[2]) : options.localPort;
+      if (Number.isSafeInteger(port) && port >= 1024 && port <= 65535)
+        data.envExampleVariables = `${explicit?.[1] || `${slug(data.agentName).toUpperCase().replaceAll('-', '_')}_PORT`}=${port}; ${data.envExampleVariables || 'non-secret local host and storage configuration only'}`;
+    }
     const generation = creationGeneration(job);
     // Model-authored Outcomes declare their product API; the generic verifier checks it.
     if (job.outcomeProtocolVersion === 1 && data.interviewPreset === 'llm-app') data.outcomeTrialPreset = 'llm-operation-v1';

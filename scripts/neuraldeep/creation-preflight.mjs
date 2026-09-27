@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { createServer } from "node:net";
 import path from "node:path";
 import { readBoundedRegularFile } from "../lib/safe-file-read.mjs";
@@ -27,6 +27,47 @@ export function probeCreationPort(port, { timeoutMs = 1000 } = {}) {
     try { server.listen({ port, host: "127.0.0.1", exclusive: true }); }
     catch { done({ ok: false, code: "creation_port_unverified" }); }
   });
+}
+
+const PORT_DECLARATION = /\b[A-Z][A-Z0-9_]*_PORT\s*=\s*(\d+)\b/g;
+const LOOPBACK_PORT = /^https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\]):(\d+)(?:\/|$)/;
+
+/**
+ * Local ports other agents already declare: their operations manifests and
+ * their creation contracts (accepted and in-progress drafts). The job's own
+ * target and draft are excluded, so a revision can choose again.
+ */
+export function declaredAgentPorts({ agentParent, stateRoot, exceptTarget = null, exceptDraftRoot = null } = {}) {
+  const ports = new Set(), same = (a, b) => Boolean(a && b) && path.resolve(a) === path.resolve(b);
+  const add = value => { const port = Number(value); if (Number.isSafeInteger(port) && port > 0 && port <= 65535) ports.add(port); };
+  const entries = directory => { try { return readdirSync(directory, { withFileTypes: true }); } catch { return []; } };
+  const text = file => { try { return readFileSync(file, "utf8").slice(0, 1_000_000); } catch { return ""; } };
+  for (const entry of agentParent ? entries(agentParent) : []) {
+    const folder = path.join(agentParent, entry.name);
+    if (!entry.isDirectory() || same(folder, exceptTarget)) continue;
+    try {
+      const manifest = JSON.parse(text(path.join(folder, "operations", "manifest.json")));
+      for (const url of [manifest.health_url, manifest.local_upstream_url]) add(LOOPBACK_PORT.exec(String(url || ""))?.[1]);
+    } catch {}
+  }
+  if (stateRoot) {
+    const drafts = path.join(stateRoot, "creation-drafts");
+    const directories = [path.join(stateRoot, "agents", "contracts"), ...entries(drafts)
+      .filter(entry => entry.isDirectory() && !same(path.join(drafts, entry.name), exceptDraftRoot)).map(entry => path.join(drafts, entry.name, "contracts"))];
+    for (const directory of directories) for (const entry of entries(directory)) {
+      if (entry.isFile() && entry.name.endsWith(".md")) for (const match of text(path.join(directory, entry.name)).matchAll(PORT_DECLARATION)) add(match[1]);
+    }
+  }
+  return ports;
+}
+
+/** A local port for a new API process agent that no other agent declares and nothing listens on now. */
+export async function chooseCreationPort(input = {}, { portProbe = probeCreationPort, first = 3010, last = 3999 } = {}) {
+  const taken = declaredAgentPorts(input);
+  for (let port = first; port <= last; port += 1) {
+    if (!taken.has(port) && (await portProbe(port)).ok) return port;
+  }
+  return null;
 }
 
 /** Host preflight. Inputs are host-read job/reservation/runtime records, never model claims. */
@@ -100,7 +141,7 @@ export async function preflightAgentCreation(input, { portProbe = probeCreationP
         port = Number(new URL(apiProcessManifest(data).health_url).port);
         const probe = await portProbe(port);
         if (!probe.ok) readiness(["creation_port_in_use", "creation_port_invalid", "creation_port_probe_timeout"].includes(probe.code) ? probe.code : "creation_port_unverified",
-          "Локальный порт агента занят или не удалось подтвердить его доступность. В черновике выберите свободный порт.");
+          "Локальный порт агента занят или не удалось подтвердить его доступность. Нажмите «Пересмотреть предложение»: Pritha подберёт свободный порт.");
       }
     } catch { add("creation_contract_runtime_unverified", "Не удалось проверить runtime и порт из контракта."); }
   }

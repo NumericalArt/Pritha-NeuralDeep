@@ -130,3 +130,18 @@ for(const scenario of ['publish','crash-after-write','authored-edit'])test(`host
   }
   for(const [file,bytes] of accepted)assert.equal(readFileSync(file,'utf8'),bytes,'accepted history stays unchanged');
 });
+
+test('the contract declares the host-chosen local port, and an explicit operator port wins (action-desk-gemma1, 2026-09-27)',async t=>{
+  const {apiProcessManifest}=await import('../scripts/agents-mother/scaffold/api-process.mjs');
+  const port=job=>Number(new URL(apiProcessManifest(contractData(job.contract.path,{root:process.cwd()})).health_url).port);
+  let {job,options}=setup(t);
+  job=completeCreationBrief(job,answer(product),{...options,turnId:'turn_port',localPort:3017});
+  assert.match(job.contract.text,/`\.env\.example` variables: SIGNAL_DESK_ND_PORT=3017; /);
+  assert.equal(port(job),3017,'the scaffold and the approval preflight read the declared port');
+  ({job,options}=setup(t));
+  job=completeCreationBrief(job,answer({...product,constraints:[...product.constraints,'Локальный порт: SIGNAL_DESK_ND_PORT=3123']}),{...options,turnId:'turn_port_explicit',localPort:3017});
+  assert.equal(port(job),3123);
+  ({job,options}=setup(t));
+  job=completeCreationBrief(job,answer(product),{...options,turnId:'turn_port_default'});
+  assert.equal(port(job),3000,'without a host choice the scaffold default is unchanged');
+});
