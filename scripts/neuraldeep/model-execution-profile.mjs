@@ -1,15 +1,16 @@
 /** Provider declarations are not evidence of successful product/tool/transport trials. */
 export function neuralDeepExecutionProfile(modelId) {
- const qwen=/^qwen3\.(?:6|8)(?:-|$)/i.test(modelId),kimi=/^kimi-k2\.6(?:-|$)/i.test(modelId),noreason=/-noreason$/.test(modelId),oss=modelId==='gpt-oss-120b';
+ const qwen=/^qwen3\.(?:6|8)(?:-|$)/i.test(modelId),kimi=/^kimi-k2\.6(?:-|$)/i.test(modelId),gemma=/^gemma-4(?:-|$)/i.test(modelId),noreason=/-noreason$/.test(modelId),oss=modelId==='gpt-oss-120b';
  return {version:2,modelId,wireApi:'responses',source:'https://neuraldeep.ru/llms-full.txt',checkedAt:'2026-09-23',
   effortControl:qwen?'ignored':oss?'documented':'unverified',supportedEfforts:oss?['low','medium','high']:['none'],
   thinking:noreason?'disabled-by-selected-alias':qwen?'provider-default-enabled':'provider-default',
   thinkingBudgetControl:'not-verified-for-responses',transportVerified:false,
-  declaredContextTokens:qwen?262144:oss?131072:null,
+  declaredContextTokens:qwen || gemma?262144:oss?131072:null,
   // Reasoning shares the response budget: a thinking model needs room for the answer after it.
-  applicationOutputCap:(qwen || kimi) && !noreason?32768:16384,reservationBasis:'utf8-text-plus-framing-v1',
+  applicationOutputCap:(qwen || kimi || gemma) && !noreason?32768:16384,reservationBasis:'utf8-text-plus-framing-v1',
   note:qwen?'Qwen ignores reasoning_effort. No effort parameter does not disable thinking; a noreason alias must be selected explicitly.':
-   oss?'Effort is documented by the provider; Responses transport and phase quality still need acceptance evidence.':'Effort control has not been verified for this Responses route.'};
+   oss?'Effort is documented by the provider; Responses transport and phase quality still need acceptance evidence.':
+   gemma?'The provider model catalog declares Gemma 4 with tools, reasoning and a 262144-token context; effort control is not verified.':'Effort control has not been verified for this Responses route.'};
 }
 export function effectiveNeuralDeepEffort(modelId,requested) {
  const profile=neuralDeepExecutionProfile(modelId);
