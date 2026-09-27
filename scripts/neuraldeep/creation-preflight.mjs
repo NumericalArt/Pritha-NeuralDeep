@@ -35,9 +35,10 @@ const LOOPBACK_PORT = /^https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\]):(\d+)(?:\/
 /**
  * Local ports other agents already declare: their operations manifests and
  * their creation contracts (accepted and in-progress drafts). The job's own
- * target and draft are excluded, so a revision can choose again.
+ * target, draft and accepted contracts are excluded, so a revision keeps or
+ * re-chooses its port instead of treating its earlier generation as another agent.
  */
-export function declaredAgentPorts({ agentParent, stateRoot, exceptTarget = null, exceptDraftRoot = null } = {}) {
+export function declaredAgentPorts({ agentParent, stateRoot, exceptTarget = null, exceptDraftRoot = null, exceptJobId = null } = {}) {
   const ports = new Set(), same = (a, b) => Boolean(a && b) && path.resolve(a) === path.resolve(b);
   const add = value => { const port = Number(value); if (Number.isSafeInteger(port) && port > 0 && port <= 65535) ports.add(port); };
   const entries = directory => { try { return readdirSync(directory, { withFileTypes: true }); } catch { return []; } };
@@ -55,7 +56,7 @@ export function declaredAgentPorts({ agentParent, stateRoot, exceptTarget = null
     const directories = [path.join(stateRoot, "agents", "contracts"), ...entries(drafts)
       .filter(entry => entry.isDirectory() && !same(path.join(drafts, entry.name), exceptDraftRoot)).map(entry => path.join(drafts, entry.name, "contracts"))];
     for (const directory of directories) for (const entry of entries(directory)) {
-      if (entry.isFile() && entry.name.endsWith(".md")) for (const match of text(path.join(directory, entry.name)).matchAll(PORT_DECLARATION)) add(match[1]);
+      if (entry.isFile() && entry.name.endsWith(".md") && !(exceptJobId && entry.name.includes(exceptJobId))) for (const match of text(path.join(directory, entry.name)).matchAll(PORT_DECLARATION)) add(match[1]);
     }
   }
   return ports;

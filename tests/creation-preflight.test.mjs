@@ -123,9 +123,12 @@ test("a new API agent gets a port no other agent declares and nothing listens on
   const other = path.join(f.stateRoot, "creation-drafts", "creation_other", "contracts");
   mkdirSync(other, { recursive: true }); writeFileSync(path.join(other, "contract.md"), "- `.env.example` variables: OTHER_DESK_PORT=3012\n");
   writeFileSync(path.join(f.job.draftRoot, "contracts", "contract.md"), "- `.env.example` variables: SIGNAL_DESK_PORT=3013\n");
+  const accepted = path.join(f.stateRoot, "agents", "contracts");
+  mkdirSync(accepted, { recursive: true });
+  writeFileSync(path.join(accepted, `signal-desk-${f.job.jobId}-agent-contract-revision-2.md`), "- `.env.example` variables: SIGNAL_DESK_PORT=3013\n");
   const probed = [];
-  const port = await chooseCreationPort({ agentParent: f.agentParent, stateRoot: f.stateRoot, exceptTarget: f.job.target, exceptDraftRoot: f.job.draftRoot },
+  const port = await chooseCreationPort({ agentParent: f.agentParent, stateRoot: f.stateRoot, exceptTarget: f.job.target, exceptDraftRoot: f.job.draftRoot, exceptJobId: f.job.jobId },
     { portProbe: async candidate => { probed.push(candidate); return candidate === 3013 ? { ok: false, code: "creation_port_in_use" } : { ok: true, code: null }; } });
-  assert.deepEqual(probed, [3013, 3014], "declared ports are skipped; the job's own draft may be chosen again when free");
+  assert.deepEqual(probed, [3013, 3014], "declared ports are skipped; the job's own draft and accepted contract may be chosen again when free");
   assert.equal(port, 3014);
 });

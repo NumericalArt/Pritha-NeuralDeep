@@ -1918,7 +1918,7 @@ export class CodexChatGateway {
       if(!receipt.processExited || receipt.tokens===null || receipt.blocker)throw new AgentCreationError('creation_execution_unconfirmed','Документы ожидают подтверждения завершения и расхода шага.');
       const answer=(await this.store.historyStore()).originalAssistantText(chatId,turnId);
       // A new process agent gets a local port no other agent declares and nothing listens on now.
-      const localPort=await chooseCreationPort({agentParent:resolvePrithaAgentParent(this.root),stateRoot:this.store.stateRoot,exceptTarget:job.target,exceptDraftRoot:job.draftRoot});
+      const localPort=await chooseCreationPort({agentParent:resolvePrithaAgentParent(this.root),stateRoot:this.store.stateRoot,exceptTarget:job.target,exceptDraftRoot:job.draftRoot,exceptJobId:job.jobId});
       this.withCreationStore(store=>store.update(chatId,current=>reconcileCreationArtifacts(
         completeCreationBrief(current,answer,{root:this.root,stateRoot:this.store.stateRoot,turnId,...(localPort===null?{}:{localPort})}),{root:this.root,stateRoot:this.store.stateRoot})));
     } catch(error) {
