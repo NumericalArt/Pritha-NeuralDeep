@@ -473,6 +473,21 @@ for (const crashPoint of ['before-clearing-active-turn','before-publication']) {
   });
 }
 
+test('a host step waiting for admission is not recovered as a crashed step by a status read (kimi-k2.6 Outcome, 2026-09-27)',async t=>{
+  const f=fixture(t,{preparationV2:true}),turnId='turn_outcome_queued';
+  const approved=creation.approveCreationDocument(f.jobs.get(f.chatId),'contract',f.request('approve_contract'),f.options);
+  f.jobs.update(f.chatId,()=>({...approved,preparationPolicyVersion:2,phase:'outcome',status:'running',autoContinue:true,activeTurnId:turnId}));
+  let reconciled=0;f.gateway.admission.reconcileWorkload=()=>{reconciled++;};
+  f.gateway.store.getTurn=async()=>({turnId,status:'queued',items:[],executionIntent:{dispatchState:'accepted'}});
+  f.gateway.waitingTurns.set(turnId,{turnId});
+  await f.gateway.reconcileCreationExecution(f.chatId,f.binding);
+  const response=await f.get();assert.equal(response.status,200,JSON.stringify(response.body));
+  const job=f.jobs.get(f.chatId);
+  assert.equal(job.activeTurnId,turnId);assert.equal(job.status,'running');assert.equal(job.blocker?.code,undefined);
+  assert.equal(reconciled,0,'the queued admission is not cancelled');
+  assert.equal(response.body.data.job.hostStepActive,true,'the view treats the queued step as live');
+});
+
 test('saved research is not published from an unsettled receipt and GET never dispatches a repair',async t=>{
   const f=fixture(t,{preparationV2:true}),turnId='turn_research_unknown';
   f.jobs.update(f.chatId,j=>({...j,preparationPolicyVersion:2,researchProtocolVersion:2,status:'paused',preparation:{pendingResearchTurnId:turnId},

@@ -49,5 +49,6 @@ test('the brief prompt asks material product questions and states the remaining 
   assert.match(prompt, /Interview rounds used: 1 of 3/);
   assert.match(prompt, /pritha-interview-json/);
   assert.match(prompt, /never ask about them/);
+  assert.match(prompt, /never a local, user-provided or environment key/, 'llm-app access stays with the parent Pritha binding (qwen3.8-27b offered a local key, 2026-09-27)');
   assert.match(creationBriefPrompt({ ...fixture, preparation: { interview: { rounds: 3 } } }), /No rounds remain: return the final brief/);
 });

@@ -160,6 +160,8 @@ for(const [topicPolicy,selectionVersion] of [[2,1],[3,1],[3,2],[3,3]])test(`host
  const request=prepareCreationResearchRequest({model:'fixture',stream:true,instructions:'general large coding prompt',tools:[{type:'function'}],input:'duplicated history'},f.job,packet,f.options.root);
  assert.deepEqual(request.tools,[]);assert.equal(request.tool_choice,'none');assert.ok(Buffer.byteLength(JSON.stringify(request))<64*1024);
  if(selectionVersion>=2)assert.match(request.instructions,/Select passageId/);
+ // Qwen marked the NeuralDeep API page unknown because it does not describe Pritha's binding (2026-09-27).
+ assert.match(request.instructions,/host facts, not provider claims/);
  assert.throws(()=>prepareCreationResearchRequest({model:'fixture'},f.job,{...packet,packet:{...packet.packet,researchSelectionVersion:selectionVersion+1}},f.options.root),{code:'provider_budget_context_changed'});
  assert.match(request.input[0].content[0].text,/Preserve the whole product request/);assert.doesNotMatch(JSON.stringify(request),/duplicated history|general large coding prompt/);
  const answer='```pritha-research-json\n'+JSON.stringify(value)+'\n```';

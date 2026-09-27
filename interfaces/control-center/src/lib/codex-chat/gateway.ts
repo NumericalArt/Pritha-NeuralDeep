@@ -296,7 +296,13 @@ export class CodexChatGateway {
   }
 
   private creationStepActive(chatId:string) {
-    return this.activeTurns.has(chatId) || this.creationAdvances.has(chatId) || this.creationDeliveries.has(chatId);
+    return this.activeTurns.has(chatId) || this.creationAdvances.has(chatId) || this.creationDeliveries.has(chatId) || this.creationTurnWaiting(chatId);
+  }
+
+  /** A host step queued for admission is live even before it becomes the active turn. */
+  private creationTurnWaiting(chatId:string) {
+    const turnId=this.withCreationStore(store=>store.get(chatId))?.activeTurnId;
+    return Boolean(turnId && this.waitingTurns?.has(turnId));
   }
 
   async creationStatus(chatId:string) {
@@ -445,7 +451,7 @@ export class CodexChatGateway {
   }
 
   private async reconcileCreationExecution(chatId:string,binding:ChatBinding) {
-    if(this.activeTurns.has(chatId) || this.creationAdvances.has(chatId) || this.creationDeliveries.has(chatId))return;
+    if(this.creationStepActive(chatId))return;
     let job=this.withCreationStore(store=>store.get(chatId));
     if(!job)return;
     job=this.withCreationStore(store=>store.update(chatId,current=>reconcileCreationArtifacts(current,{root:this.root,stateRoot:this.store.stateRoot})));
