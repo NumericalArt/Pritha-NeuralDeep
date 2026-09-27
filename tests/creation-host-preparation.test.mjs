@@ -61,6 +61,14 @@ test('publication recovers exact operation after file write and refuses unexpect
   assert.ok(readFileSync(file,'utf8').endsWith('Author addition.\n'));
 });
 
+test('the final brief after an interview round resumes automatic work for the approved contract',t=>{
+  let {job,options}=setup(t);
+  job={...job,status:'running',autoContinue:false,preparation:{...job.preparation,interview:{rounds:1,questions:[],assumptions:[],draft:''}}};
+  job=completeCreationBrief(job,answer(product),{...options,turnId:'turn_after_answers'});
+  assert.equal(job.autoContinue,true,'waiting for the operator ended with the final brief');
+  assert.equal(reconcileCreationArtifacts(job,options).status,'awaiting_contract_approval','approval is still required before any further step');
+});
+
 test('invalid JSON gets one structural correction and replay cannot reset the count',t=>{
   let {job,options}=setup(t);
   job=completeCreationBrief(job,'```pritha-brief-json\n{broken}\n```',{...options,turnId:'turn_one'});

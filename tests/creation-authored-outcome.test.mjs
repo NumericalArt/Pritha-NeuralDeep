@@ -10,6 +10,14 @@ import { completeCreationBrief, completeCreationOutcome, creationOutcomeAuthorin
 import { verifyOutcomeApproval } from '../scripts/agents-mother/outcome-spec.mjs';
 import { encodeProductApi } from '../scripts/agents-mother/outcome-verifier-presets.mjs';
 import { actionItemsBrief as brief, actionItemsOutcome as outcome } from './fixtures/action-items-brief.mjs';
+import { creationOutcomePrompt } from '../scripts/neuraldeep/creation-preparation.mjs';
+
+test('the Outcome prompt explains model access through the Pritha binding (kimi-k2.6 invented NEURALDEEP_API_KEY, 2026-09-27)', () => {
+  const prompt = creationOutcomePrompt({ preparation: {} });
+  assert.match(prompt, /never holds, asks for or reads a NeuralDeep key/);
+  assert.match(prompt, /PRITHA_LLM_BASE_URL, PRITHA_LLM_MODEL and PRITHA_LLM_TOKEN/);
+  assert.match(prompt, /disabling the agent's binding in Pritha/);
+});
 
 function setup(t) {
   const stateRoot = mkdtempSync(path.join(os.tmpdir(), 'creation-authored-outcome-')); t.after(() => rmSync(stateRoot, { recursive: true, force: true }));

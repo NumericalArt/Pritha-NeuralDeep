@@ -23,6 +23,10 @@ const PROVIDER_RETRY_ATTEMPTS = 3;
 const RETRYABLE_PROVIDER_STATUS = new Set([429, 502, 503, 504]);
 const PROVIDER_RETRY_DELAYS_MS = [5_000, 20_000];
 const PROVIDER_RETRY_AFTER_CAP_MS = 60_000;
+// A buffered response whose stream broke before any byte reached the caller is
+// resent the same way; its attempt settles at the reservation's upper bound.
+const BROKEN_STREAM_CODES = new Set(["neuraldeep_stream_truncated", "ECONNRESET", "EPIPE", "ETIMEDOUT", "UND_ERR_SOCKET", "UND_ERR_BODY_TIMEOUT"]);
+const brokenStream = error => BROKEN_STREAM_CODES.has(error?.code) || BROKEN_STREAM_CODES.has(error?.cause?.code) || (error instanceof TypeError && error.message === "terminated");
 
 export function providerRetryRequestHash(requestHash, attempt) {
   return createHash("sha256").update(`${requestHash}:provider-retry:${attempt}`).digest("hex");
@@ -76,7 +80,7 @@ async function readWebBody(response, limit, onChunk) {
   for await (const chunk of response.body) {
     if (chunk.length) onChunk?.(chunk.length);
     size += chunk.length;
-    if (size > limit) throw new Error(`Upstream response exceeds ${limit} bytes`);
+    if (size > limit) throw Object.assign(new Error(`Upstream response exceeds ${limit} bytes`), { code: "neuraldeep_response_too_large" });
     chunks.push(Buffer.from(chunk));
   }
   return Buffer.concat(chunks);
@@ -200,7 +204,7 @@ export function createNeuralDeepAdapter(options = {}) {
       const target = new URL(`${requestUrl.pathname}${requestUrl.search}`, upstreamOrigin);
       const isResponses = requestUrl.pathname === "/v1/responses";
       const maxAttempts = isResponses && requestHash ? Math.max(1, options.providerRetryAttempts ?? PROVIDER_RETRY_ATTEMPTS) : 1;
-      let upstream, upstreamStartedAt, rejectedBody = null;
+      let upstream, upstreamStartedAt, rejectedBody = null, bufferedBody = null;
       for (let attempt = 1; ; attempt += 1) {
         upstreamAttempted = true;
         upstreamStartedAt = Date.now();
@@ -216,29 +220,52 @@ export function createNeuralDeepAdapter(options = {}) {
           signal: controller.signal,
           dispatcher,
         });
-        if (upstream.ok || !isResponses || !RETRYABLE_PROVIDER_STATUS.has(upstream.status) || attempt >= maxAttempts) break;
-        // The provider rejected the request completely. Settle this attempt,
-        // then resend the identical bytes under a derived dispatch identity.
-        const attemptBody = await readWebBody(upstream, responseLimit, received);
+        const buffered = isResponses && upstream.ok && !(upstream.headers.get("content-type")?.includes("text/event-stream") && typeof response.write === "function"
+          && (!options.validateResponsesResponse || options.requiresBufferedResponse?.() === false));
+        let attemptBody, broken = null;
+        if (buffered) {
+          // Nothing reaches the caller until the whole response is read, so a
+          // stream that breaks here can be resent without partial output.
+          try {
+            attemptBody = await readWebBody(upstream, responseLimit, received);
+            timings.responseCompletedMs = Date.now() - upstreamStartedAt;
+            if (upstream.headers.get("content-type")?.includes("text/event-stream")) normalizeResponsesSse(options.transformResponsesStream ? options.transformResponsesStream(attemptBody.toString("utf8")) : attemptBody.toString("utf8"));
+          } catch (error) {
+            if (controller.signal.aborted) throw error;
+            if (brokenStream(error)) broken = Object.assign(new Error("The provider response stream broke before it completed."), { code: "neuraldeep_stream_truncated", statusCode: 502 });
+            // A complete but unusable response (empty, malformed, over the limit) is classified below, once.
+            else if (attemptBody === undefined) throw error;
+          }
+          if (!broken) { bufferedBody = attemptBody; break; }
+        } else if (upstream.ok || !isResponses || !RETRYABLE_PROVIDER_STATUS.has(upstream.status) || attempt >= maxAttempts) break;
+        else attemptBody = await readWebBody(upstream, responseLimit, received);
+        // The provider rejected the request completely, or its stream broke before
+        // any byte reached the caller. Settle this attempt, then resend the
+        // identical bytes under a derived dispatch identity.
         timings.responseCompletedMs = Date.now() - upstreamStartedAt;
-        const retryAfter = upstream.headers.get("retry-after");
-        const delayMs = options.providerRetryDelayMs ? options.providerRetryDelayMs(attempt, upstream.status, retryAfter) : providerRetryDelayMs(attempt, upstream.status, retryAfter);
-        options.onRequest?.({ method: request.method, path: requestUrl.pathname, status: upstream.status, durationMs: Date.now() - startedAt,
+        const status = broken ? 502 : upstream.status;
+        const retryAfter = broken ? null : upstream.headers.get("retry-after");
+        const retry = attempt < maxAttempts;
+        const delayMs = !retry ? 0 : options.providerRetryDelayMs ? options.providerRetryDelayMs(attempt, status, retryAfter) : providerRetryDelayMs(attempt, status, retryAfter);
+        options.onRequest?.({ method: request.method, path: requestUrl.pathname, status, durationMs: Date.now() - startedAt,
           timings: { ...timings }, cancellationReason: null, requestHash: dispatchHash, upstreamAttempted: true, usage: null, responseSummary: null,
-          providerRejected: true, retry: { attempt, maxAttempts, nextDelayMs: delayMs },
-          error: classifyNeuralDeepProviderError({ status: upstream.status, payload: parseProviderErrorPayload(attemptBody), retryAfter }) });
+          ...(broken ? { streamBroken: true } : { providerRejected: true }), retry: retry ? { attempt, maxAttempts, nextDelayMs: delayMs } : null,
+          error: broken ? classifyNeuralDeepProviderError({ status, transportCode: broken.code })
+            : classifyNeuralDeepProviderError({ status, payload: parseProviderErrorPayload(attemptBody), retryAfter }) });
         const retryHash = providerRetryRequestHash(requestHash, attempt + 1);
         // Start another attempt only when it can finish inside this request's window.
         const fits = Date.now() + delayMs + (Date.now() - upstreamStartedAt) + 5_000 < requestDeadlineAt;
         try {
+          if (!retry) throw Object.assign(new Error("Provider attempts are exhausted."), { code: "provider_retry_exhausted" });
           if (!fits) throw Object.assign(new Error("No time remains for another provider attempt."), { code: "provider_retry_window" });
           await abortableDelay(delayMs, controller.signal);
           requestDeadlineWindow(options.deadline);
           await options.beforeResponsesDispatch?.({ requestHash: retryHash, model: responsesPayload?.model, bytes: body.length, payload: responsesPayload, retryOf: requestHash, attempt: attempt + 1 });
         } catch (error) {
           if (controller.signal.aborted) throw controller.signal.reason ?? error;
-          // Another attempt was not admitted: return the rejection already recorded.
+          // Another attempt was not admitted: return the outcome already recorded.
           notified = true;
+          if (broken) throw broken;
           rejectedBody = attemptBody;
           break;
         }
@@ -267,8 +294,8 @@ export function createNeuralDeepAdapter(options = {}) {
         notifyRequest({status:upstream.status,error});
         await normalizer.flush(events);response.end();progress('finished',true);return;
       }
-      const upstreamBody = rejectedBody ?? await readWebBody(upstream, responseLimit, received);
-      if (!rejectedBody) timings.responseCompletedMs = Date.now() - upstreamStartedAt;
+      const upstreamBody = rejectedBody ?? bufferedBody ?? await readWebBody(upstream, responseLimit, received);
+      if (!rejectedBody && !bufferedBody) timings.responseCompletedMs = Date.now() - upstreamStartedAt;
       if(isResponses)providerUsage=responsesUsage(upstreamBody.toString('utf8'),upstream.headers.get('content-type') || '');
       if(isResponses)responseSummary=responsesSummary(upstreamBody.toString('utf8'),upstream.headers.get('content-type') || '',{outputLimit});
       if(isResponses && upstream.ok)await options.validateResponsesResponse?.(upstreamBody.toString('utf8'),upstream.headers.get('content-type') || '');

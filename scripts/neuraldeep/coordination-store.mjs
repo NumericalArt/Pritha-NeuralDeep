@@ -414,7 +414,7 @@ export class NeuralDeepCoordinationStore {
   }
 
   /** Persist only counts and transport status; never a prompt, response or credential. */
-  recordProviderResponse(runId, { requestHash, status, usage, upstreamAttempted, providerRejected }) {
+  recordProviderResponse(runId, { requestHash, status, usage, upstreamAttempted, providerRejected, streamBroken }) {
     // A rejected replay is not evidence about the earlier accepted request.
     if (upstreamAttempted !== true) return false;
     if (!/^[a-f0-9]{64}$/.test(requestHash || '') || !Number.isInteger(status)) throw new Error('provider_response_identity_invalid');
@@ -430,6 +430,14 @@ export class NeuralDeepCoordinationStore {
       if(!completion.usage && providerRejected===true && status>=400) {
         completion={status,usage:normalizeNeuralDeepUsage({input_tokens:0,output_tokens:0}),usageBasis:'provider_rejected'};
       }
+      // A buffered stream that broke before reaching the caller may have used
+      // provider tokens: settle it at its admission reservation, an upper bound,
+      // so the identical request can be resent. Without a reservation it stays unknown.
+      const reservation=metadata.budget?.reservation,limit=metadata.budget?.outputLimit;
+      if(!completion.usage && streamBroken===true && Number.isSafeInteger(reservation) && reservation>0) {
+        const output=Number.isSafeInteger(limit) && limit>0?Math.min(limit,reservation):0;
+        completion={status,usage:normalizeNeuralDeepUsage({input_tokens:reservation-output,output_tokens:output}),usageBasis:'stream_broken_upper_bound'};
+      }
       if(metadata.completion) {
         if(JSON.stringify(metadata.completion)!==JSON.stringify(completion))throw new Error('provider_response_receipt_conflict');
         return false;
@@ -440,10 +448,10 @@ export class NeuralDeepCoordinationStore {
     });
   }
 
-  /** Requests the provider did not reject; a settled rejection may be resent. */
+  /** Requests that delivered a response; a settled rejection or broken stream may be resent. */
   acceptedProviderRequests(runId) {
     return this.db.prepare('SELECT metadata FROM provider_dispatches WHERE run_id=?').all(runId)
-      .filter(row=>JSON.parse(row.metadata).completion?.usageBasis!=='provider_rejected').length;
+      .filter(row=>!['provider_rejected','stream_broken_upper_bound'].includes(JSON.parse(row.metadata).completion?.usageBasis)).length;
   }
 
   providerUsageSummary(runId) {

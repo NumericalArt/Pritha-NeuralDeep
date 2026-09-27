@@ -33,7 +33,7 @@ export class NeuralDeepCoordinationStore {
   bindRuntimeLineage(input:{runId:string;creationJobId:string;deliveryRunId:string;workloadId:string;iteration:number;phase:string}):Record<string,unknown>;
   updateRuntimeRun(runId: string, update: Record<string, unknown>): Record<string, unknown>;
   claimProviderRequest(runId: string, requestHash: string, metadata?: Record<string, unknown>, beforeClaim?:()=>Record<string,unknown>): number;
-  recordProviderResponse(runId: string, response: { requestHash?: string | null; status: number; usage?: unknown; upstreamAttempted: boolean }): boolean;
+  recordProviderResponse(runId: string, response: { requestHash?: string | null; status: number; usage?: unknown; upstreamAttempted: boolean; providerRejected?: boolean; streamBroken?: boolean }): boolean;
   acceptedProviderRequests(runId: string): number;
   resumeFinished(scope: string): boolean;
   providerUsageSummary(runId: string): { providerRequests: number; unknownRequests: number; usageKnown: boolean; usage: {inputTokens:number;cachedInputTokens:number;outputTokens:number;reasoningTokens:number;totalTokens:number} };

@@ -1,3 +1,4 @@
+import {redactSensitiveText} from '../lib/redaction.mjs';
 import {createHash} from 'node:crypto';
 import {existsSync} from 'node:fs';
 import path from 'node:path';
@@ -81,6 +82,10 @@ export function sourcePassages(source,selectionVersion=2) {
  const quotes=selectionVersion===3?rankedSourceQuotes(source.text,source.query):source.excerpt.split('\n');
  for(const quote of quotes) {
   if(quote.length<40 || quote.length>1200 || seen.has(quote) || !source.text.includes(quote))continue;
+  // Offer only passages the evidence gate can accept: documentation examples with
+  // credential-shaped text (e.g. "Bearer sk-...") would be rejected as sensitive later.
+  const normalized=quote.replace(/\s+/g,' ').trim();
+  if(redactSensitiveText(normalized)!==normalized)continue;
   seen.add(quote);passages.push({id:hash({sourceId:source.id,contentHash:source.contentHash,quote}).slice(0,24),quote});
   if(passages.length===8)break;
  }
@@ -215,7 +220,8 @@ export function completeCreationSourceResearch(job,answer,research,options) {
   if(job.researchSelectionVersion===3 && !updated.coverage.complete && value.facts.some(fact=>['unknown','incompatible'].includes(fact.compatibilityStatus)))
    fail('creation_research_evidence_incomplete',`Источники не подтверждают выбранные требования: ${updated.coverage.missingTopicIds.join(', ')}. Страницы и ответ сохранены; повторный запрос с теми же доказательствами не отправлен.`);
   if(updated.evidence.invalidCount || !updated.synthesis.complete || !updated.coverage.complete)fail('creation_research_selection_invalid',
-   `Сводка источников неполна: ${[...updated.coverage.missingTopicIds,...updated.synthesis.errors].join(', ')}. Проверенные страницы сохранены.`);
+   `Сводка источников неполна: ${[...updated.coverage.missingTopicIds,...updated.synthesis.errors,
+    ...updated.evidence.items.filter(item=>!item.valid).map(item=>`${item.topic_id}: ${item.validation_errors.join('+')}`)].join(', ') || 'причина не указана'}. Проверенные страницы сохранены.`);
   // Journal the exact output first, then publish with CAS; recovery can finish without a new model call.
   state.publication={path:artifact.path,previousHash:hash(current),text:updated.text,hash:hash(updated.text),turnId:options.turnId};
   atomicWriteFile(file,JSON.stringify(state));

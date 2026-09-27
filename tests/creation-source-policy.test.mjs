@@ -142,6 +142,14 @@ test('passage selection restores exact source text without copying a stitched ex
  assert.throws(()=>validateResearchSelection({facts:[{...fact,sourceId:'other'}]},[{...other,passages:sourcePassages(other)}],[{id:'security'}],2),{code:'creation_research_quote_unbound'});
 });
 
+test('passages the evidence gate would reject as sensitive are never offered (NeuralDeep docs, 2026-09-27)',()=>{
+ const safe='The API is OpenAI-compatible and accepts chat completion requests for the listed models.';
+ const secret='Send the request with the header Authorization: Bearer sk-live-0123456789abcdefghijkl to authenticate.';
+ const source={id:'s',topicId:'provider',contentHash:'b'.repeat(64),url:'https://neuraldeep.ru/docs',text:secret+' '+safe,excerpt:secret+'\n'+safe};
+ const passages=sourcePassages(source);
+ assert.deepEqual(passages.map(item=>item.quote),[safe],'only the passage that can pass evidence validation remains');
+});
+
 test('new source packets contain bounded separate passages and old packets retain their excerpt',async t=>{
  const f=fixture(t),raw=(text+'\n').repeat(30);
  const options={...f.options,search:{readPage:async ({url})=>page(url,raw),search:async()=>assert.fail()}};

@@ -230,6 +230,7 @@ export function creationOutcomePrompt(job) {
     'Return a short summary for the operator, then exactly one fenced block: a line ```pritha-outcome-json, then the JSON on the following lines, then a closing line ```. JSON shape: {"schemaVersion":1,"oneLiner":"...","doneWhen":["..."],"journey":{"entryPoint":"web","goal":"...","start":"...","progress":"...","approval":"...","completion":"...","recovery":"..."},"surfaces":[{"surface":"web","purpose":"...","primaryAction":"..."}],"exampleSessions":[{"name":"...","transcript":[{"role":"user","text":"..."},{"role":"agent","text":"..."}]}],"acceptance":[{"statement":"...","covers":["core:1","success:2"],"passCriteria":"..."}]' +
       ',"productApi":{...only for llm-operation-v1}}.',
     'When packet.outcomeAuthoring.preset is llm-operation-v1, also declare productApi — the HTTP API the protected verifier will call on scripts/server.mjs: {"operation":{"method":"POST","path":"/api/<resource>","inputField":"<field holding the user text>","extraBody":{optional constant fields}},"list":{"path":"/api/<resource>","itemsField":"<array field>"},"item":{"path":"/api/<resource>/:id"} (optional),"export":{"path":"/api/<resource>/:id/export"} (optional, required when the product exports),"sampleInput":"<realistic user input>","providerResponse":"<the exact model reply your product prompt expects, e.g. the JSON it parses, containing {{nonce}} inside a value that is saved and returned>"}. Use {{nonce}} only inside providerResponse; example sessions and acceptance checks use real sample data. The operation makes one model call through the Pritha binding, returns {id,...result} and saves it; the list returns saved results. Use the same API in the UI.',
+    'Model access (llm-app): the product never holds, asks for or reads a NeuralDeep key and never calls NeuralDeep directly. When the agent\'s NeuralDeep binding is enabled in Pritha, the host injects PRITHA_LLM_BASE_URL, PRITHA_LLM_MODEL and PRITHA_LLM_TOKEN at service start. A missing key or provider is checked by disabling the agent\'s binding in Pritha (Agents → «NeuralDeep для агента» → «Отключено»); never tell the operator to set environment variables, .env files or keys.',
     ...(job.preparation?.outcomeErrors?.length ? [`Correct only these errors: ${JSON.stringify(job.preparation.outcomeErrors)}`] : []),
   ].join('\n');
 }
@@ -266,7 +267,9 @@ export function completeCreationBrief(job, answer, options) {
   next.contract=prepared.contract;
   next.proposalRevisionPending=false;
   next.preparation={...next.preparation,brief:prepared.brief,briefHash:prepared.briefHash,briefErrors:[]};
-  if(!['paused','cancelled'].includes(next.status)) {next.status='pending';next.blocker=null;}
+  // An interview round stopped automatic work while the operator answered; the
+  // final brief resumes it, so the approved contract proceeds like a direct brief.
+  if(!['paused','cancelled'].includes(next.status)) {next.status='pending';next.blocker=null;next.autoContinue=true;}
   return next;
 }
 

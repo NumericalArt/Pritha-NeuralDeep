@@ -134,3 +134,52 @@ test('durable request usage is scoped to each run, including exact-session conti
     assert.equal(creationRuntimeReceipt(store,'same-turn').tokens,280);
   } finally {store.close();}
 });
+
+test('a buffered stream that breaks before reaching Codex is resent and settled at its upper bound',async t=>{
+  const store=new NeuralDeepCoordinationStore();t.after(()=>store.close());
+  const truncated='data: {"type":"response.output_text.delta","delta":"Fixture ans"}\n\n';
+  const terminated=()=>new ReadableStream({start(controller){controller.enqueue(new TextEncoder().encode(truncated));controller.error(new TypeError('terminated'));}});
+  let run=null,script=[],bodies=[],budgeted=true,buffered=true;
+  const server=await listenNeuralDeepAdapter({port:0,providerRetryDelayMs:()=>0,
+    validateResponsesResponse:()=>{},requiresBufferedResponse:()=>buffered,
+    beforeResponsesDispatch:event=>{
+      if(store.providerUsageSummary(run).unknownRequests>0)throw Object.assign(new Error('Previous provider response accounting is unresolved.'),{code:'provider_usage_unconfirmed',statusCode:409});
+      return store.claimProviderRequest(run,event.requestHash,{model:event.model,bytes:event.bytes,...(budgeted?{budget:{reservation:5000,outputLimit:1000}}:{})});
+    },
+    onRequest:event=>store.recordProviderResponse(run,event),
+    fetchImpl:async(_url,init)=>{
+      bodies.push(Buffer.from(init.body).toString('utf8'));
+      const next=script.shift();
+      const body=next==='truncated'?truncated:next==='terminated'?terminated():sse(measured);
+      return new Response(body,{headers:{'content-type':'text/event-stream'}});
+    }});
+  t.after(()=>closeNeuralDeepAdapter(server));
+  const send=async(id,steps,options={})=>{
+    run=id;script=[...steps];bodies=[];budgeted=options.budgeted??true;buffered=options.buffered??true;
+    store.beginRuntimeRun({runId:id,requestHash:'a'.repeat(64),receipt:{workload_id:`turn-${id}`}});
+    const response=await fetch(`http://127.0.0.1:${server.address().port}/v1/responses`,{method:'POST',body:JSON.stringify({model:'fixture',input:id})});
+    return {status:response.status,text:await response.text()};
+  };
+
+  let result=await send('recovered',['truncated','terminated','ok']);
+  assert.equal(result.status,200);assert.match(result.text,/response\.completed/);
+  assert.equal(new Set(bodies).size,1,'every attempt resends the identical request bytes');
+  let summary=store.providerUsageSummary('recovered');
+  assert.equal(summary.providerRequests,3);assert.equal(summary.usageKnown,true);
+  assert.equal(summary.usage.totalTokens,5000+5000+140,'each broken attempt is charged at its reservation, the answer at its measurement');
+  assert.equal(store.acceptedProviderRequests('recovered'),1,'broken attempts delivered no response');
+  assert.match(store.db.prepare('SELECT metadata FROM provider_dispatches WHERE run_id=? ORDER BY rowid LIMIT 1').get('recovered').metadata,/stream_broken_upper_bound/);
+
+  result=await send('exhausted',['truncated','truncated','truncated']);
+  assert.equal(result.status,502);assert.doesNotMatch(result.text,/Fixture ans/,'partial output never reaches the caller');
+  summary=store.providerUsageSummary('exhausted');
+  assert.equal(summary.providerRequests,3);assert.equal(summary.usageKnown,true);assert.equal(summary.usage.totalTokens,15000);
+
+  result=await send('unbudgeted',['truncated','ok'],{budgeted:false});
+  assert.equal(result.status,502,'without a reservation the attempt stays unknown and another one is not admitted');
+  assert.equal(store.providerUsageSummary('unbudgeted').unknownRequests,1);
+
+  result=await send('streamed',['truncated','ok'],{buffered:false});
+  assert.equal(bodies.length,1,'a stream already forwarded to Codex is never resent');
+  assert.equal(store.providerUsageSummary('streamed').usageKnown,false);
+});

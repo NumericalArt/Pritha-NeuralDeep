@@ -265,8 +265,20 @@ test("rejects a truncated stream", () => {
   assert.throws(() => normalizeResponsesSse(sse([{ type: "response.created", response: { id: "resp_3" } }]).replace("data: [DONE]\n\n", "")), /without a terminal event/);
 });
 
+test('buffered preparation resends a stream that ended without a terminal event, without claiming a network outage',async()=>{
+ let calls=0;const observed=[];
+ const {response,finished}=invokeAdapter({validateResponsesResponse(){},providerRetryDelayMs:()=>0,fetchImpl:async()=>{
+  calls++;return new Response(sse([{type:'response.created',response:{id:'incomplete-fixture'}}]),{headers:{'content-type':'text/event-stream'}});
+ },onRequest:event=>observed.push(event)});
+ await finished;assert.equal(calls,3,'the identical request is sent up to three times');assert.equal(response.status,502);assert.equal(observed.length,3);
+ for(const event of observed) {
+  assert.equal(event.streamBroken,true);assert.equal(event.error.class,'input');assert.equal(event.error.code,'neuraldeep_stream_truncated');
+  assert.equal(event.usage,null);assert.equal(event.timings.timedOut,false);assert.ok(event.timings.responseCompletedMs!==null);
+ }
+ assert.equal(new Set(observed.map(event=>event.requestHash)).size,3,'each attempt has its own dispatch identity');
+});
+
 for(const [name,body,code] of [
- ['missing terminal',sse([{type:'response.created',response:{id:'incomplete-fixture'}}]),'neuraldeep_stream_truncated'],
  ['malformed event','data: {"private":"DO_NOT_PUBLISH_PROVIDER_TEXT", invalid}\n\n','neuraldeep_stream_malformed'],
 ])test(`buffered preparation classifies ${name} without claiming a network outage or replaying`,async()=>{
  let calls=0;const observed=[];
