@@ -819,6 +819,7 @@ async function runDeliveryLoopLocked(input = {}) {
           worktree: worktree.worktree,
           plan,
           failures: sanitize(failures, { projectRoot: worktree.worktree, stateRoot: input.stateRoot, root: input.root }),
+          executorProblems: recentExecutorProblems(runRoot),
           protectedPaths: protectedInputs.entries,
           timeoutMs: input.executorTimeoutMs,
           stateRoot: input.stateRoot,
@@ -996,6 +997,26 @@ export function resolveDeliveryBlocker(runRoot, answer, options = {}) {
       operator_guidance: guidance,
     };
   }, { eventType: "blocker_resolved", payload: { blocker_code: state.blockers[0].code, answer: selected } }).state;
+}
+
+// Earlier attempts in this run that lost their work to a transport limit. The next
+// attempt is told why, so it can change its approach (gemma-4-31b build, 2026-09-27).
+const EXECUTOR_PROBLEM_GUIDANCE = Object.freeze({
+  iteration_deadline: "An earlier attempt ran out of time while one response was still being generated: a response is cut after about 15 minutes and all of its work is lost. Write each file in parts of at most about 200 lines, one part per response.",
+  neuraldeep_output_limit: "An earlier response reached the output token limit and was cut. Keep every response small and write large files in parts.",
+});
+export function recentExecutorProblems(runRoot) {
+  let names = [];
+  try { names = readdirSync(path.join(runRoot, "executor")).filter(name => name.startsWith("attempt-") && name.endsWith(".json")); }
+  catch { return []; }
+  const codes = new Set();
+  for (const name of names) {
+    try {
+      const code = JSON.parse(readFileSync(path.join(runRoot, "executor", name), "utf8")).provider_error?.code;
+      if (Object.hasOwn(EXECUTOR_PROBLEM_GUIDANCE, code)) codes.add(code);
+    } catch {}
+  }
+  return [...codes].sort().map(code => ({ code, guidance: EXECUTOR_PROBLEM_GUIDANCE[code] }));
 }
 
 export async function resumeDelivery(runId, options = {}) {

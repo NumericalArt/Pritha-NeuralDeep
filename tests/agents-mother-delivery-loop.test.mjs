@@ -447,3 +447,20 @@ test("a missing private Trial receipt blocks before command execution or another
   assert.equal(result.state.iteration, 0);
   assert.equal(builds, 0);
 });
+
+test("the next build attempt learns which transport limit cost earlier attempts their work (gemma-4-31b, 2026-09-27)", async t => {
+  const { recentExecutorProblems } = await import("../scripts/agents-mother/delivery-loop.mjs");
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const os = await import("node:os"); const path = await import("node:path");
+  const runRoot = mkdtempSync(path.join(os.tmpdir(), "pritha-executor-problems-")); t.after(() => rmSync(runRoot, { recursive: true, force: true }));
+  assert.deepEqual(recentExecutorProblems(runRoot), [], "no executor directory yet");
+  mkdirSync(path.join(runRoot, "executor"));
+  writeFileSync(path.join(runRoot, "executor", "attempt-nd_a.json"), JSON.stringify({ status: "completed", provider_error: null }));
+  writeFileSync(path.join(runRoot, "executor", "attempt-nd_b.json"), JSON.stringify({ status: "failed", provider_error: { code: "iteration_deadline" } }));
+  writeFileSync(path.join(runRoot, "executor", "attempt-nd_c.json"), JSON.stringify({ status: "failed", provider_error: { code: "iteration_deadline" } }));
+  writeFileSync(path.join(runRoot, "executor", "attempt-nd_d.json"), JSON.stringify({ status: "failed", provider_error: { code: "neuraldeep_stream_identity" } }));
+  writeFileSync(path.join(runRoot, "executor", "iteration-001.json"), JSON.stringify({ provider_error: { code: "neuraldeep_output_limit" } }));
+  const problems = recentExecutorProblems(runRoot);
+  assert.deepEqual(problems.map(problem => problem.code), ["iteration_deadline"], "only attempt records, once per known limit");
+  assert.match(problems[0].guidance, /15 minutes[\s\S]*200 lines/);
+});

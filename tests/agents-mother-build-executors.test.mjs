@@ -91,6 +91,7 @@ test("Codex CLI build executor separates tool execution from structured summary"
     worktree,
     plan: plan(),
     failures: [{ id: "main", error: "not ready" }],
+    executorProblems: [{ code: "iteration_deadline", guidance: "Write each file in parts." }],
     protectedPaths: [{ path: "scripts/eval.mjs" }],
     timeoutMs: 30_000,
     tokenBudget: 1_000,
@@ -104,6 +105,8 @@ test("Codex CLI build executor separates tool execution from structured summary"
   assert.match(executor.calls[0].prompt, /Do not push, merge, deploy/);
   // Qwen tried to write the whole product in one response and was cut at the 15-minute gateway deadline (2026-09-27).
   assert.match(executor.calls[0].prompt, /Work in small steps/);
+  // Gemma lost two attempts to responses cut after 15 minutes; the next attempt is told why (2026-09-27).
+  assert.match(executor.calls[0].prompt, /"previous_attempt_problems"[\s\S]*"iteration_deadline"/);
   assert.match(executor.calls[0].prompt, /scripts\/eval\.mjs/);
   assert.equal(executor.calls[1].sandbox, "read-only");
   assert.equal(executor.calls[1].tokenBudget, 880, 'the summary receives only the measured remaining allocation');
