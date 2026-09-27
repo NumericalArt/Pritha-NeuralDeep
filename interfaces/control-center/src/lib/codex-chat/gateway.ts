@@ -473,14 +473,19 @@ export class CodexChatGateway {
         store.recordTurn(chatId,{turnId:job.activeTurnId,tokens:receipt.tokens,activeMs,dispatched:turn?.executionIntent?.dispatchState==='dispatched',
           ok:turn?.status==='completed',code:'creation_recovered',message:'Сохранённый шаг восстановлен. Проверьте checkpoint и продолжите эту задачу.',
           checkpoint:{...creationCheckpointEvidence(job,turn),turnId:job.activeTurnId,phase:job.phase,files:before&&after?diffTargetFileManifests(before,after):null,at:new Date().toISOString(),recovered:true}});
+        // A preparation turn that completed is not an interruption, even when this read lands
+        // between the end of the turn and its normal completion: that completion (below, or the
+        // one already running) processes it and automatic work continues. Only an unfinished step pauses.
+        const finished=turn?.status==='completed' && job.preparationPolicyVersion===2;
         store.update(chatId,current=>{
-          let next=reconcileCreationArtifacts({...current,activeTurnId:null,autoContinue:false,
-            status:['cancelled','paused'].includes(current.status)?current.status:'paused'}, {root:this.root,stateRoot:this.store.stateRoot});
+          let next=reconcileCreationArtifacts({...current,activeTurnId:null,autoContinue:finished?current.autoContinue:false,
+            status:['cancelled','paused'].includes(current.status)?current.status:finished?'pending':'paused'}, {root:this.root,stateRoot:this.store.stateRoot});
           if(job.preparationPolicyVersion===2) {
-            if(turn?.status==='completed' && ['interview','contract'].includes(job.phase))next.preparation={...next.preparation,pendingProposalTurnId:job.activeTurnId};
+            if(finished && ['interview','contract'].includes(job.phase))next.preparation={...next.preparation,pendingProposalTurnId:job.activeTurnId};
+            if(finished && job.phase==='outcome' && job.outcomeProtocolVersion===1 && !current.outcome)next.preparation={...next.preparation,pendingOutcomeTurnId:job.activeTurnId};
             // Publish the saved selection before measuring research progress. A
             // completed model response is not itself a published source report.
-            if(turn?.status==='completed' && job.phase==='research' && job.researchProtocolVersion===2) {
+            if(finished && job.phase==='research' && job.researchProtocolVersion===2) {
               return {...next,preparation:{...next.preparation,pendingResearchTurnId:job.activeTurnId}};
             }
             next=settleCreationPreparation(next,receipt,{root:turn?.executionIntent?.executionCodeRoot || this.root,stateRoot:this.store.stateRoot,phase:job.phase});

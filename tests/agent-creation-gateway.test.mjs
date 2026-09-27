@@ -488,6 +488,20 @@ test('a host step waiting for admission is not recovered as a crashed step by a 
   assert.equal(response.body.data.job.hostStepActive,true,'the view treats the queued step as live');
 });
 
+test('a status read between the end of a completed Outcome turn and its completion keeps the job running (gemma-4-31b, 2026-09-27)',async t=>{
+  const f=fixture(t,{preparationV2:true,researchFailure:true}),turnId='turn_outcome_finished';
+  const approved=creation.approveCreationDocument(f.jobs.get(f.chatId),'contract',f.request('approve_contract'),f.options);
+  f.jobs.update(f.chatId,()=>({...approved,preparationPolicyVersion:2,outcomeProtocolVersion:1,phase:'outcome',status:'running',autoContinue:true,activeTurnId:turnId}));
+  f.gateway.admission.reconcileWorkload=()=>{};
+  f.gateway.store.getTurn=async()=>({turnId,status:'completed',items:[],executionIntent:{dispatchState:'dispatched'}});
+  const completed=[];f.gateway.completeCreationOutcomeTurn=async(chatId,id)=>{completed.push(id);};
+  await f.gateway.reconcileCreationExecution(f.chatId,f.binding);
+  const job=f.jobs.get(f.chatId);
+  assert.notEqual(job.status,'paused','a finished step is not an interruption');
+  assert.equal(job.autoContinue,true);assert.equal(job.activeTurnId,null);
+  assert.equal(job.preparation.pendingOutcomeTurnId,turnId);assert.deepEqual(completed,[turnId],'the saved answer goes to the normal completion');
+});
+
 test('saved research is not published from an unsettled receipt and GET never dispatches a repair',async t=>{
   const f=fixture(t,{preparationV2:true}),turnId='turn_research_unknown';
   f.jobs.update(f.chatId,j=>({...j,preparationPolicyVersion:2,researchProtocolVersion:2,status:'paused',preparation:{pendingResearchTurnId:turnId},
