@@ -209,3 +209,27 @@ test('cleanup keeps unconfirmed process trees, operator holds, voice and missing
   assert.equal(store.get('unknown').status,'resume_confirmation_required');
   assert.equal(store.get('voice').status,'failed');
 });
+
+test('a failed delivery attempt does not keep the next iteration out of its worktree (qwen3.8-27b, 2026-09-27)', t => {
+  const store = fixture(t).store();
+  const resources = [{ kind: 'path', key: '/tmp/delivery-worktree', mode: 'write' }];
+  const delivery = id => ({ attemptId: id, surface: 'delivery', workloadId: id, coordinationKeyHash: coordinationHash(id), queuedAt: new Date().toISOString(), payload: { runId: id }, resources });
+  store.enqueue(delivery('iteration-1'));
+  const lease = store.claim('iteration-1', 1);
+  store.beginRuntimeRun({ runId: 'iteration-1-run', requestHash: 'a'.repeat(64), receipt: { process_protocol: 1, process_exited: true, process_tree_exited: true, adapter_closed: true } });
+  store.attachRuntime('iteration-1', lease.ownerToken, 'iteration-1-run');
+  store.finish('iteration-1', lease.ownerToken, 'failed');
+  store.enqueue(delivery('iteration-2'));
+  assert.equal(store.resourceWaitReason('iteration-2'), null);
+  const second = store.claim('iteration-2', 1);
+  assert.ok(second, 'the next executor attempt is admitted');
+  store.enqueue(delivery('concurrent'));
+  assert.equal(store.resourceWaitReason('concurrent'), 'workspace_conflict', 'an active attempt still excludes a concurrent writer');
+  store.cancelQueued('concurrent');
+  store.finish('iteration-2', second.ownerToken, 'completed');
+  // A claim left held by an older release is ignored once its delivery attempt is finished.
+  store.db.prepare("INSERT OR REPLACE INTO resource_claims VALUES('iteration-1','delivery','iteration-1','path','/tmp/delivery-worktree','write',1)").run();
+  store.enqueue(delivery('iteration-3'));
+  assert.equal(store.resourceWaitReason('iteration-3'), null);
+  assert.ok(store.claim('iteration-3', 1));
+});

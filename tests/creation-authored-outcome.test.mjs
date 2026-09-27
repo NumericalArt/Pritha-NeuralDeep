@@ -83,3 +83,24 @@ test('every place that creates a UI creation job selects the model-authored Outc
   assert.ok(creates.length >= 2);
   for (const call of creates) assert.match(call, /outcomeProtocolVersion:1/);
 });
+
+test('host research v2 never leaves the repository policy to discovery it cannot run (kimi-k2.6 omitted it, 2026-09-27)', t => {
+  const stateRoot = mkdtempSync(path.join(os.tmpdir(), 'creation-repository-policy-')); t.after(() => rmSync(stateRoot, { recursive: true, force: true }));
+  const coordination = new NeuralDeepCoordinationStore({ databasePath: path.join(stateRoot, 'coord.sqlite') }); t.after(() => coordination.close());
+  const store = new AgentCreationStore(coordination), options = { root: process.cwd(), stateRoot, coordination };
+  const contractFor = (chatId, technical, researchProtocolVersion) => {
+    const draftRoot = creationDraftRoot(stateRoot, 'test-instance', chatId), target = path.join(stateRoot, 'children', chatId.replaceAll('_', '-'));
+    mkdirSync(draftRoot, { recursive: true }); mkdirSync(target, { recursive: true });
+    const job = store.create({ chatId, instanceId: 'test-instance', agentId: chatId.replaceAll('_', '-'), draftRoot, target, releaseSha: 'a'.repeat(40), preparationPolicyVersion: 2,
+      briefProtocolVersion: 1, outcomeProtocolVersion: 1, ...(researchProtocolVersion ? { researchProtocolVersion } : {}) });
+    const next = completeCreationBrief(job, '```pritha-brief-json\n' + JSON.stringify({ ...brief, identity: { ...brief.identity, slug: job.agentId }, technical }) + '\n```', { ...options, turnId: `turn_${chatId}` });
+    return next.contract.text;
+  };
+  for (const technical of [{ preset: 'llm-app' }, { preset: 'llm-app', repositoryResearchPolicy: 'auto' }]) {
+    const text = contractFor(`chat_v2_${technical.repositoryResearchPolicy || 'unset'}`, technical, 2);
+    assert.match(text, /Repository research policy: not-applicable\n/);
+    assert.match(text, /Repository research waiver reason: Pritha host research checks/);
+  }
+  assert.match(contractFor('chat_v2_required', { preset: 'llm-app', repositoryResearchPolicy: 'required' }, 2), /Repository research policy: required\n/, 'an explicit decision is kept');
+  assert.match(contractFor('chat_v1_unset', { preset: 'llm-app' }), /Repository research policy: auto\n/, 'older research protocols keep discovery');
+});

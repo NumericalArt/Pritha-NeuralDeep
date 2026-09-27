@@ -54,3 +54,23 @@ test("initial and exact-ID resume carry explicit image flags and disable implici
   assert.throws(() => buildCodexExecArgs({ images: ["bad\0path"] }), /invalid_codex_images/);
   const config = renderCodexConfig(); assert.match(config, /request_max_retries = 0/); assert.match(config, /stream_max_retries = 0/);
 });
+
+test("a resent attempt does not fail a run whose later attempt answers (qwen3.8-27b research, 2026-09-27)", async () => {
+  const { providerErrorTracker } = await import("../scripts/neuraldeep-codex.mjs");
+  const broken = { class: "input", code: "neuraldeep_stream_truncated", status: 502 };
+  let reported = [];
+  let tracker = providerErrorTracker(error => reported.push(error.code));
+  tracker.observe({ path: "/v1/responses", error: broken, retry: { attempt: 1, maxAttempts: 3, nextDelayMs: 5000 } });
+  tracker.observe({ path: "/v1/responses", error: null });
+  assert.equal(tracker.finish(), null);
+  assert.deepEqual(reported, [], "the answered request emits no provider error");
+  reported = []; tracker = providerErrorTracker(error => reported.push(error.code));
+  tracker.observe({ path: "/v1/responses", error: broken, retry: { attempt: 1, maxAttempts: 3, nextDelayMs: 5000 } });
+  assert.equal(tracker.finish().code, "neuraldeep_stream_truncated", "a resend that was never admitted leaves the error");
+  assert.deepEqual(reported, ["neuraldeep_stream_truncated"]);
+  reported = []; tracker = providerErrorTracker(error => reported.push(error.code));
+  tracker.observe({ path: "/v1/responses", error: { class: "outage", code: "neuraldeep_timeout", status: 504 }, retry: null });
+  assert.deepEqual(reported, ["neuraldeep_timeout"], "a final error is reported at once");
+  assert.equal(tracker.finish().code, "neuraldeep_timeout");
+  assert.deepEqual(reported, ["neuraldeep_timeout"], "and only once");
+});

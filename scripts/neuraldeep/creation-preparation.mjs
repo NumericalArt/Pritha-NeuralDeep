@@ -117,8 +117,13 @@ export function prepareCreationContract(job, brief, options) {
   if (normalized.issues.length) fail('creation_brief_invalid',normalized.issues.join('\n'));
   const result = publish(job,'contract',normalized.hash,() => {
     const {data,cliOptions} = parseInterviewBriefDecisions(JSON.stringify(normalized.brief));
+    // Host research v2 checks primary sources and has no repository discovery: a
+    // brief that leaves the policy to "auto" would wait for discovery forever.
+    const repository = job.researchProtocolVersion === 2 && [undefined,'auto'].includes(cliOptions['repository-policy'])
+      ? {'repository-policy':'not-applicable','repository-topics':'none','repository-waiver':'Pritha host research checks the primary API, runtime and security sources of this contract; the approved brief names no repository to reuse, so repository discovery cannot change it.'}
+      : {};
     // The contract states the job's real build budget; delivery enforces the same numbers.
-    applyInterviewTechnicalProposal(data,{...cliOptions,'build-token-budget':String(job.budget.maxTokens),'build-iterations':String(job.budget.maxIterations),
+    applyInterviewTechnicalProposal(data,{...cliOptions,...repository,'build-token-budget':String(job.budget.maxTokens),'build-iterations':String(job.budget.maxIterations),
       'build-elapsed-ms':String(job.budget.maxActiveMs),'repeated-failure-threshold':String(job.budget.repeatedFailureThreshold),'target-folder':job.target});
     const generation = creationGeneration(job);
     // Model-authored Outcomes declare their product API; the generic verifier checks it.

@@ -207,6 +207,9 @@ export class NeuralDeepCoordinationStore {
       }
       this.db.prepare("UPDATE attempts SET status=?,finished_at=? WHERE id=? AND owner=?").run(outcome, new Date().toISOString(), id, token);
       if(outcome==="waiting_for_provider")this.db.prepare("UPDATE resource_claims SET held=0 WHERE attempt_id=?").run(id);
+      // A delivery attempt is one executor process in its own scope; after its
+      // confirmed exit the next iteration must be able to write the same worktree.
+      if(outcome==="failed" && current.surface==="delivery")this.db.prepare("UPDATE resource_claims SET held=0 WHERE attempt_id=?").run(id);
       if(["completed","cancelled"].includes(outcome))this._releaseWorkloadResources(current.workloadId,current.surface);
       if (current.surface === "task_chat" && ["completed","cancelled"].includes(outcome)) this.handoffs._releaseWorkload(current.workloadId,outcome);
       if (["failed", "waiting_for_provider", "waiting_for_operator"].includes(outcome)) {
@@ -629,7 +632,8 @@ export class NeuralDeepCoordinationStore {
     const match="(c.resource=? OR (?='path' AND (c.resource='/' OR ?='/' OR substr(?,1,length(c.resource)+1)=c.resource||'/' OR substr(c.resource,1,length(?)+1)=?||'/')))";
     for(const resource of resources){
       if(this.db.prepare(`SELECT 1 FROM resource_claims c WHERE c.held=1 AND c.kind=? AND NOT(c.surface=? AND c.workload=?)
-        AND (c.mode='write' OR ?='write') AND ${match} LIMIT 1`)
+        AND (c.mode='write' OR ?='write') AND ${match}
+        AND NOT EXISTS (SELECT 1 FROM attempts a WHERE a.id=c.attempt_id AND a.surface='delivery' AND a.status IN ('completed','failed','cancelled')) LIMIT 1`)
         .get(resource.kind,surface,workload,resource.mode,resource.key,resource.kind,resource.key,resource.key,resource.key,resource.key))return true;
     }
     return false;

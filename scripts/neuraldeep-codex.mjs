@@ -86,6 +86,27 @@ function upstreamOrigin(value) {
   return url.origin;
 }
 
+/**
+ * An attempt the adapter resends is not the request's outcome: it becomes the
+ * run's provider error only when no later attempt answers. A final error is
+ * reported at once.
+ */
+export function providerErrorTracker(report) {
+  let pending = null, reported = null;
+  return {
+    observe(event) {
+      if (event?.error && event.retry) pending = event.error;
+      else if (event?.error) { pending = null; reported = event.error; report(event.error); }
+      else if (event?.path === "/v1/responses") pending = null;
+    },
+    finish() {
+      if (pending && !reported) { reported = pending; report(pending); }
+      pending = null;
+      return reported;
+    },
+  };
+}
+
 export function resolveNeuralDeepPaths(environment = process.env) {
   const stateRoot = path.resolve(environment.PRITHA_STATE_ROOT || DEFAULT_STATE_ROOT);
   const codexHome = path.resolve(environment.PRITHA_NEURALDEEP_CODEX_HOME || path.join(stateRoot, "codex-home"));
@@ -363,6 +384,12 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
   });
   let providerRequests = 0;
   let providerError = null;
+  const providerErrors = providerErrorTracker(error => {
+    providerError = error;
+    if (options.emitProviderEvents === true && options.passthrough !== "inherit") {
+      process.stdout.write(`${JSON.stringify({ type: "pritha.provider_error", error })}\n`);
+    }
+  });
   let providerAccountingError = null;
   let budgetBlocker = null;
   const emitPreparationUsage=()=>{if(creation?.preparation && options.emitProviderEvents===true && options.passthrough!=='inherit')process.stdout.write(JSON.stringify({type:'pritha.preparation_usage'})+'\n');};
@@ -419,12 +446,7 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
           process.stderr.write("NeuralDeep request timing log unavailable.\n");
         }
       }
-      if (requestEvent.error) {
-        providerError = requestEvent.error;
-        if (options.emitProviderEvents === true && options.passthrough !== "inherit") {
-          process.stdout.write(`${JSON.stringify({ type: "pritha.provider_error", error: requestEvent.error })}\n`);
-        }
-      }
+      providerErrors.observe(requestEvent);
       options.onProviderRequest?.(requestEvent);
       emitPreparationUsage();
     },
@@ -569,6 +591,7 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
   const notDispatchedForBudget=Boolean(budgetBlocker && !providerRequests);
   const accountedUsage=useRequestUsage || notDispatchedForBudget ? requestUsage.usage:latestUsage;
   const accountedKnown=useRequestUsage?requestUsage.usageKnown && !providerAccountingError:notDispatchedForBudget || neuralDeepUsageKnown(latestUsage);
+  providerErrors.finish();
   const terminationReason=providerError?.class==='control' ? providerError.code : result.signal ? 'host_signal' : null;
   outcome = launchError || budgetBlocker || terminationReason ? "failed" : result.signal ? "cancelled" : result.code === 0 ? "completed" : "failed";
   const usageEvent = {
