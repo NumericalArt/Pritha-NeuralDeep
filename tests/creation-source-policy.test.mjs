@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {sourceExcerpt,sourcePassages,collectCreationSources,readCreationSources,validateResearchSelection} from '../scripts/neuraldeep/creation-source-research.mjs';
+import {sourceExcerpt,sourcePassages,passageEvidence,collectCreationSources,readCreationSources,validateResearchSelection} from '../scripts/neuraldeep/creation-source-research.mjs';
+import {normalizeExternalResearchEvidence} from '../scripts/agents-mother/external-research.mjs';
 import {deriveExternalResearchTopics} from '../scripts/agents-mother/external-research-topics.mjs';
 
 const text='The HTTP server receives explicit requests and preserves successful local records. External content must be encoded before inserting it into HTML. Errors must leave the previous successful result intact.';
@@ -142,12 +143,22 @@ test('passage selection restores exact source text without copying a stitched ex
  assert.throws(()=>validateResearchSelection({facts:[{...fact,sourceId:'other'}]},[{...other,passages:sourcePassages(other)}],[{id:'security'}],2),{code:'creation_research_quote_unbound'});
 });
 
-test('passages the evidence gate would reject as sensitive are never offered (NeuralDeep docs, 2026-09-27)',()=>{
+test('credential-shaped documentation text is masked in evidence instead of making research impossible (2026-09-27)',()=>{
  const safe='The API is OpenAI-compatible and accepts chat completion requests for the listed models.';
  const secret='Send the request with the header Authorization: Bearer sk-live-0123456789abcdefghijkl to authenticate.';
- const source={id:'s',topicId:'provider',contentHash:'b'.repeat(64),url:'https://neuraldeep.ru/docs',text:secret+' '+safe,excerpt:secret+'\n'+safe};
- const passages=sourcePassages(source);
- assert.deepEqual(passages.map(item=>item.quote),[safe],'only the passage that can pass evidence validation remains');
+ const local="Start the server with http.get({ hostname: 'localhost', port: 80, path: '/' }) to test it.";
+ const source={id:'s',topicId:'provider',contentHash:'b'.repeat(64),url:'https://neuraldeep.ru/docs',publishedAt:'unknown',retrievedAt:new Date().toISOString(),
+  text:[secret,safe,local].join(' '),excerpt:[secret,safe,local].join('\n')};
+ source.passages=sourcePassages(source);
+ assert.equal(source.passages.length,3,'every passage with substance is still offered');
+ const pick=quote=>({sourceId:'s',topicId:'provider',passageId:source.passages.find(item=>item.quote===quote).id,versionContext:'current docs',
+  compatibility:'Applies to a single localhost web process using bearer authentication through the Pritha binding.',compatibilityStatus:'compatible'});
+ const selection=validateResearchSelection({facts:[pick(secret),pick(local)]},[source],[{id:'provider'}],2);
+ assert.doesNotMatch(JSON.stringify(selection.items),/sk-live|localhost/,'evidence never stores credential-shaped text or private hosts');
+ assert.match(selection.items[0].claim,/\[REDACTED\]/);assert.match(selection.items[1].temporal_compatibility,/REDACTED_PRIVATE_HOST/);
+ const evidence=normalizeExternalResearchEvidence(selection);
+ assert.equal(evidence.invalidCount,0,JSON.stringify(evidence.items.map(item=>item.validation_errors)));
+ assert.equal(passageEvidence('Authorization: Bearer sk-live-0123456789abcdefghijkl'),null,'a passage that is only a secret is not offered');
 });
 
 test('new source packets contain bounded separate passages and old packets retain their excerpt',async t=>{

@@ -77,15 +77,24 @@ function nextPrimarySource(topic,item,found) {
 }
 // A ranked excerpt can join nonadjacent lines. Never ask a model to copy that
 // joined text as one source quotation. Bind each exact passage independently.
+/**
+ * Evidence text for a host-read passage. Public documentation examples often
+ * contain localhost, "Authorization: Bearer $KEY" or "code: ${code}"; they are
+ * masked the same way the report redacts them instead of making the evidence
+ * invalid. A passage with nothing substantive left is not offered.
+ */
+const masked=value=>{const normalized=String(value ?? '').replace(/\s+/g,' ').trim();return {normalized,text:redactSensitiveText(normalized)};};
+const maskedNarrative=value=>{const {normalized,text}=masked(value);return text===normalized?value:text;};
+export function passageEvidence(quote) {
+ const {normalized,text}=masked(quote);
+ if(text===normalized)return quote;
+ return text.length>=40 && redactSensitiveText(text)===text && !/^\[REDACTED_[A-Z_]+\]$/.test(text) ? text : null;
+}
 export function sourcePassages(source,selectionVersion=2) {
  const seen=new Set(),passages=[];
  const quotes=selectionVersion===3?rankedSourceQuotes(source.text,source.query):source.excerpt.split('\n');
  for(const quote of quotes) {
-  if(quote.length<40 || quote.length>1200 || seen.has(quote) || !source.text.includes(quote))continue;
-  // Offer only passages the evidence gate can accept: documentation examples with
-  // credential-shaped text (e.g. "Bearer sk-...") would be rejected as sensitive later.
-  const normalized=quote.replace(/\s+/g,' ').trim();
-  if(redactSensitiveText(normalized)!==normalized)continue;
+  if(quote.length<40 || quote.length>1200 || seen.has(quote) || !source.text.includes(quote) || !passageEvidence(quote))continue;
   seen.add(quote);passages.push({id:hash({sourceId:source.id,contentHash:source.contentHash,quote}).slice(0,24),quote});
   if(passages.length===8)break;
  }
@@ -193,9 +202,12 @@ export function validateResearchSelection(value,sources,topics,selectionVersion=
     || (source.text && !source.text.includes(quote)))fail('creation_research_quote_unbound',boundPassage
       ? 'Идентификатор выдержки не принадлежит выбранному источнику и теме. Выберите passageId из списка этой страницы; не присылайте поле quote.'
       : 'Выдержка не совпала с прочитанным первичным источником. Работа сохранена.');
+  const evidence=boundPassage?passageEvidence(quote):quote;
+  if(!evidence)fail('creation_research_quote_unbound','Выдержка не содержит проверяемого текста после маскировки. Выберите другую выдержку.');
   return {topic_id:source.topicId,source_url:source.url,source_title:source.title,source_type:'official-docs',source_published:source.publishedAt,
-   retrieved_at:source.retrievedAt,claim:quote,evidence_summary:quote,confidence:'medium',
-   version_context:fact.versionContext,temporal_compatibility:fact.compatibility,temporal_compatibility_status:fact.compatibilityStatus};
+   retrieved_at:source.retrievedAt,claim:evidence,evidence_summary:evidence,confidence:'medium',
+   // Model-written notes are masked like the synthesis: "localhost" or "bearer authentication" is not a secret.
+   version_context:maskedNarrative(fact.versionContext),temporal_compatibility:maskedNarrative(fact.compatibility),temporal_compatibility_status:fact.compatibilityStatus};
  });
  return {backend:'host-primary-pages',items,synthesis:value.synthesis};
 }
