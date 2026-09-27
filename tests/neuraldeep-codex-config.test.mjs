@@ -350,10 +350,10 @@ test('Qwen uses an explicit context declaration and never promises effort contro
  assert.equal(neuralDeepExecutionProfile('qwen3.8-27b-noreason').thinking,'disabled-by-selected-alias');
 });
 
-test('Gemma 4 gets the reasoning response cap and its catalog context (gemma-4-31b, 2026-09-27)',async()=>{
+test('Gemma 4 gets its catalog context and a response cap that fits the provider window (gemma-4-31b, 2026-09-27)',async()=>{
  const {neuralDeepExecutionProfile}=await import('../scripts/neuraldeep/model-execution-profile.mjs');
  assert.ok(buildCodexExecArgs({model:'gemma-4-31b',effort:'high',cwd:'/tmp/project',sandbox:'read-only'}).includes('model_context_window=262144'));
- assert.equal(neuralDeepExecutionProfile('gemma-4-31b').applicationOutputCap,32768,'Qwen needed 14 803 output tokens, 11 219 of them reasoning, for its Outcome');
+ assert.equal(neuralDeepExecutionProfile('gemma-4-31b').applicationOutputCap,16384,'two Gemma build responses ran past 15 minutes; its Outcome needed about 8k tokens');
  assert.equal(neuralDeepExecutionProfile('gemma-4-31b').effortControl,'unverified');
  assert.equal(neuralDeepExecutionProfile('gemma-4-31b-noreason').applicationOutputCap,16384);
 });

@@ -7,7 +7,9 @@ export function neuralDeepExecutionProfile(modelId) {
   thinkingBudgetControl:'not-verified-for-responses',transportVerified:false,
   declaredContextTokens:qwen || gemma?262144:oss?131072:null,
   // Reasoning shares the response budget: a thinking model needs room for the answer after it.
-  applicationOutputCap:(qwen || kimi || gemma) && !noreason?32768:16384,reservationBasis:'utf8-text-plus-framing-v1',
+  // Gemma 4 reasons briefly (an Outcome took about 8k tokens) and a longer build response runs past
+  // the provider's 15-minute response window at its speed, so it keeps the 16384 cap.
+  applicationOutputCap:(qwen || kimi) && !noreason?32768:16384,reservationBasis:'utf8-text-plus-framing-v1',
   note:qwen?'Qwen ignores reasoning_effort. No effort parameter does not disable thinking; a noreason alias must be selected explicitly.':
    oss?'Effort is documented by the provider; Responses transport and phase quality still need acceptance evidence.':
    gemma?'The provider model catalog declares Gemma 4 with tools, reasoning and a 262144-token context; effort control is not verified.':'Effort control has not been verified for this Responses route.'};
