@@ -68,7 +68,8 @@ for(const terminalId of ['bridge-final',null])test(`one exact public text can re
 
 test('renamed partial or ambiguous public text cannot authorize terminal identity repair',async()=>{
   const changed=fixture();await push(changed.parser,added(),delta('При'),completed([message('Привет','renamed')]));
-  assert.throws(()=>changed.parser.finish(),error=>error.code==='neuraldeep_stream_identity');
+  assert.throws(()=>changed.parser.finish(),error=>error.code==='neuraldeep_stream_identity'
+    && /output_text\.delta/.test(error.detail) && !/При|Привет|renamed/.test(error.detail),'the failure carries structure for diagnosis, never text or raw IDs');
   const ambiguous=fixture();await push(ambiguous.parser,added(),delta(),
     {...added(message('Привет','second')),output_index:1},{...delta(),item_id:'second',output_index:1},
     completed([message('Привет','renamed-a'),message('Привет','renamed-b')]));

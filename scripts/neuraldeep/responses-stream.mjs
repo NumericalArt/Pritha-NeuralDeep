@@ -5,6 +5,7 @@ const terminalTypes=new Set(['response.completed','response.failed','response.in
 const toolTypes=new Set(['function_call','custom_tool_call','local_shell_call']);
 const fail=(code,message)=>{throw Object.assign(new Error(message),{code,statusCode:502});};
 const frame=event=>`data: ${JSON.stringify(event)}\n\n`;
+const shortId=value=>typeof value==='string' && value ? createHash('sha256').update(value).digest('hex').slice(0,6) : null;
 
 /** Respect writable backpressure and cancellation without leaving drain listeners. */
 export async function writeResponseChunk(response,chunk,signal) {
@@ -29,7 +30,20 @@ export class ResponsesStreamNormalizer {
   constructor({write,transform,onTerminal,maxBytes=32*1024*1024,maxFrameBytes=Math.min(maxBytes,8*1024*1024)}={}) {
     Object.assign(this,{write,transform,onTerminal,maxBytes,maxFrameBytes});
     this.decoder=new TextDecoder('utf-8',{fatal:true});this.buffer='';this.bytes=0;this.sequence=0;
-    this.messages=new Map();this.source=[];this.terminal=null;this.responseId=null;this.done=false;this.events=0;
+    this.messages=new Map();this.source=[];this.terminal=null;this.responseId=null;this.done=false;this.events=0;this.trace=[];
+  }
+  /** Structure only (types, indexes, id hashes, text lengths): enough to diagnose an identity failure, no content. */
+  record(event) {
+    const last=this.trace.at(-1),type=String(event.type).replace(/^response\./,'');
+    if(last && last[0]===type && type==='output_text.delta' && last[3]===shortId(event.item_id)) {last[5]+=event.delta?.length || 0;last[6]=(last[6]||1)+1;return;}
+    if(this.trace.length<240)this.trace.push([type,event.output_index ?? null,event.item?.type ?? null,shortId(event.item?.id ?? event.item_id),event.content_index ?? null,typeof event.delta==='string'?event.delta.length:null]);
+  }
+  attachTrace(error) {
+    if(!/^neuraldeep_stream_/.test(error?.code || '') || error.detail)return;
+    const parts=item=>Array.isArray(item?.content)?item.content.map(part=>[part?.type,typeof part?.text==='string'?part.text.length:null]):null;
+    error.detail=JSON.stringify({events:this.trace,
+      streamed:[...this.messages.values()].map(message=>[message.index,shortId(message.id),shortId(message.originalId),[...message.parts.entries()].map(([index,text])=>[index,text.length])]),
+      terminal:this.terminal?(this.terminal.response?.output || []).map(item=>[item?.type,shortId(item?.id),parts(item)]):null}).slice(0,6000);
   }
   emit(event){return this.write(frame({...event,sequence_number:this.sequence++}));}
   async push(chunk) {
@@ -48,6 +62,10 @@ export class ResponsesStreamNormalizer {
     if(Buffer.byteLength(this.buffer)>this.maxFrameBytes)fail('neuraldeep_stream_size','A Responses event exceeds its bounded size.');
   }
   async block(block) {
+    try {return await this.parse(block);}
+    catch(error) {this.attachTrace(error);throw error;}
+  }
+  async parse(block) {
     const data=block.split('\n').filter(line=>line.startsWith('data:')).map(line=>line.slice(5).trimStart()).join('\n');
     if(!data)return;
     if(data==='[DONE]') {if(!this.terminal)fail('neuraldeep_stream_truncated','The Responses stream ended without a terminal event.');this.done=true;return;}
@@ -59,6 +77,7 @@ export class ResponsesStreamNormalizer {
       if(this.transform)event=parseSseData(this.transform(frame(event)))[0];
     } catch {fail('neuraldeep_stream_malformed','The Responses stream contains a malformed event.');}
     if(!event || typeof event.type!=='string')fail('neuraldeep_stream_malformed','The Responses stream contains an invalid event.');
+    this.record(event);
     if(terminalTypes.has(event.type)) {
       this.terminal=event;this.onTerminal?.(event);return;
     }
@@ -108,6 +127,10 @@ export class ResponsesStreamNormalizer {
     await this.emit(event);
   }
   finish() {
+    try {return this.complete();}
+    catch(error) {this.attachTrace(error);throw error;}
+  }
+  complete() {
     try {this.buffer+=this.decoder.decode();}catch{fail('neuraldeep_stream_encoding','The Responses stream ends inside UTF-8.');}
     if(this.buffer.trim())fail('neuraldeep_stream_truncated','The Responses stream ends inside an event.');
     if(!this.terminal)fail('neuraldeep_stream_truncated','The Responses stream ended without a terminal event.');

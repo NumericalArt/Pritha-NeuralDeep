@@ -438,6 +438,7 @@ export async function runCodexWithNeuralDeep(runtime, codexArgs, options = {}) {
           appendProvenance(runtime, { event: "provider_request_finished", run_id: runId,
             request_hash: requestEvent.requestHash, status: requestEvent.status, duration_ms: requestEvent.durationMs,
             timings: requestEvent.timings, error_code: requestEvent.error?.code || null,
+            ...(requestEvent.errorDetail ? { error_detail: requestEvent.errorDetail } : {}),
             cancellation_reason: requestEvent.cancellationReason || null,
             response_summary: requestEvent.responseSummary || null,
           }, { includeCodexVersion: false });

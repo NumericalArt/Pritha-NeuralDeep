@@ -353,6 +353,7 @@ export function createNeuralDeepAdapter(options = {}) {
           status: Number.isInteger(error?.statusCode) ? error.statusCode : null,
           transportCode: cancellationReason || (error?.name === "AbortError" ? "provider_timeout" : error?.code),
         }),
+        ...(typeof error?.detail === "string" ? { errorDetail: error.detail } : {}),
       });
       progress('failed',true);
     } finally {
