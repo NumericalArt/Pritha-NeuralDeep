@@ -105,8 +105,8 @@ test('shrinking the response cap cannot disguise an exact request replay',async 
 
 
 test('build requests honor the execution profile output cap independently of the preparation phase',()=>{
-  for(const model of ['qwen3.8-27b','gpt-oss-120b']) {
-    assert.equal(prepareBudgetedRequest({model,input:'Implement the approved product',max_output_tokens:65536},200000).max_output_tokens,model==='qwen3.8-27b'?32768:16384);
+  for(const model of ['qwen3.8-27b','kimi-k2.6','gpt-oss-120b']) {
+    assert.equal(prepareBudgetedRequest({model,input:'Implement the approved product',max_output_tokens:65536},200000).max_output_tokens,model==='gpt-oss-120b'?16384:32768);
     assert.equal(prepareBudgetedRequest({model,input:'Implement the approved product',max_output_tokens:2048},200000).max_output_tokens,2048);
   }
 });
