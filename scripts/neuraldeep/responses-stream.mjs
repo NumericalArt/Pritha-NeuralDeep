@@ -114,6 +114,15 @@ export class ResponsesStreamNormalizer {
           const index=event.content_index ?? 0;
           if(!Number.isSafeInteger(index) || index<0 || index>255)fail('neuraldeep_stream_identity','Invalid message content index.');
           if(!event.delta)return;
+          // NeuralDeep streams whitespace-only messages ("\n") between tool calls and
+          // omits them from its terminal snapshot: publish a message only once real text arrives.
+          if(!message.parts.size) {
+            message.held ||= new Map();
+            const held=(message.held.get(index) || '')+event.delta;
+            if(!held.trim()) {message.held.set(index,held);return;}
+            message.held.delete(index);
+            event={...event,delta:held};
+          }
           if(!message.parts.size)await this.emit({type:'response.output_item.added',output_index:message.index,
             item:{...message.item,id:message.id,status:'in_progress',content:[]}});
           if(!message.parts.has(index)) {
@@ -151,7 +160,10 @@ export class ResponsesStreamNormalizer {
     const output=completedOutput(terminal.response,[...this.source,...recoveredMessages]);
     // A bridge may omit tool output from the terminal snapshot, too. Only a
     // complete done item is recoverable; deltas alone cannot authorize a tool.
-    for(const event of this.source)if(event.type==='response.output_item.done' && toolTypes.has(event.item?.type) && !output.some(item=>item.id===event.item.id))output.push(event.item);
+    // NeuralDeep re-issues item IDs in the snapshot: the same call (call_id, or name and arguments) must not run twice.
+    const sameCall=(a,b)=>toolTypes.has(a?.type) && a.type===b.type && (a.id===b.id || Boolean(a.call_id) && a.call_id===b.call_id
+      || a.name===b.name && JSON.stringify(a.arguments ?? a.input ?? a.action)===JSON.stringify(b.arguments ?? b.input ?? b.action));
+    for(const event of this.source)if(event.type==='response.output_item.done' && toolTypes.has(event.item?.type) && !output.some(item=>sameCall(item,event.item)))output.push(event.item);
     const result=[],seen=new Set(),streamed=[...this.messages.values()].filter(message=>message.parts.size);
     const publicOutput=output.filter(item=>item?.type==='message'),terminalIds=new Set(publicOutput.map(item=>item.id));
     const exactPublicText=(message,item,equal=(a,b)=>a===b)=>{

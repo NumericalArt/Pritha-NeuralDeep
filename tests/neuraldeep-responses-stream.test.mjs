@@ -97,6 +97,29 @@ test('a terminal snapshot with re-issued IDs and trimmed preamble keeps the stre
   assert.throws(()=>two.parser.finish(),error=>error.code==='neuraldeep_stream_identity','whitespace never repairs an ambiguous identity');
 });
 
+test('whitespace-only messages streamed between tool calls are never published (NeuralDeep qwen3.8-27b, 2026-09-27)',async()=>{
+  const {parser,chunks}=fixture();
+  const call=(n)=>({...tool,id:`fc_${n}`,call_id:`call_${n}`,name:'exec_command',arguments:`{"cmd":"step ${n}"}`});
+  const blank=(n)=>[{...added(message('',`msg_blank_${n}`)),output_index:n},{...delta('\n'),item_id:`msg_blank_${n}`,output_index:n}];
+  await push(parser,{...added(),output_index:1},{...delta('\n\nЧитаю контракт и создаю сервер.'),output_index:1},
+    {type:'response.output_item.done',output_index:2,item:call(2)},...blank(3),
+    {type:'response.output_item.done',output_index:4,item:call(4)},...blank(5),
+    {type:'response.output_item.done',output_index:6,item:call(6)},
+    completed([message('Читаю контракт и создаю сервер.','msg_final'),{...call(2),id:'fc_a'},{...call(4),id:'fc_b'},{...call(6),id:'fc_c'}]));
+  await parser.flush(parser.finish());
+  const events=parse(chunks.join('')),final=events.at(-1).response.output;
+  assert.equal(events.filter(event=>event.type==='response.output_item.added'&&event.item?.type==='message').length,1,'only the real message is published');
+  assert.equal(final.filter(item=>item.type==='function_call').length,3,'all tool calls survive, none twice');
+  const renamed=fixture();
+  await push(renamed.parser,{type:'response.output_item.done',output_index:0,item:call(1)},
+    completed([{...call(1),id:'fc_new',call_id:'call_new'}]));
+  await renamed.parser.flush(renamed.parser.finish());
+  assert.equal(parse(renamed.chunks.join('')).at(-1).response.output.filter(item=>item.type==='function_call').length,1,'a call re-issued with new IDs runs once');
+  assert.equal(final.find(item=>item.type==='message').id,'msg_stream');
+  const late=fixture();await push(late.parser,added(),delta(' '),delta('Привет'),completed([message(' Привет')]));await late.parser.flush(late.parser.finish());
+  assert.equal(parse(late.chunks.join('')).filter(event=>event.type==='response.output_text.delta').map(event=>event.delta).join(''),' Привет','held whitespace is published with the first real text');
+});
+
 test('reasoning-only is an empty-response failure while its terminal usage remains available',async()=>{
   let terminal;const {parser,chunks}=fixture({onTerminal:event=>terminal=event});
   await push(parser,{type:'response.reasoning_text.delta',item_id:'r',delta:'private fixture'},completed([{type:'reasoning',id:'r',summary:[]}]));
