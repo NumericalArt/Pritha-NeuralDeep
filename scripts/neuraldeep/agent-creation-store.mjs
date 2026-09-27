@@ -208,5 +208,6 @@ export function creationPhase(job) {
   if (!job.approvals.outcome || job.approvals.outcome.hash !== job.outcome.hash) return 'outcome';
   if (!job.researchReady) return 'research';
   if (!job.scaffoldReady) return 'scaffold';
-  return job.deliveryRunId ? 'verify' : 'implement';
+  if (!job.deliveryRunId) return 'implement';
+  return job.delivery?.adopted === true ? 'finish' : 'verify';
 }

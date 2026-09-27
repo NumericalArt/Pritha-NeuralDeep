@@ -57,6 +57,9 @@ test('host chooses the next phase from distinct bound approvals',()=>{
  job.approvals.outcome.hash='o';assert.equal(creationPhase(job),'research');
  job.researchReady=true;assert.equal(creationPhase(job),'scaffold');
  job.scaffoldReady=true;assert.equal(creationPhase(job),'implement');
+ job.deliveryRunId='creation-run';assert.equal(creationPhase(job),'verify');
+ job.delivery={adopted:false};assert.equal(creationPhase(job),'verify');
+ job.delivery={adopted:true};assert.equal(creationPhase(job),'finish','an adopted result stays finished when the state is re-read');
 });
 test('action receipts replay the original result and refuse stale/concurrent intent',()=>{
  const {coordination,store}=make();try {
