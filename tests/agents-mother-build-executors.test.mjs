@@ -102,6 +102,8 @@ test("Codex CLI build executor separates tool execution from structured summary"
   assert.equal(executor.calls[0].tokenBudget, 1000);
   assert.equal(executor.calls[0].outputSchemaPath, undefined);
   assert.match(executor.calls[0].prompt, /Do not push, merge, deploy/);
+  // Qwen tried to write the whole product in one response and was cut at the 15-minute gateway deadline (2026-09-27).
+  assert.match(executor.calls[0].prompt, /Work in small steps/);
   assert.match(executor.calls[0].prompt, /scripts\/eval\.mjs/);
   assert.equal(executor.calls[1].sandbox, "read-only");
   assert.equal(executor.calls[1].tokenBudget, 880, 'the summary receives only the measured remaining allocation');
