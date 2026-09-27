@@ -2,6 +2,10 @@ import { createHash } from 'node:crypto';
 import { AgentCreationError, creationBudgetBlocker } from './agent-creation-store.mjs';
 
 const RESEARCH_ANSWER_BLOCKERS = new Set(['creation_research_selection_invalid', 'creation_research_quote_unbound']);
+// Delivery stops that only an explicit Continue resolves: the delivery settles
+// unmeasured attempts at their upper bound or grows its exhausted budget.
+const DELIVERY_USAGE_BLOCKERS = new Set(['goal_usage_unavailable', 'trial_model_usage_unknown']);
+const DELIVERY_BUDGET_BLOCKERS = new Set(['token_budget_exhausted', 'elapsed_budget_exhausted', 'iteration_budget_exhausted', 'creation_budget_exhausted']);
 const exited = receipt => receipt.process_exited === true && receipt.process_tree_exited === true && receipt.adapter_closed === true;
 
 /**
@@ -84,9 +88,10 @@ export function resolveCreationContinue(job, { coordination, request, now = new 
       throw new AgentCreationError(blocker.code, blocker.message);
     }
   }
-  if (next.deliveryRunId && (next.deliveryUsageSettlement?.requestId === request.requestId || next.blocker?.code === 'goal_usage_unavailable')) {
+  const deliveryStop = next.deliveryRunId ? next.blocker?.code : null;
+  if (next.deliveryRunId && (next.deliveryUsageSettlement?.requestId === request.requestId || DELIVERY_USAGE_BLOCKERS.has(deliveryStop) || DELIVERY_BUDGET_BLOCKERS.has(deliveryStop))) {
     next.deliveryUsageSettlement = { requestId: request.requestId, actor: request.actor || 'user', at: now };
-    resolved.push('delivery_usage_settlement_requested');
+    resolved.push(DELIVERY_BUDGET_BLOCKERS.has(deliveryStop) ? 'delivery_budget_extension_requested' : 'delivery_usage_settlement_requested');
   }
   if (resolved.length) {
     budget.continueDecisions = [...(budget.continueDecisions || []), { at: now, requestId: request.requestId, actor: request.actor || 'user', resolved,

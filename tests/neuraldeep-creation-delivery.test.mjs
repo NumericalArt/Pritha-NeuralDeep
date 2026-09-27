@@ -75,6 +75,39 @@ test("pause after binding prevents model dispatch and continuation uses the same
   assert.equal(resumed.runId, paused.runId);
 });
 
+test("an explicit Continue grows an exhausted delivery budget and resumes the same run (qwen3.8-27b, 2026-09-27)", async t => {
+  const f = fixture(t); let permitted = true, calls = 0;
+  const run = extra => runCreationDelivery(f.job, { ...f.options, ...extra, shouldContinue: () => permitted, buildExecutor: executor(() => calls++) });
+  const paused = await run({ onRunId: () => permitted = false });
+  assert.equal(paused.blocker.code, "creation_paused");
+  // The run waited for host fixes far longer than its wall-clock budget.
+  const statePath = path.join(paused.runRoot, "build-state.json"), ledger = JSON.parse(readFileSync(statePath, "utf8"));
+  writeFileSync(statePath, JSON.stringify({ ...ledger, created_at: new Date(Date.now() - 2 * ledger.budget.max_elapsed_ms).toISOString() }));
+  permitted = true;
+  assert.equal((await run()).blocker?.code, "elapsed_budget_exhausted");
+  assert.equal((await run()).blocker?.code, "elapsed_budget_exhausted", "without an explicit Continue the stop is kept");
+  assert.equal(calls, 0);
+  const resumed = await run({ settleUnknownUsage: { requestId: "continue-1" } });
+  assert.equal(resumed.adopted, true, JSON.stringify(resumed.blocker)); assert.equal(calls, 1); assert.equal(resumed.runId, paused.runId);
+  const [amendment] = readDeliveryLedger(resumed.runRoot).budget.amendments;
+  assert.equal(amendment.request_id, "creation-continue-continue-1"); assert.equal(amendment.approved_by, "user");
+  assert.deepEqual([amendment.additions.tokens, amendment.additions.iterations], [450, 3], "half of the original delivery budget");
+});
+
+test("after an explicit Continue the creation receipt never stops a run its ledger still allows", async t => {
+  const f = fixture(t); let permitted = true, calls = 0;
+  const run = extra => runCreationDelivery(f.job, { ...f.options, ...extra, shouldContinue: () => permitted, buildExecutor: executor(() => calls++) });
+  const paused = await run({ onRunId: () => permitted = false });
+  const receiptPath = path.join(f.stateRoot, "audit/creation-delivery", `${paused.runId}.json`);
+  const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+  writeFileSync(receiptPath, JSON.stringify({ ...receipt, activeMs: receipt.totalMaxActiveMs }));
+  permitted = true;
+  assert.equal((await run()).blocker?.code, "creation_budget_exhausted"); assert.equal(calls, 0);
+  const resumed = await run({ settleUnknownUsage: { requestId: "continue-2" } });
+  assert.equal(resumed.adopted, true, JSON.stringify(resumed.blocker)); assert.equal(calls, 1);
+  assert.deepEqual(readDeliveryLedger(resumed.runRoot).budget.amendments, [], "the ledger still had time; only the receipt followed it");
+});
+
 test("missing baseline, unknown preparation usage and another task fail before model execution", async t => {
   const f = fixture(t); let calls = 0;
   for (const job of [{ ...f.job, scaffoldReceipt: {} }, { ...f.job, budget: { ...f.job.budget, unknownAttempts: ["missing-receipt"] } }, { ...f.job, chatId: "chat_elsewhere" }]) {

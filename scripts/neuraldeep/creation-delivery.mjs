@@ -5,7 +5,7 @@ import path from "node:path";
 import { acquireFileLock, atomicWriteFile } from "../lib/atomic-file.mjs";
 import { resolvePrithaStatePathFrom } from "../lib/paths.mjs";
 import { deliverOutcome, findDeliveryRun, resumeDelivery, withDeliveryHostControl, defaultDeliveryTrialBackend } from "../agents-mother/delivery-loop.mjs";
-import { deliveryUsageStatus, grantDeliveryBudget, readDeliveryLedger, settleDeliveryAttemptsAtUpperBound } from "../agents-mother/delivery-ledger.mjs";
+import { DELIVERY_ACTIVE_STATUSES, budgetBlocker, deliveryUsageStatus, grantDeliveryBudget, readDeliveryLedger, settleDeliveryAttemptsAtUpperBound } from "../agents-mother/delivery-ledger.mjs";
 import { readDeliveryWorktree } from "../agents-mother/delivery-worktree.mjs";
 import { performTaskDeliveryAction, readTaskDelivery } from "../agents-mother/task-delivery.mjs";
 import { verifyTrialResultFreshness } from "../agents-mother/trial-runner.mjs";
@@ -158,6 +158,35 @@ export function deliveryAttemptBounds(coordination, attempts) {
   return bounds;
 }
 
+const DELIVERY_BUDGET_BLOCKERS = new Set(["token_budget_exhausted", "elapsed_budget_exhausted", "iteration_budget_exhausted"]);
+
+// An explicit operator Continue never leaves a delivery at a dead end. Exited
+// attempts whose usage could not be measured are settled at their upper bound;
+// an exhausted delivery budget grows by half of its original size, like the job
+// budget, through the ledger's user-approved amendment; and the creation
+// receipt, which counts only active time, never stops a run the ledger's wall
+// clock still allows.
+function continueDeliveryRun(runRoot, receipt, options) {
+  const requestId = options.settleUnknownUsage.requestId;
+  let state = readDeliveryLedger(runRoot);
+  if (state.status === "blocked" && ["goal_usage_unavailable", "trial_model_usage_unknown"].includes(state.blockers?.[0]?.code) && options.withCoordination) {
+    const bounds = options.withCoordination(coordination => deliveryAttemptBounds(coordination, state.budget.unaccounted_attempts));
+    state = settleDeliveryAttemptsAtUpperBound(runRoot, { bounds, approvedBy: "user", requestId });
+  }
+  const grantId = `creation-continue-${requestId}`;
+  const exhausted = state.status === "blocked" ? DELIVERY_BUDGET_BLOCKERS.has(state.blockers?.[0]?.code)
+    : DELIVERY_ACTIVE_STATUSES.has(state.status) && DELIVERY_BUDGET_BLOCKERS.has(budgetBlocker(state)?.code);
+  if (exhausted && !state.budget.amendments.some(entry => entry.request_id === grantId)) {
+    const original = state.budget.amendments[0]?.before || state.budget;
+    const addTokens = Math.ceil(original.max_tokens / 2), addIterations = Math.ceil(original.max_iterations / 2), addElapsedMs = Math.ceil(original.max_elapsed_ms / 2);
+    state = grantDeliveryBudget(runRoot, { approvedBy: "user", requestId: grantId, addTokens, addIterations, addElapsedMs });
+    receipt.totalMaxTokens += addTokens; receipt.totalMaxActiveMs += addElapsedMs; receipt.maxIterations += addIterations;
+  }
+  const ledgerRemainingMs = state.budget.max_elapsed_ms - Math.max(0, Date.now() - Date.parse(state.created_at));
+  const receiptRemainingMs = receipt.totalMaxActiveMs - receipt.preparationActiveMs - receipt.activeMs;
+  if (ledgerRemainingMs > receiptRemainingMs) receipt.totalMaxActiveMs += ledgerRemainingMs - receiptRemainingMs;
+}
+
 export async function runCreationDelivery(job, options = {}) {
   if (!job?.scaffoldReady || !job?.approvals?.contract || !job?.approvals?.outcome || !job.outcome?.path) fail("creation_delivery_not_ready");
   if (!/^[a-f0-9]{40,64}$/.test(job.scaffoldReceipt?.revision || "")) fail("creation_scaffold_revision_missing");
@@ -187,6 +216,12 @@ export async function runCreationDelivery(job, options = {}) {
     // conservatively rather than silently treating the unobserved time as zero.
     if (receipt.startedAt) receipt.activeMs += Math.max(0, start - Date.parse(receipt.startedAt));
     receipt.startedAt = new Date(start).toISOString();
+    const existing = findDeliveryRun(runId, options);
+    if (existing) {
+      await bindToTask(runId, options.task, options); await options.onRunId?.(runId);
+      // An explicit operator Continue resolves the delivery's own blockers before its remaining budget is derived.
+      if (options.settleUnknownUsage?.requestId) continueDeliveryRun(existing, receipt, options);
+    }
     writeReceipt(job, options, receipt);
     const remainingTokens = receipt.totalMaxTokens - receipt.preparationTokens;
     const remainingMs = receipt.totalMaxActiveMs - receipt.preparationActiveMs - receipt.activeMs;
@@ -204,26 +239,9 @@ export async function runCreationDelivery(job, options = {}) {
       budget: { maxTokens: remainingTokens, maxElapsedMs: remainingMs, maxIterations: receipt.maxIterations,
         repeatedFailureThreshold: receipt.repeatedFailureThreshold, tokenBudgetSource: "creation-job-remaining", goalEnforcement: "not-applicable" },
       onLedgerReady: async () => { await bindToTask(runId, options.task, options); await options.onRunId?.(runId); } };
-    const existing = findDeliveryRun(runId, options);
     if (existing) {
-      await bindToTask(runId, options.task, options); await options.onRunId?.(runId);
-      let state = readDeliveryLedger(existing);
+      const state = readDeliveryLedger(existing);
       if (state.budget.max_tokens > remainingTokens || state.budget.max_iterations > receipt.maxIterations) fail("creation_budget_binding_changed");
-      // An explicit operator Continue settles exited attempts with unmeasurable usage at their upper bound.
-      if (state.status === "blocked" && ["goal_usage_unavailable", "trial_model_usage_unknown"].includes(state.blockers?.[0]?.code)
-        && options.settleUnknownUsage?.requestId && options.withCoordination) {
-        const bounds = options.withCoordination(coordination => deliveryAttemptBounds(coordination, state.budget.unaccounted_attempts));
-        state = settleDeliveryAttemptsAtUpperBound(existing, { bounds, approvedBy: "user", requestId: options.settleUnknownUsage.requestId });
-      }
-      // An explicit operator Continue grows an exhausted delivery budget by half of its original size, like the job budget.
-      if (state.status === "blocked" && ["token_budget_exhausted", "elapsed_budget_exhausted", "iteration_budget_exhausted"].includes(state.blockers?.[0]?.code)
-        && options.settleUnknownUsage?.requestId) {
-        const original = state.budget.amendments[0]?.before || { max_tokens: state.budget.max_tokens, max_iterations: state.budget.max_iterations, max_elapsed_ms: state.budget.max_elapsed_ms };
-        const addTokens = Math.ceil(original.max_tokens / 2), addIterations = Math.ceil(original.max_iterations / 2), addElapsedMs = Math.ceil(original.max_elapsed_ms / 2);
-        state = grantDeliveryBudget(existing, { approvedBy: "user", requestId: `creation-continue-${options.settleUnknownUsage.requestId}`, addTokens, addIterations, addElapsedMs });
-        receipt.totalMaxTokens += addTokens; receipt.totalMaxActiveMs += addElapsedMs; receipt.maxIterations += addIterations;
-        writeReceipt(job, options, receipt);
-      }
       const retryable = ["creation_paused", "build_executor_aborted"].includes(state.blockers?.[0]?.code)
         || state.blockers?.[0]?.code === "trial_model_usage_unknown" && deliveryUsageStatus(state.budget) === "complete" && options.settleUnknownUsage?.requestId;
       if (!completed.has(state.status)) await resumeDelivery(runId, { ...input,

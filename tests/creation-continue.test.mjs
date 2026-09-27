@@ -88,6 +88,19 @@ test('Continue hands an exited delivery attempt with unknown usage to the delive
   assert.deepEqual(next.budget.continueDecisions[0].resolved, ['delivery_usage_settlement_requested']);
 });
 
+test('Continue hands an exhausted delivery budget to the delivery (qwen3.8-27b, 2026-09-27)', () => {
+  const store = { db: { prepare: () => ({ all: () => [] }) } };
+  for (const code of ['elapsed_budget_exhausted', 'token_budget_exhausted', 'iteration_budget_exhausted', 'creation_budget_exhausted']) {
+    const blocked = job({ maxTokens: 2_000_000, tokensUsed: 1_773_323, maxActiveMs: 10_800_000, activeMs: 6_078_918 }, { deliveryRunId: 'creation-run',
+      blocker: { code, message: 'The delivery run reached its budget.' } });
+    const next = resolveCreationContinue(blocked, { coordination: store, request, now: '2026-09-27T12:50:00.000Z' });
+    assert.equal(next.deliveryUsageSettlement?.requestId, request.requestId, code);
+    assert.deepEqual(next.budget.continueDecisions[0].resolved, ['delivery_budget_extension_requested'], code);
+  }
+  const unrelated = resolveCreationContinue(job({}, { deliveryRunId: 'creation-run', blocker: { code: 'creation_source_changed', message: 'changed' } }), { coordination: store, request });
+  assert.equal(unrelated.deliveryUsageSettlement, undefined, 'a stop that needs another decision is not treated as a budget grant');
+});
+
 test('delivery attempt bounds use measured usage and the reservation of unmeasured requests', async t => {
   const { deliveryAttemptBounds } = await import('../scripts/neuraldeep/creation-delivery.mjs');
   const store = new NeuralDeepCoordinationStore(); t.after(() => store.close());
