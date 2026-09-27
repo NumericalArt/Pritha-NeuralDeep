@@ -5,7 +5,7 @@ import path from "node:path";
 import { acquireFileLock, atomicWriteFile } from "../lib/atomic-file.mjs";
 import { resolvePrithaStatePathFrom } from "../lib/paths.mjs";
 import { deliverOutcome, findDeliveryRun, resumeDelivery, withDeliveryHostControl, defaultDeliveryTrialBackend } from "../agents-mother/delivery-loop.mjs";
-import { deliveryUsageStatus, readDeliveryLedger } from "../agents-mother/delivery-ledger.mjs";
+import { deliveryUsageStatus, readDeliveryLedger, settleDeliveryAttemptsAtUpperBound } from "../agents-mother/delivery-ledger.mjs";
 import { readDeliveryWorktree } from "../agents-mother/delivery-worktree.mjs";
 import { performTaskDeliveryAction, readTaskDelivery } from "../agents-mother/task-delivery.mjs";
 import { verifyTrialResultFreshness } from "../agents-mother/trial-runner.mjs";
@@ -140,6 +140,24 @@ export async function recoverCreationDelivery(job, options = {}) {
   } finally { lock.release(); }
 }
 
+/** Upper bound per exited attempt: measured requests at their usage, unmeasured ones at their admission reservation. */
+export function deliveryAttemptBounds(coordination, attempts) {
+  const bounds = new Map();
+  for (const attempt of attempts) {
+    const id = attempt.attempt_id && attempt.launcher_run_id === attempt.attempt_id ? attempt.attempt_id : null;
+    if (!id) continue;
+    let tokens = 0, bounded = true;
+    for (const row of coordination.db.prepare("SELECT metadata FROM provider_dispatches WHERE run_id=? ORDER BY rowid").all(id)) {
+      const metadata = JSON.parse(row.metadata), measured = metadata.completion?.usage?.totalTokens;
+      const value = Number.isSafeInteger(measured) && measured >= 0 ? measured : metadata.budget?.reservation;
+      if (!Number.isSafeInteger(value) || value < 0) { bounded = false; break; }
+      tokens += value;
+    }
+    if (bounded && Number.isSafeInteger(tokens)) bounds.set(id, tokens);
+  }
+  return bounds;
+}
+
 export async function runCreationDelivery(job, options = {}) {
   if (!job?.scaffoldReady || !job?.approvals?.contract || !job?.approvals?.outcome || !job.outcome?.path) fail("creation_delivery_not_ready");
   if (!/^[a-f0-9]{40,64}$/.test(job.scaffoldReceipt?.revision || "")) fail("creation_scaffold_revision_missing");
@@ -189,8 +207,13 @@ export async function runCreationDelivery(job, options = {}) {
     const existing = findDeliveryRun(runId, options);
     if (existing) {
       await bindToTask(runId, options.task, options); await options.onRunId?.(runId);
-      const state = readDeliveryLedger(existing);
+      let state = readDeliveryLedger(existing);
       if (state.budget.max_tokens > remainingTokens || state.budget.max_iterations > receipt.maxIterations) fail("creation_budget_binding_changed");
+      // An explicit operator Continue settles exited attempts with unmeasurable usage at their upper bound.
+      if (state.status === "blocked" && state.blockers?.[0]?.code === "goal_usage_unavailable" && options.settleUnknownUsage?.requestId && options.withCoordination) {
+        const bounds = options.withCoordination(coordination => deliveryAttemptBounds(coordination, state.budget.unaccounted_attempts));
+        state = settleDeliveryAttemptsAtUpperBound(existing, { bounds, approvedBy: "user", requestId: options.settleUnknownUsage.requestId });
+      }
       if (!completed.has(state.status)) await resumeDelivery(runId, { ...input,
         ...(state.status === "blocked" && ["creation_paused", "build_executor_aborted"].includes(state.blockers?.[0]?.code) ? { answer: "retry", answeredBy: "user" } : {}) });
     } else await deliverOutcome(job.outcome.path, job.target, input);

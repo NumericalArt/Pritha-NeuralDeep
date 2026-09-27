@@ -46,7 +46,14 @@ export function resolveCreationContinue(job, { coordination, request, now = new 
   for (let blocker = creationBudgetBlocker(next), guard = 0; blocker; blocker = creationBudgetBlocker(next), guard += 1) {
     if (guard >= 16) throw new AgentCreationError(blocker.code, blocker.message);
     if (blocker.code === 'creation_usage_unknown') {
+      let settledTurns = 0;
       for (const turnId of [...budget.unknownAttempts]) {
+        if (turnId === next.deliveryRunId) {
+          // The delivery ledger settles its own attempts at their upper bound when delivery resumes.
+          budget.unknownAttempts = budget.unknownAttempts.filter(id => id !== turnId);
+          next.deliveryUsageSettlement = { requestId: request.requestId, actor: request.actor || 'user', at: now };
+          continue;
+        }
         const bound = creationUpperBoundReceipt(coordination, turnId);
         if (!bound) throw new AgentCreationError('creation_usage_unbounded', 'Расход прерванного шага пока нельзя ограничить сверху: процесс ещё не завершён или у запроса нет резерва. Нажмите «Сверить расход» и повторите «Продолжить».');
         const turn = budget.turns[turnId] ||= { tokens: null, activeMs: 0, dispatched: true };
@@ -55,8 +62,9 @@ export function resolveCreationContinue(job, { coordination, request, now = new 
         turn.usageReceipt = { id: bound.receiptId, source: 'reservation-upper-bound', hash: createHash('sha256').update(JSON.stringify([bound.receiptId, turnId, bound.tokens])).digest('hex') };
         budget.tokensUsed += bound.tokens;
         budget.unknownAttempts = budget.unknownAttempts.filter(id => id !== turnId);
+        settledTurns += 1;
       }
-      resolved.push('usage_settled_at_upper_bound');
+      if (settledTurns) resolved.push('usage_settled_at_upper_bound');
     } else if (blocker.code === 'creation_repeated_failure') {
       budget.repeatedFailures = 0;
       budget.lastFailureSignature = null;
@@ -75,6 +83,10 @@ export function resolveCreationContinue(job, { coordination, request, now = new 
     } else {
       throw new AgentCreationError(blocker.code, blocker.message);
     }
+  }
+  if (next.deliveryRunId && (next.deliveryUsageSettlement?.requestId === request.requestId || next.blocker?.code === 'goal_usage_unavailable')) {
+    next.deliveryUsageSettlement = { requestId: request.requestId, actor: request.actor || 'user', at: now };
+    resolved.push('delivery_usage_settlement_requested');
   }
   if (resolved.length) {
     budget.continueDecisions = [...(budget.continueDecisions || []), { at: now, requestId: request.requestId, actor: request.actor || 'user', resolved,

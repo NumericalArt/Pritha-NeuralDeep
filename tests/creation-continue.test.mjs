@@ -77,3 +77,25 @@ test('Continue discards a research answer that keeps failing validation', () => 
   assert.equal(next.preparation.researchRepairCount, 0);
   assert.deepEqual(next.budget.continueDecisions[0].resolved, ['research_answer_discarded']);
 });
+
+test('Continue hands an exited delivery attempt with unknown usage to the delivery ledger (qwen3.8-27b, 2026-09-27)', t => {
+  const store = new NeuralDeepCoordinationStore(); t.after(() => store.close());
+  const blocked = job({ maxTokens: 2_000_000, tokensUsed: 282_879, unknownAttempts: ['creation-run'] }, { deliveryRunId: 'creation-run',
+    blocker: { code: 'goal_usage_unavailable', message: 'Build usage or the end of a prior attempt is unresolved' } });
+  const next = resolveCreationContinue(blocked, { coordination: store, request, now: '2026-09-27T10:10:00.000Z' });
+  assert.deepEqual(next.budget.unknownAttempts, [], 'the delivery run is not bounded as a task turn');
+  assert.equal(next.deliveryUsageSettlement.requestId, request.requestId);
+  assert.deepEqual(next.budget.continueDecisions[0].resolved, ['delivery_usage_settlement_requested']);
+});
+
+test('delivery attempt bounds use measured usage and the reservation of unmeasured requests', async t => {
+  const { deliveryAttemptBounds } = await import('../scripts/neuraldeep/creation-delivery.mjs');
+  const store = new NeuralDeepCoordinationStore(); t.after(() => store.close());
+  store.beginRuntimeRun({ runId: 'nd_cut', requestHash: 'a'.repeat(64), receipt: { workload_id: 'creation-run-iteration-2' } });
+  store.claimProviderRequest('nd_cut', 'b'.repeat(64), { budget: { reservation: 150_000 } });
+  store.recordProviderResponse('nd_cut', { requestHash: 'b'.repeat(64), status: 200, usage: { input_tokens: 26_000, output_tokens: 300 }, upstreamAttempted: true });
+  store.claimProviderRequest('nd_cut', 'c'.repeat(64), { budget: { reservation: 251_543 } });
+  const bounds = deliveryAttemptBounds(store, [{ attempt_id: 'nd_cut', launcher_run_id: 'nd_cut' }, { attempt_id: 'nd_none', launcher_run_id: 'nd_none' }]);
+  assert.equal(bounds.get('nd_cut'), 26_300 + 251_543);
+  assert.equal(bounds.get('nd_none'), 0, 'an attempt that never dispatched costs nothing');
+});

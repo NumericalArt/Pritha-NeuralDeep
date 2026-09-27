@@ -17,6 +17,7 @@ import {
   recoverDeliveryLedger,
   recoverLostDeliveryAttempts,
   releaseDeliveryTarget,
+  settleDeliveryAttemptsAtUpperBound,
   targetKey,
   transitionDelivery,
   typedBlocker,
@@ -438,4 +439,34 @@ test("legacy worker-loss entries remain unaccounted until an actual matching rec
   assert.equal(deliveryUsageStatus(measured.budget), "complete");
   assert.equal(readDeliveryLedger(runRoot).budget.unaccounted_attempts.length, 0);
   assert.equal(measured.budget.tokens_used, 120);
+});
+
+test("an operator Continue settles an exited attempt with unmeasured usage at its upper bound (qwen3.8-27b deadline cut, 2026-09-27)", () => {
+  const { runRoot } = fixture();
+  const exited = { attempt_id: "nd_cut", launcher_run_id: "nd_cut", process_exited: true, process_tree_exited: true, adapter_closed: true, turn_status: "failed" };
+  unresolvedAttempt(runRoot, exited);
+  const before = readDeliveryLedger(runRoot);
+  assert.throws(() => settleDeliveryAttemptsAtUpperBound(runRoot, { bounds: { nd_cut: 523_412 }, requestId: "continue-1" }), /explicit user authorization/);
+  const now = Date.parse("2026-08-16T12:10:00.000Z");
+  const settled = settleDeliveryAttemptsAtUpperBound(runRoot, { bounds: { nd_cut: 523_412 }, approvedBy: "user", requestId: "continue-1", now });
+  assert.equal(settled.budget.tokens_used, before.budget.tokens_used + 523_412);
+  assert.equal(settled.budget.unaccounted_attempts.length, 0);
+  assert.equal(settled.budget.accounted_turns.at(-1).usage_source, "reservation-upper-bound");
+  assert.equal(settled.budget.upper_bound_settlements[0].tokens, 523_412);
+  assert.equal(settled.status, "correcting");assert.equal(settled.next_action, "resume_delivery");
+  assert.equal(validateDeliveryLedger(settled).ok, true, JSON.stringify(validateDeliveryLedger(settled).issues));
+  assert.equal(settleDeliveryAttemptsAtUpperBound(runRoot, { bounds: { nd_cut: 1 }, approvedBy: "user", requestId: "continue-1", now }).version, settled.version, "a repeated request is idempotent");
+  const exhausted = fixture();
+  unresolvedAttempt(exhausted.runRoot, exited);
+  const over = settleDeliveryAttemptsAtUpperBound(exhausted.runRoot, { bounds: { nd_cut: 2_000_000 }, approvedBy: "user", requestId: "continue-4", now });
+  assert.equal(over.status, "blocked");assert.equal(over.blockers[0].code, "token_budget_exhausted", "a settlement over the cap asks for a budget decision");
+
+  const live = fixture();
+  unresolvedAttempt(live.runRoot, { ...exited, process_tree_exited: false });
+  const kept = settleDeliveryAttemptsAtUpperBound(live.runRoot, { bounds: { nd_cut: 10 }, approvedBy: "user", requestId: "continue-2" });
+  assert.equal(kept.budget.unaccounted_attempts.length, 1, "an attempt that may still run is never settled");
+  assert.equal(kept.status, "blocked");
+  const unbounded = fixture();
+  unresolvedAttempt(unbounded.runRoot, exited);
+  assert.equal(settleDeliveryAttemptsAtUpperBound(unbounded.runRoot, { bounds: {}, approvedBy: "user", requestId: "continue-3" }).budget.unaccounted_attempts.length, 1, "no bound, no settlement");
 });

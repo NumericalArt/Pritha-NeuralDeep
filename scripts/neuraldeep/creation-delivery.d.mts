@@ -5,7 +5,10 @@ export type CreationDeliveryOptions = {
   task: DeliveryTask; signal?: AbortSignal; shouldContinue?: () => boolean | Promise<boolean>;
   onRunId?: (runId: string) => void | Promise<void>;
   buildExecutor?: unknown; trialBackend?: string; reportDir?: string | false;
+  settleUnknownUsage?: { requestId: string } | null;
+  withCoordination?: <T>(work: (coordination: import("./coordination-store.mjs").NeuralDeepCoordinationStore) => T) => T;
 };
+export function deliveryAttemptBounds(coordination: import("./coordination-store.mjs").NeuralDeepCoordinationStore, attempts: any[]): Map<string, number>;
 export type CreationDeliveryResult = {
   runId: string; runRoot: string; status: string; blocker: any; adopted: boolean; head: string | null; acceptance: "not_accepted";
   usage: { preparationTokens: number; deliveryTokens: number; knownTotalTokens: number; coverage: string; activeMs: number; iterations: number; maxTokens: number; scope: string };

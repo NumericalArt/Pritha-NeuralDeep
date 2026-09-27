@@ -610,10 +610,11 @@ export class CodexChatGateway {
     this.withCreationStore(store=>store.update(chatId,current=>({...current,status:'running',phase:'implement'})));
     try {
       const result=await deliverCreation(job,{root:this.root,stateRoot:this.store.stateRoot,agentParent:resolvePrithaAgentParent(this.root),model:binding.modelId,effort:binding.effortId || undefined,
+        settleUnknownUsage:job.deliveryUsageSettlement || null,withCoordination:<T,>(work:(coordination:NeuralDeepCoordinationStore)=>T)=>this.withCreationStore(store=>work(store.store)),
         task:{chatId,nativeThreadId:binding.nativeThreadId,providerId:'neuraldeep_cli',stateIdentityHash:binding.stateIdentityHash},signal:controller.signal,
         shouldContinue:()=>this.withCreationStore(store=>{const current=store.get(chatId);return current?.autoContinue && !['paused','cancelled'].includes(current.status);}),
         onRunId:runId=>{this.withCreationStore(store=>store.update(chatId,current=>({...current,deliveryRunId:runId})));}});
-      this.withCreationStore(store=>store.update(chatId,current=>({...current,
+      this.withCreationStore(store=>store.update(chatId,current=>({...current,deliveryUsageSettlement:null,
         status:['paused','cancelled'].includes(current.status)?current.status:result.adopted?'ready':'blocked',
         phase:result.adopted?'finish':'verify',deliveryRunId:result.runId,delivery:creationDeliveryCheckpoint(result,current.delivery),blocker:result.blocker,
         budget:{...current.budget,tokensUsed:result.usage.knownTotalTokens,activeMs:result.usage.activeMs,
