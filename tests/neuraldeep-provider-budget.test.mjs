@@ -110,3 +110,10 @@ test('build requests honor the execution profile output cap independently of the
     assert.equal(prepareBudgetedRequest({model,input:'Implement the approved product',max_output_tokens:2048},200000).max_output_tokens,2048);
   }
 });
+
+test('the model context check estimates text tokens instead of counting every byte (qwen3.8-27b build session, 2026-09-27)',()=>{
+  const text=size=>'Прочитай контракт и реализуй сервер. '.repeat(Math.ceil(size/60)).slice(0,size);
+  const session=prepareBudgetedRequest({model:'qwen3.8-27b',input:text(300_000)},2_000_000);
+  assert.equal(session.max_output_tokens,32768,'a 300 KB text session fits the 262k-token context');
+  assert.throws(()=>prepareBudgetedRequest({model:'qwen3.8-27b',input:text(600_000)},2_000_000),{code:'provider_budget_model_context'},'a request beyond the context is still refused');
+});

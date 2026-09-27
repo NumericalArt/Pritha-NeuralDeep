@@ -9,6 +9,11 @@ import {neuralDeepExecutionProfile} from './model-execution-profile.mjs';
 
 const OUTPUT_LIMIT = 32_768;
 const FRAMING_RESERVE = 8_192;
+// Budget reservations charge one token per UTF-8 byte. The context check only
+// estimates fit: text needs about 2+ bytes per token (English ~4, code ~3,
+// Cyrillic ~5), and a per-byte count refused Qwen build sessions at a third of
+// its declared context. Budgeted requests are text-only (assertTextInput).
+const contextTokens = bytes => Math.ceil(bytes / 2);
 // Two local read follow-ups can clarify an evidence reference. A third requires
 // a host-validated brief/document/fact, not a new cursor or native session.
 const fail = (code, message) => { throw Object.assign(new Error(message), { code, statusCode: 409 }); };
@@ -58,13 +63,13 @@ export function prepareBudgetedRequest(payload, available, pinnedProfile=null) {
   assertLocalTools(payload.tools);
   if (payload.max_output_tokens !== undefined && (!count(payload.max_output_tokens) || payload.max_output_tokens < 1))
     fail('provider_budget_invalid', 'Invalid response token limit.');
-  const inputReservation = Buffer.byteLength(JSON.stringify(payload)) + FRAMING_RESERVE;
+  const inputBytes = Buffer.byteLength(JSON.stringify(payload)), inputReservation = inputBytes + FRAMING_RESERVE;
   const profile=pinnedProfile || neuralDeepExecutionProfile(String(payload.model||''));
   if(pinnedProfile && (profile.modelId!==payload.model || ![8192,16384,32768].includes(profile.applicationOutputCap)))
     fail('provider_budget_policy_changed','Pinned model output policy does not match the request.');
   const output = Math.min(payload.max_output_tokens ?? OUTPUT_LIMIT, profile.applicationOutputCap, OUTPUT_LIMIT, available - inputReservation - 64);
   const context=profile.declaredContextTokens;
-  if(context && inputReservation+output>context)fail('provider_budget_model_context','Conservative request reserve exceeds the declared model context.');
+  if(context && contextTokens(inputBytes)+FRAMING_RESERVE+output>context)fail('provider_budget_model_context','Conservative request reserve exceeds the declared model context.');
   if (output < Math.min(payload.max_output_tokens ?? OUTPUT_LIMIT,1_024)) fail('provider_token_budget', 'The remaining token budget cannot cover this request and a bounded response.');
   return { ...payload, max_output_tokens: output };
 }
@@ -135,7 +140,7 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
       fail('neuraldeep_model_identity_mismatch','The request model does not match the pinned creation policy. No fallback is permitted.');
     const bytes=Buffer.byteLength(JSON.stringify(payload)),policy=current.job.preparationPolicy;
     const declared=current.job.executionPolicy?.modelProfile?.declaredContextTokens;
-    if(declared && bytes+FRAMING_RESERVE+(payload.max_output_tokens||policy.outputTokens)>declared)
+    if(declared && contextTokens(bytes)+FRAMING_RESERVE+(payload.max_output_tokens||policy.outputTokens)>declared)
       fail('provider_budget_model_context','Conservative request reservation exceeds the declared model context.');
     const requestCount=store.acceptedProviderRequests(runId);
     const state={policyVersion:2,phase:current.phase,workUnitId:workloadId,packetHash:current.job.contextPacket.hash,
