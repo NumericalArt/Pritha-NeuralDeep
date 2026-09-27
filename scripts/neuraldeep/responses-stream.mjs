@@ -6,6 +6,9 @@ const toolTypes=new Set(['function_call','custom_tool_call','local_shell_call'])
 const fail=(code,message)=>{throw Object.assign(new Error(message),{code,statusCode:502});};
 const frame=event=>`data: ${JSON.stringify(event)}\n\n`;
 const shortId=value=>typeof value==='string' && value ? createHash('sha256').update(value).digest('hex').slice(0,6) : null;
+// NeuralDeep re-issues item IDs in its terminal snapshot and trims the text it
+// already streamed around a tool call (66 streamed vs 62 terminal characters).
+const sameText=(a,b)=>typeof a==='string' && typeof b==='string' && a.replace(/\s+/g,' ').trim()===b.replace(/\s+/g,' ').trim();
 
 /** Respect writable backpressure and cancellation without leaving drain listeners. */
 export async function writeResponseChunk(response,chunk,signal) {
@@ -43,6 +46,7 @@ export class ResponsesStreamNormalizer {
     const parts=item=>Array.isArray(item?.content)?item.content.map(part=>[part?.type,typeof part?.text==='string'?part.text.length:null]):null;
     const streamed=[...this.messages.values()];
     const same=item=>streamed.map(message=>[...message.parts.entries()].every(([index,text])=>item?.content?.[index]?.text===text)?'exact'
+      :[...message.parts.entries()].every(([index,text])=>sameText(item?.content?.[index]?.text,text))?'whitespace'
       :[...message.parts.entries()].every(([index,text])=>item?.content?.[index]?.text?.startsWith(text))?'prefix':'differs');
     error.detail=JSON.stringify({
       streamed:streamed.map(message=>[message.index,shortId(message.id),shortId(message.originalId),[...message.parts.entries()].map(([index,text])=>[index,text.length])]),
@@ -150,10 +154,10 @@ export class ResponsesStreamNormalizer {
     for(const event of this.source)if(event.type==='response.output_item.done' && toolTypes.has(event.item?.type) && !output.some(item=>item.id===event.item.id))output.push(event.item);
     const result=[],seen=new Set(),streamed=[...this.messages.values()].filter(message=>message.parts.size);
     const publicOutput=output.filter(item=>item?.type==='message'),terminalIds=new Set(publicOutput.map(item=>item.id));
-    const exactPublicText=(message,item)=>{
+    const exactPublicText=(message,item,equal=(a,b)=>a===b)=>{
       const parts=outputTextParts(item);
       return parts.length===message.parts.size && parts.length===item.content?.length
-        && parts.every((part,index)=>message.parts.get(index)===part.text);
+        && parts.every((part,index)=>equal(message.parts.get(index),part.text));
     };
     for(const [index,item] of output.entries()) {
       if(item?.type==='message') {
@@ -165,18 +169,23 @@ export class ResponsesStreamNormalizer {
           const aliases=streamed.filter(value=>!seen.has(value.index) && !terminalIds.has(value.id)
             && exactPublicText(value,item) && publicOutput.filter(other=>exactPublicText(value,other)).length===1);
           if(aliases.length===1)message=aliases[0];
+          // A bridge that re-issues IDs and trims whitespace: only the same complete
+          // text, one streamed and one terminal message, and nothing left to stream.
+          const unseen=streamed.filter(value=>!seen.has(value.index) && !terminalIds.has(value.id));
+          if(!message && unseen.length===1 && publicOutput.length===1 && exactPublicText(unseen[0],item,sameText))message={...unseen[0],trimmed:true};
         }
         if(message) {
           if(seen.has(message.index))fail('neuraldeep_stream_identity','Duplicate terminal public message.');
           seen.add(message.index);
           const parts=outputTextParts(item);
-          for(const [contentIndex,text] of message.parts)if(!parts[contentIndex]?.text.startsWith(text))fail('neuraldeep_stream_text_changed','Terminal message differs from its public partial text.');
+          for(const [contentIndex,text] of message.parts)if(!message.trimmed && !parts[contentIndex]?.text.startsWith(text))fail('neuraldeep_stream_text_changed','Terminal message differs from its public partial text.');
           output[index]={...item,id:message.id};
           for(const event of canonicalMessageEvents(output[index],message.index)) {
             if(event.type==='response.output_item.added')continue;
             const streamed=message.parts.get(event.content_index);
             if(event.type==='response.content_part.added' && streamed!==undefined)continue;
             if(event.type==='response.output_text.delta' && streamed!==undefined) {
+              if(message.trimmed)continue;
               const delta=event.delta.slice(streamed.length);if(delta)result.push({...event,delta});continue;
             }
             result.push(event);

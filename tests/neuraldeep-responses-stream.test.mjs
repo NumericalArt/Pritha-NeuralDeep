@@ -77,6 +77,26 @@ test('renamed partial or ambiguous public text cannot authorize terminal identit
   assert.ok(!ambiguous.chunks.join('').includes('response.completed'));
 });
 
+test('a terminal snapshot with re-issued IDs and trimmed preamble keeps the streamed message and the tool call (NeuralDeep qwen3.8-27b, 2026-09-27)',async()=>{
+  const {parser,chunks}=fixture();
+  const call={...tool,id:'fc_stream',call_id:'call_stream',name:'exec_command',arguments:'{"cmd":"ls -la docs"}'};
+  await push(parser,{type:'response.output_item.added',output_index:0,item:{id:'rs_stream',type:'reasoning',summary:[]}},
+    {type:'response.output_item.done',output_index:0,item:{id:'rs_stream',type:'reasoning',summary:[]}},
+    {...added(),output_index:1},{...delta('\n\nСейчас выполню ls.\n\n'),output_index:1},
+    {type:'response.output_item.done',output_index:1,item:message('\n\nСейчас выполню ls.\n\n')},
+    {type:'response.output_item.added',output_index:2,item:{...call,arguments:'',status:'in_progress'}},
+    {type:'response.output_item.done',output_index:2,item:call},
+    completed([{id:'rs_final',type:'reasoning',summary:[]},message('Сейчас выполню ls.','msg_final'),{...call,id:'fc_final'}]));
+  await parser.flush(parser.finish());
+  const events=parse(chunks.join('')),final=events.at(-1).response.output;
+  assert.equal(final.find(item=>item.type==='message').id,'msg_stream','the published message identity is kept');
+  assert.equal(final.find(item=>item.type==='function_call').name,'exec_command','the tool call survives');
+  assert.equal(events.filter(event=>event.type==='response.output_item.added'&&event.item?.type==='message').length,1);
+  assert.equal(events.filter(event=>event.type==='response.output_text.delta').map(event=>event.delta).join(''),'\n\nСейчас выполню ls.\n\n','no text is streamed twice');
+  const two=fixture();await push(two.parser,added(),delta('Привет '),completed([message('Привет','a'),message('Привет','b')]));
+  assert.throws(()=>two.parser.finish(),error=>error.code==='neuraldeep_stream_identity','whitespace never repairs an ambiguous identity');
+});
+
 test('reasoning-only is an empty-response failure while its terminal usage remains available',async()=>{
   let terminal;const {parser,chunks}=fixture({onTerminal:event=>terminal=event});
   await push(parser,{type:'response.reasoning_text.delta',item_id:'r',delta:'private fixture'},completed([{type:'reasoning',id:'r',summary:[]}]));
