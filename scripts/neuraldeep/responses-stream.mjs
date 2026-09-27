@@ -35,15 +35,19 @@ export class ResponsesStreamNormalizer {
   /** Structure only (types, indexes, id hashes, text lengths): enough to diagnose an identity failure, no content. */
   record(event) {
     const last=this.trace.at(-1),type=String(event.type).replace(/^response\./,'');
-    if(last && last[0]===type && type==='output_text.delta' && last[3]===shortId(event.item_id)) {last[5]+=event.delta?.length || 0;last[6]=(last[6]||1)+1;return;}
+    if(last && last[0]===type && type.endsWith('.delta') && last[3]===shortId(event.item_id ?? event.item?.id)) {last[5]+=event.delta?.length || 0;last[6]=(last[6]||1)+1;return;}
     if(this.trace.length<240)this.trace.push([type,event.output_index ?? null,event.item?.type ?? null,shortId(event.item?.id ?? event.item_id),event.content_index ?? null,typeof event.delta==='string'?event.delta.length:null]);
   }
   attachTrace(error) {
     if(!/^neuraldeep_stream_/.test(error?.code || '') || error.detail)return;
     const parts=item=>Array.isArray(item?.content)?item.content.map(part=>[part?.type,typeof part?.text==='string'?part.text.length:null]):null;
-    error.detail=JSON.stringify({events:this.trace,
-      streamed:[...this.messages.values()].map(message=>[message.index,shortId(message.id),shortId(message.originalId),[...message.parts.entries()].map(([index,text])=>[index,text.length])]),
-      terminal:this.terminal?(this.terminal.response?.output || []).map(item=>[item?.type,shortId(item?.id),parts(item)]):null}).slice(0,6000);
+    const streamed=[...this.messages.values()];
+    const same=item=>streamed.map(message=>[...message.parts.entries()].every(([index,text])=>item?.content?.[index]?.text===text)?'exact'
+      :[...message.parts.entries()].every(([index,text])=>item?.content?.[index]?.text?.startsWith(text))?'prefix':'differs');
+    error.detail=JSON.stringify({
+      streamed:streamed.map(message=>[message.index,shortId(message.id),shortId(message.originalId),[...message.parts.entries()].map(([index,text])=>[index,text.length])]),
+      terminal:this.terminal?(this.terminal.response?.output || []).map(item=>[item?.type,shortId(item?.id),parts(item),item?.type==='message'?same(item):null]):null,
+      events:this.trace}).slice(0,6000);
   }
   emit(event){return this.write(frame({...event,sequence_number:this.sequence++}));}
   async push(chunk) {
