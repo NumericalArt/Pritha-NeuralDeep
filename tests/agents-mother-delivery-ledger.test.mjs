@@ -461,6 +461,16 @@ test("an operator Continue settles an exited attempt with unmeasured usage at it
   const over = settleDeliveryAttemptsAtUpperBound(exhausted.runRoot, { bounds: { nd_cut: 2_000_000 }, approvedBy: "user", requestId: "continue-4", now });
   assert.equal(over.status, "blocked");assert.equal(over.blockers[0].code, "token_budget_exhausted", "a settlement over the cap asks for a budget decision");
 
+  // Resuming re-reads the saved executor receipt, which still reports unknown usage: the settlement stands.
+  const reaccounted = accountDeliveryExecutorResult(runRoot, { schema: "pritha-build-executor-result-v2", provider: "neuraldeep", attempt_id: "nd_cut", launcher_run_id: "nd_cut",
+    status: "failed", usage_status: "unknown", tokens_used: null, process_exited: true, process_protocol: 1, process_tree_exited: true, adapter_closed: true }, "executor/attempt-nd_dead.json");
+  assert.equal(reaccounted.budget.unaccounted_attempts.length, 0, "a settled attempt is not unresolved again");
+  assert.equal(reaccounted.budget.tokens_used, settled.budget.tokens_used);
+  // An attempt re-added by an older release is only removed, never charged twice.
+  updateDeliveryLedger(runRoot, state => ({ ...state, budget: { ...state.budget, unaccounted_attempts: [{ ...exited, executor_result: "executor/attempt-nd_dead.json", reason: "usage_unavailable", reserved_tokens: 0 }] } }));
+  const cleared = settleDeliveryAttemptsAtUpperBound(runRoot, { bounds: { nd_cut: 523_412 }, approvedBy: "user", requestId: "continue-5", now });
+  assert.equal(cleared.budget.unaccounted_attempts.length, 0);assert.equal(cleared.budget.tokens_used, settled.budget.tokens_used);
+
   const live = fixture();
   unresolvedAttempt(live.runRoot, { ...exited, process_tree_exited: false });
   const kept = settleDeliveryAttemptsAtUpperBound(live.runRoot, { bounds: { nd_cut: 10 }, approvedBy: "user", requestId: "continue-2" });

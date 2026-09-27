@@ -210,12 +210,15 @@ export async function runCreationDelivery(job, options = {}) {
       let state = readDeliveryLedger(existing);
       if (state.budget.max_tokens > remainingTokens || state.budget.max_iterations > receipt.maxIterations) fail("creation_budget_binding_changed");
       // An explicit operator Continue settles exited attempts with unmeasurable usage at their upper bound.
-      if (state.status === "blocked" && state.blockers?.[0]?.code === "goal_usage_unavailable" && options.settleUnknownUsage?.requestId && options.withCoordination) {
+      if (state.status === "blocked" && ["goal_usage_unavailable", "trial_model_usage_unknown"].includes(state.blockers?.[0]?.code)
+        && options.settleUnknownUsage?.requestId && options.withCoordination) {
         const bounds = options.withCoordination(coordination => deliveryAttemptBounds(coordination, state.budget.unaccounted_attempts));
         state = settleDeliveryAttemptsAtUpperBound(existing, { bounds, approvedBy: "user", requestId: options.settleUnknownUsage.requestId });
       }
+      const retryable = ["creation_paused", "build_executor_aborted"].includes(state.blockers?.[0]?.code)
+        || state.blockers?.[0]?.code === "trial_model_usage_unknown" && deliveryUsageStatus(state.budget) === "complete" && options.settleUnknownUsage?.requestId;
       if (!completed.has(state.status)) await resumeDelivery(runId, { ...input,
-        ...(state.status === "blocked" && ["creation_paused", "build_executor_aborted"].includes(state.blockers?.[0]?.code) ? { answer: "retry", answeredBy: "user" } : {}) });
+        ...(state.status === "blocked" && retryable ? { answer: "retry", answeredBy: "user" } : {}) });
     } else await deliverOutcome(job.outcome.path, job.target, input);
     const runRoot = findDeliveryRun(runId, options);
     receipt = await adoptVerified(job, options, receipt, runRoot, mayContinue);

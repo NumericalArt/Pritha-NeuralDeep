@@ -618,19 +618,20 @@ export function settleDeliveryAttemptsAtUpperBound(runRoot, input = {}) {
       const id = attempt.attempt_id && attempt.launcher_run_id === attempt.attempt_id ? attempt.attempt_id : null;
       const tokens = id ? bounds.get(id) : undefined;
       const exited = attempt.process_exited === true && attempt.process_tree_exited !== false && attempt.adapter_closed !== false;
-      if (attempt.reason === "usage_unavailable" && exited && Number.isSafeInteger(tokens) && tokens >= 0
-        && !budget.accounted_turns.some(entry => entry.key === `neuraldeep:${id}`)) settled.push({ attempt, id, tokens });
+      const prior = id && budget.accounted_turns.find(entry => entry.key === `neuraldeep:${id}`);
+      if (prior?.usage_source === "reservation-upper-bound" && exited) continue;
+      if (attempt.reason === "usage_unavailable" && exited && Number.isSafeInteger(tokens) && tokens >= 0 && !prior) settled.push({ attempt, id, tokens });
       else remaining.push(attempt);
     }
-    if (!settled.length) return current;
+    if (!settled.length && remaining.length === budget.unaccounted_attempts.length) return current;
     const tokens = settled.reduce((total, entry) => total + entry.tokens, 0);
     if (!Number.isSafeInteger(budget.tokens_used + tokens)) throw new Error("The settled token total exceeds the supported range");
     const now = input.now ?? Date.now();
     const next = { ...current, budget: { ...budget, unaccounted_attempts: remaining, tokens_used: budget.tokens_used + tokens,
-      accounted_turns: [...budget.accounted_turns, ...settled.map(({ attempt, id, tokens }) => ({ key: `neuraldeep:${id}`, attempt_id: id, launcher_run_id: id,
+      accounted_turns: !settled.length ? budget.accounted_turns : [...budget.accounted_turns, ...settled.map(({ attempt, id, tokens }) => ({ key: `neuraldeep:${id}`, attempt_id: id, launcher_run_id: id,
         thread_id: attempt.thread_id || null, turn_id: attempt.turn_id || null, tokens_used: tokens, executor_result: attempt.executor_result,
         phase: attempt.phase || "build-executor", usage_source: "reservation-upper-bound", turn_status: attempt.turn_status || null }))],
-      upper_bound_settlements: [...(budget.upper_bound_settlements || []), { request_id: requestId, approved_by: "user", approved_at: new Date(now).toISOString(),
+      upper_bound_settlements: !settled.length ? budget.upper_bound_settlements || [] : [...(budget.upper_bound_settlements || []), { request_id: requestId, approved_by: "user", approved_at: new Date(now).toISOString(),
         attempts: settled.map(({ id, tokens }) => ({ attempt_id: id, tokens })), tokens }] } };
     if (current.status !== "blocked" || current.blockers[0]?.code !== "goal_usage_unavailable" || remaining.length) return next;
     const over = budgetBlocker(next, now);
@@ -678,7 +679,8 @@ export function accountDeliveryExecutorResult(runRoot, result, executorPath) {
           : [...budget.accounted_turns, entry];
         budget.tokens_used = nextTotal;
       }
-    } else if (!["not-started", "not-applicable"].includes(status)) reason = "usage_unavailable";
+    } else if (!["not-started", "not-applicable"].includes(status)
+      && budget.accounted_turns.find((entry) => entry.key === key)?.usage_source !== "reservation-upper-bound") reason = "usage_unavailable";
     if (result.thread_cleanup === "pending") reason ||= "thread_cleanup_pending";
     if (result.process_exited === false || result.process_protocol === 1 &&
       (result.process_tree_exited !== true || result.adapter_closed !== true)) reason ||= "process_exit_unconfirmed";
