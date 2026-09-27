@@ -234,3 +234,15 @@ test('new manual process evidence does not invent launchd; real voice and depend
  const operations=topics.find(t=>t.id==='operations-deployment');assert.doesNotMatch(operations.query,/launchd|cron/);
  assert.ok(operations.primaryUrls[0].endsWith('/api/process.md'));
 });
+
+test('a curated primary page that failed transiently is read again on the next Continue instead of searching (Tailscale DNS, 2026-09-27)',async t=>{
+ const f=fixture(t),urls=[];let searches=0,failNext=true;
+ const search={search:async()=>{searches++;return {ok:false,status:'failed',error:{code:'timeout'},sources:[]};},
+  readPage:async ({url})=>{urls.push(url);if(failNext){failNext=false;return {ok:false,status:'failed',error:{code:'dns_unavailable'},sources:[]};}return page(url,text.repeat(100));}};
+ await assert.rejects(collectCreationSources(f.job,f.research,{...f.options,search}),{code:'creation_research_source_unavailable'});
+ const sources=await collectCreationSources(f.job,f.research,{...f.options,search});
+ assert.equal(searches,0,'a transient failure never hands the topic to search');
+ assert.deepEqual(urls,[f.topic.primaryUrls[0],f.topic.primaryUrls[0]]);
+ assert.equal(sources[0].url,f.topic.primaryUrls[0]);
+ assert.deepEqual(f.state().topics[f.topic.id].history.map(x=>[x.status,x.error||null]),[['failed','dns_unavailable'],['completed',null]]);
+});

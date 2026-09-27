@@ -372,3 +372,10 @@ test("fallback diagnostic from another endpoint cannot authorize a changed endpo
   assert.equal(calls, 0);
   store.close();
 });
+
+test("a failed DNS lookup is a transient condition, not a blocked URL (Tailscale DNS, 2026-09-27)", async () => {
+  await assert.rejects(verifyPublicUrl("https://neuraldeep.ru/llms-full.txt", async () => { throw Object.assign(new Error("lookup"), { code: "ENOTFOUND" }); }), { code: "dns_unavailable" });
+  await assert.rejects(verifyPublicUrl("https://neuraldeep.ru/llms-full.txt", async () => []), { code: "dns_unavailable" });
+  await assert.rejects(verifyPublicUrl("https://neuraldeep.ru/llms-full.txt", async () => [{ address: "10.0.0.5", family: 4 }]), { code: "url_blocked" });
+  assert.equal(await verifyPublicUrl("https://neuraldeep.ru/llms-full.txt", async () => [{ address: "85.193.87.107", family: 4 }]), "https://neuraldeep.ru/llms-full.txt");
+});

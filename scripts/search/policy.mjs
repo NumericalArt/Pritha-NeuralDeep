@@ -48,10 +48,11 @@ export async function verifyPublicUrl(value, resolve = lookup) {
       all: true,
     });
   } catch {
-    fail("url_blocked");
+    // A failed lookup is a transient network condition, not a policy decision.
+    fail("dns_unavailable");
   }
-  if (!rows.length || rows.some((r) => !publicAddress(r.address)))
-    fail("url_blocked");
+  if (!rows.length) fail("dns_unavailable");
+  if (rows.some((r) => !publicAddress(r.address))) fail("url_blocked");
   return url;
 }
 export function searxngUrl(value) {

@@ -63,8 +63,12 @@ export function sourceExcerpt(text,query,maxBytes=2400) {
  }
  return chosen.sort((a,b)=>a.index-b.index).map(item=>item.line).join('\n');
 }
+// Transport conditions that say nothing about the page itself.
+const TRANSIENT_SOURCE_ERRORS=new Set(['dns_unavailable','timeout','provider_unavailable','rate_limited','search_unavailable','read_unavailable']);
 function nextPrimarySource(topic,item,found) {
- const tried=new Set((item.history||[]).map(attempt=>attempt.url).filter(Boolean));
+ // A curated primary page that failed only for a transient reason is read again on
+ // the next attempt instead of being replaced by a search (Tailscale DNS, 2026-09-27).
+ const tried=new Set((item.history||[]).filter(attempt=>!TRANSIENT_SOURCE_ERRORS.has(attempt.error)).map(attempt=>attempt.url).filter(Boolean));
  const valid=source=>allowed(source.url,topic.primaryDomains) && !tried.has(source.url);
  const curated=(topic.primaryUrls||[]).map(url=>({url})).find(valid);
  if(curated)return curated;
