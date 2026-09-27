@@ -5,7 +5,7 @@ import path from "node:path";
 import { acquireFileLock, atomicWriteFile } from "../lib/atomic-file.mjs";
 import { resolvePrithaStatePathFrom } from "../lib/paths.mjs";
 import { deliverOutcome, findDeliveryRun, resumeDelivery, withDeliveryHostControl, defaultDeliveryTrialBackend } from "../agents-mother/delivery-loop.mjs";
-import { deliveryUsageStatus, readDeliveryLedger, settleDeliveryAttemptsAtUpperBound } from "../agents-mother/delivery-ledger.mjs";
+import { deliveryUsageStatus, grantDeliveryBudget, readDeliveryLedger, settleDeliveryAttemptsAtUpperBound } from "../agents-mother/delivery-ledger.mjs";
 import { readDeliveryWorktree } from "../agents-mother/delivery-worktree.mjs";
 import { performTaskDeliveryAction, readTaskDelivery } from "../agents-mother/task-delivery.mjs";
 import { verifyTrialResultFreshness } from "../agents-mother/trial-runner.mjs";
@@ -214,6 +214,15 @@ export async function runCreationDelivery(job, options = {}) {
         && options.settleUnknownUsage?.requestId && options.withCoordination) {
         const bounds = options.withCoordination(coordination => deliveryAttemptBounds(coordination, state.budget.unaccounted_attempts));
         state = settleDeliveryAttemptsAtUpperBound(existing, { bounds, approvedBy: "user", requestId: options.settleUnknownUsage.requestId });
+      }
+      // An explicit operator Continue grows an exhausted delivery budget by half of its original size, like the job budget.
+      if (state.status === "blocked" && ["token_budget_exhausted", "elapsed_budget_exhausted", "iteration_budget_exhausted"].includes(state.blockers?.[0]?.code)
+        && options.settleUnknownUsage?.requestId) {
+        const original = state.budget.amendments[0]?.before || { max_tokens: state.budget.max_tokens, max_iterations: state.budget.max_iterations, max_elapsed_ms: state.budget.max_elapsed_ms };
+        const addTokens = Math.ceil(original.max_tokens / 2), addIterations = Math.ceil(original.max_iterations / 2), addElapsedMs = Math.ceil(original.max_elapsed_ms / 2);
+        state = grantDeliveryBudget(existing, { approvedBy: "user", requestId: `creation-continue-${options.settleUnknownUsage.requestId}`, addTokens, addIterations, addElapsedMs });
+        receipt.totalMaxTokens += addTokens; receipt.totalMaxActiveMs += addElapsedMs; receipt.maxIterations += addIterations;
+        writeReceipt(job, options, receipt);
       }
       const retryable = ["creation_paused", "build_executor_aborted"].includes(state.blockers?.[0]?.code)
         || state.blockers?.[0]?.code === "trial_model_usage_unknown" && deliveryUsageStatus(state.budget) === "complete" && options.settleUnknownUsage?.requestId;
