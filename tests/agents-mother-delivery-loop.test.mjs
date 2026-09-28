@@ -114,6 +114,34 @@ test("delivery loop repairs a failing fixture, independently verifies, commits a
   assert.equal(probes.some((entry) => entry.kind === "build-executor" && entry.available === true), true);
 });
 
+// A Gemma 4 product passed every Trial while Pritha's Start still ran the scaffold stub (2026-09-28).
+test("passing Trials do not finish a managed process agent whose Start and Stop do not work", async () => {
+  const project = repository();
+  const runRoot = path.join(mkdtempSync(path.join(os.tmpdir(), "pritha-loop-run-")), "builds", "fixture-agent", "run-lifecycle");
+  const seen = [], checks = [];
+  let lifecycleWorks = false;
+  const executor = new FunctionBuildExecutor(async ({ worktree, failures }) => {
+    seen.push((failures || []).map((failure) => failure.id));
+    writeFileSync(path.join(worktree, "implementation.txt"), "ready\n", "utf8");
+    if (seen.length === 2) lifecycleWorks = true;
+    return { summary: "implemented", changed_files: ["implementation.txt"] };
+  });
+  const result = await runDeliveryLoop({
+    plan: plan(), projectPath: project, runRoot, runId: "run-lifecycle", buildExecutor: executor, trialBackend: "local", reportDir: false,
+    managedLifecycleCheck: (worktree, options) => {
+      checks.push(options.baseRevision);
+      return lifecycleWorks ? { applicable: true, ok: true } : { applicable: true, ok: false, exitCode: 1, output: "implementation-required until the approved service lifecycle is built" };
+    },
+  });
+  assert.equal(result.state.status, "verified");
+  assert.deepEqual(seen, [["main"], ["host-managed-lifecycle"]], "the lifecycle failure reaches the next build turn");
+  assert.equal(result.state.iteration, 2);
+  assert.equal(checks.length, 2);
+  assert.ok(checks.every((base) => base === git(project, ["rev-parse", "HEAD"])), "the check reads the scaffold baseline");
+  const events = readFileSync(path.join(runRoot, "events.jsonl"), "utf8");
+  assert.match(events, /"type":"managed_lifecycle_failed"/);
+});
+
 test("repeated non-progress becomes a typed blocker instead of hanging", async () => {
   const project = repository();
   const runRoot = path.join(mkdtempSync(path.join(os.tmpdir(), "pritha-loop-run-")), "builds", "fixture-agent", "run-stuck");

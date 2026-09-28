@@ -27,7 +27,8 @@ export async function resultReadinessFixture(t, prepare = {}) {
   approveOutcomeSpec(specPath, { ...options, approvedBy: "user" });
   const compiled = compileOutcomeSpec(specPath, { ...options, runId: "readiness-run" });
   const executor = new FunctionBuildExecutor(async () => { throw new Error("A read-only readiness fixture must never call a build model"); });
-  const result = await runDeliveryLoop({ ...options, ...compiled, projectPath: project, hostOnly: true, buildExecutor: executor, trialBackend: "local" });
+  // A synthetic readiness fixture has no service control; the managed lifecycle check has its own tests.
+  const result = await runDeliveryLoop({ ...options, ...compiled, projectPath: project, hostOnly: true, buildExecutor: executor, trialBackend: "local", managedLifecycleCheck: false });
   assert.ok(["verified", "awaiting_acceptance"].includes(result.state.status), JSON.stringify(result.state.blockers));
   return { ...options, options, ...compiled, project, contractPath, specPath, read: () => readAgentResultReadiness("readiness-fixture", options) };
 }

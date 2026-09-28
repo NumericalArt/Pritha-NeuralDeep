@@ -41,6 +41,7 @@ import {
 } from "./delivery-worktree.mjs";
 import { compileOutcomeSpec, TRIAL_PLAN_SCHEMA, verifyCompiledTrialPlan, verifyOutcomeApproval } from "./outcome-spec.mjs";
 import { runTrialPlan, verifyTrialResultFreshness } from "./trial-runner.mjs";
+import { managedLifecycleCheck, managedLifecycleFailure } from "./delivery-lifecycle.mjs";
 import { deliveryProcessesExited, trialModelUse } from "./trial-model-use.mjs";
 
 export class DeliveryLoopError extends Error {
@@ -706,7 +707,14 @@ async function runDeliveryLoopLocked(input = {}) {
         return blockDelivery(runRoot, plan, worktree, blockerForError(error), input);
       }
 
-      if (result.verification_status !== "failed") {
+      // Pritha's Start runs the product's own service control; passing Trials alone does not prove it.
+      const lifecycle = result.verification_status === "failed" || input.managedLifecycleCheck === false ? { applicable: false }
+        : (input.managedLifecycleCheck || managedLifecycleCheck)(worktree.worktree, { baseRevision: worktree.base_revision });
+      if (lifecycle.hostError) updateDeliveryLedger(runRoot, (current) => current, { eventType: "managed_lifecycle_check_unavailable", payload: { error: lifecycle.hostError } });
+      if (lifecycle.applicable && !lifecycle.ok) {
+        updateDeliveryLedger(runRoot, (current) => current, { eventType: "managed_lifecycle_failed", payload: { exit_code: lifecycle.exitCode ?? null } });
+        failures = [managedLifecycleFailure(lifecycle)];
+      } else if (result.verification_status !== "failed") {
         let final;
         try {
           final = await finalizePassingResult(plan, runRoot, worktree, protectedInputs, trialBackend, result, verificationSequence, input);
