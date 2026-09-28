@@ -42,7 +42,7 @@ import {
 import { compileOutcomeSpec, TRIAL_PLAN_SCHEMA, verifyCompiledTrialPlan, verifyOutcomeApproval } from "./outcome-spec.mjs";
 import { runTrialPlan, verifyTrialResultFreshness } from "./trial-runner.mjs";
 import { managedLifecycleCheck, managedLifecycleFailure } from "./delivery-lifecycle.mjs";
-import { syntaxDiagnostics } from "./delivery-diagnostics.mjs";
+import { startupDiagnostics, syntaxDiagnostics } from "./delivery-diagnostics.mjs";
 import { deliveryProcessesExited, trialModelUse } from "./trial-model-use.mjs";
 
 export class DeliveryLoopError extends Error {
@@ -828,6 +828,8 @@ async function runDeliveryLoopLocked(input = {}) {
           return blockDelivery(runRoot, plan, worktree, blockerForError(new DeliveryLoopError("token_budget_exhausted", "The confirmed build token budget is exhausted")), input);
         }
         const goalRequired = executionState.budget.goal_enforcement !== "waived-once";
+        const syntax = syntaxDiagnostics(worktree.worktree);
+        const diagnostics = syntax.length ? syntax : await startupDiagnostics(worktree.worktree, failures);
         await phaseContext.beforeDispatch();
         executorResult = await buildExecutor.execute({
           ...phaseContext,
@@ -836,7 +838,7 @@ async function runDeliveryLoopLocked(input = {}) {
           remainingIterations: Math.max(0, state.budget.max_iterations - state.iteration),
           worktree: worktree.worktree,
           plan,
-          failures: sanitize([...failures, ...syntaxDiagnostics(worktree.worktree)], { projectRoot: worktree.worktree, stateRoot: input.stateRoot, root: input.root }),
+          failures: sanitize([...failures, ...diagnostics], { projectRoot: worktree.worktree, stateRoot: input.stateRoot, root: input.root }),
           executorProblems: recentExecutorProblems(runRoot),
           operatorGuidance: executionState.operator_guidance || null,
           protectedPaths: protectedInputs.entries,
