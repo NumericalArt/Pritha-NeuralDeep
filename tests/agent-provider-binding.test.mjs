@@ -218,3 +218,35 @@ test('revocation during provider fetch aborts the request and never emits a comp
   f.bindings.set(f.id, { mode: 'instance-neuraldeep', model: 'test-chat-model', expectedRevision: f.bindings.view(f.id).revision }, provider);
   assert.equal(f.bindings.view(f.id, provider).state, 'ready'); // The late response included a valid usage receipt.
 });
+
+// A child agent's call cut by the 60-second broker limit left the agent unable to call its model
+// again, with no way out (C3, 2026-09-28). The operator settles the request at the broker's bounds.
+test('an explicit operator settlement ends a timeout block at the broker bounds without resending', async t => {
+  const f = fixture(t), env = f.connect();
+  const { options } = harness(f, { timeoutMs: 20, fetcher: (_url, { signal }) => new Promise((_resolve, reject) => { signal.addEventListener('abort', () => reject(signal.reason), { once: true }); }) });
+  const keeper = setTimeout(() => {}, 100);
+  try { assert.equal((await handleAgentProviderRequest(request(f.id, env), f.id, options)).status, 504); }
+  finally { clearTimeout(keeper); }
+  const blocked = f.bindings.view(f.id, provider);
+  assert.equal(blocked.state, 'reconciliation_required');
+  assert.throws(() => f.bindings.settleUnknown(f.id, { requestId: blocked.blocker.requestId, expectedRevision: blocked.revision - 1 }, provider), /revision_stale/);
+  assert.throws(() => f.bindings.settleUnknown(f.id, { requestId: 'child_unknown', expectedRevision: blocked.revision }, provider), /request_state_invalid/);
+  const settled = f.bindings.settleUnknown(f.id, { requestId: blocked.blocker.requestId, expectedRevision: blocked.revision }, provider);
+  assert.equal(settled.blocker, null); assert.notEqual(settled.state, 'reconciliation_required');
+  const row = f.bindings.db.prepare('SELECT * FROM agent_provider_requests WHERE id=?').get(blocked.blocker.requestId);
+  assert.deepEqual({ ...JSON.parse(row.usage), settled_at: 'x' }, { prompt_tokens: 262144, completion_tokens: 4096, total_tokens: 266240, basis: 'operator-upper-bound', settled_by: 'user', settled_at: 'x' });
+  assert.throws(() => f.bindings.settleUnknown(f.id, { requestId: blocked.blocker.requestId, expectedRevision: settled.revision }, provider), /request_state_invalid/);
+  const next = harness(f);
+  assert.equal((await handleAgentProviderRequest(request(f.id, env), f.id, next.options)).status, 200); assert.equal(next.stats.dispatched, 1);
+});
+
+test('an operator settlement cancels a request that was reserved but never sent', t => {
+  const f = fixture(t), env = f.connect();
+  f.bindings.reserve(f.id, env.PRITHA_LLM_TOKEN, 'crash-before-send', 'c'.repeat(64));
+  f.restart();
+  const blocked = f.bindings.view(f.id, provider);
+  assert.equal(blocked.blocker.code, 'provider_request_pending');
+  const settled = f.bindings.settleUnknown(f.id, { requestId: 'crash-before-send', expectedRevision: blocked.revision }, provider);
+  assert.equal(settled.blocker, null);
+  assert.equal(f.bindings.db.prepare("SELECT status FROM agent_provider_requests WHERE id='crash-before-send'").get().status, 'cancelled');
+});

@@ -37,6 +37,13 @@ export async function setAgentProviderBinding(agentId: string, input: { mode: 'n
     return { ok: true, binding: bindings.set(agentId, input, provider), models: provider.models, source: provider.source };
   });
 }
+/** Explicit operator settlement of a request whose usage stayed unknown; nothing is resent. */
+export async function settleAgentProviderUsage(agentId: string, input: { requestId: string; expectedRevision: number }): Promise<AgentProviderPanelResponse> {
+  return withBindings(agentId, async bindings => {
+    const provider = await readiness();
+    return { ok: true, binding: bindings.settleUnknown(agentId, { ...input, actor: 'user' }, provider), models: provider.models, source: provider.source };
+  });
+}
 export async function agentProviderStartEnvironment(agentId: string, serviceRunning: boolean | (() => Promise<boolean>) = false) {
   // Legacy folder-only cards retain their existing lifecycle without receiving
   // provider access. They need an instance-owned contract before explicit binding.

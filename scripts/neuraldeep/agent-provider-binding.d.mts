@@ -12,6 +12,7 @@ export class AgentProviderBindings {
   constructor(coordination: NeuralDeepCoordinationStore, options: ProviderBindingOptions);
   view(agentId: string, provider?: ProviderReadiness): ProviderBindingView;
   set(agentId: string, input: { mode: 'none' | 'instance-neuraldeep'; model?: string; expectedRevision: number }, provider?: ProviderReadiness): ProviderBindingView;
+  settleUnknown(agentId: string, input: { requestId: string; expectedRevision: number; actor?: string }, provider?: ProviderReadiness): ProviderBindingView;
   issueEnvironment(agentId: string, options: { port: number; provider: ProviderReadiness }): Record<string,string>;
   authorize(agentId: string, token: string): { model: string; revision: number };
   reserve(agentId: string, token: string, requestId: string, requestHash: string): { model: string; revision: number; requestId: string };

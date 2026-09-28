@@ -8,6 +8,8 @@ const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,191}$/;
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const hash = value => createHash('sha256').update(value).digest('hex');
 const now = () => new Date().toISOString();
+// The broker's own bounds: a request body of at most 256 KiB and a response of at most 4096 tokens.
+const SETTLEMENT_INPUT_BOUND = 256 * 1024, SETTLEMENT_OUTPUT_BOUND = 4096;
 export class AgentProviderError extends Error {
   constructor(code, status = 409) { super(code); this.code = code; this.status = status; }
 }
@@ -142,6 +144,31 @@ export class AgentProviderBindings {
       this.db.prepare('UPDATE agent_provider_requests SET status=?,finished_at=?,usage=?,usage_known=?,accounted=? WHERE id=?')
         .run(notSent ? 'cancelled' : status === 'completed' ? 'completed' : 'failed', now(), safeUsage ? JSON.stringify(safeUsage) : null, known ? 1 : 0, notSent ? 1 : 0, requestId);
     });
+  }
+  /**
+   * An explicit operator decision for a request whose usage stayed unknown (a C3 agent's call was
+   * cut by the broker's 60-second limit and the agent could never call its model again,
+   * 2026-09-28). A request never sent is cancelled; a sent one is settled at the broker's
+   * bounds: the largest accepted body counted as tokens plus the 4096-token response cap.
+   * Nothing is resent, and the usage ledger keeps its original unknown observation.
+   */
+  settleUnknown(agentId, { requestId, expectedRevision, actor = 'user' } = {}, provider = {}) {
+    if (!ID.test(requestId || '') || !Number.isSafeInteger(expectedRevision)) throw new AgentProviderError('provider_binding_invalid', 400);
+    this.store.transaction(() => {
+      const { owner, row: binding } = this.record(agentId);
+      if ((binding?.revision || 0) !== expectedRevision) throw new AgentProviderError('provider_binding_revision_stale');
+      const row = this.db.prepare('SELECT * FROM agent_provider_requests WHERE id=? AND instance_key=? AND agent_id=?').get(requestId, owner.instanceKey, owner.id);
+      if (!row || row.usage_known === 1 || row.status === 'cancelled') throw new AgentProviderError('provider_request_state_invalid', 409);
+      if (row.status === 'reserved') {
+        this.db.prepare("UPDATE agent_provider_requests SET status='cancelled',finished_at=?,usage_known=1,accounted=1 WHERE id=?").run(now(), requestId);
+        return;
+      }
+      const usage = { prompt_tokens: SETTLEMENT_INPUT_BOUND, completion_tokens: SETTLEMENT_OUTPUT_BOUND, total_tokens: SETTLEMENT_INPUT_BOUND + SETTLEMENT_OUTPUT_BOUND,
+        basis: 'operator-upper-bound', settled_by: String(actor).slice(0, 40), settled_at: now() };
+      this.db.prepare("UPDATE agent_provider_requests SET status='failed',finished_at=COALESCE(finished_at,?),usage=?,usage_known=1 WHERE id=?")
+        .run(now(), JSON.stringify(usage), requestId);
+    });
+    return this.view(agentId, provider);
   }
   pendingAccounting() { return this.db.prepare("SELECT * FROM agent_provider_requests WHERE accounted=0 AND status IN ('completed','failed') ORDER BY started_at LIMIT 100").all().map(row => ({ ...row, usage: row.usage ? JSON.parse(row.usage) : null })); }
   accounted(requestId) { this.db.prepare('UPDATE agent_provider_requests SET accounted=1 WHERE id=?').run(requestId); }

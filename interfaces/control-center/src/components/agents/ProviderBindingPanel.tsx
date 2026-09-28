@@ -37,6 +37,19 @@ export function ProviderBindingPanel({ agentId }: { agentId: string }) {
     } catch (e) { setError(e instanceof Error ? e.message : 'provider_binding_unavailable'); }
     finally { setBusy(false); }
   }
+  async function settle() {
+    const blocker = data?.binding.blocker;
+    if (!data || !blocker || blocker.code !== 'provider_usage_unconfirmed') return;
+    setBusy(true); setError('');
+    try {
+      const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/provider-binding/settle`, { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ requestId: blocker.requestId, expectedRevision: data.binding.revision }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error?.code || 'provider_binding_unavailable');
+      setData(result); await load();
+    } catch (e) { setError(e instanceof Error ? e.message : 'provider_binding_unavailable'); }
+    finally { setBusy(false); }
+  }
   return <section className="operator-action-section" data-testid="agent-provider-binding">
     <h3>NeuralDeep для агента</h3>
     <p>Агент использует подключение этого экземпляра Pritha. Ключ хранится в Pritha и не передаётся в браузер или файлы агента.</p>
@@ -52,6 +65,10 @@ export function ProviderBindingPanel({ agentId }: { agentId: string }) {
         {data.models.map(id => <option key={id} value={id}>{id}</option>)}
       </select></label> : null}
       <button type="button" className="outline-button compact" disabled={busy || mode !== 'none' && !data.models.includes(model)} onClick={() => void save()}>{busy ? 'Сохранение…' : 'Сохранить подключение'}</button>
+      {data.binding.blocker?.code === 'provider_usage_unconfirmed' ? <>
+        <p>Расход прерванного запроса неизвестен. Pritha может засчитать его по верхней границе (256 КиБ запроса и 4096 токенов ответа) и снять блок; запрос не повторяется.</p>
+        <button type="button" className="outline-button compact" disabled={busy} onClick={() => void settle()}>Засчитать по верхней границе</button>
+      </> : null}
     </> : <p>Загрузка подключения…</p>}
   </section>;
 }
