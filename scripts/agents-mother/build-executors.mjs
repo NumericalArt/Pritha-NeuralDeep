@@ -12,6 +12,7 @@ import { NeuralDeepCoordinationStore, neuralDeepCoordinationPaths } from "../neu
 import { recordNeuralDeepRun } from "../neuraldeep/usage-ledger.mjs";
 import { approvedBuildContext } from "./outcome-spec.mjs";
 import { requestDeadlineWindow } from '../neuraldeep/creation-execution-policy.mjs';
+import { buildResponseCap } from '../neuraldeep/model-execution-profile.mjs';
 
 export const BUILD_EXECUTOR_RESULT_SCHEMA = "pritha-build-executor-result-v1";
 // Extra build turns after a turn that changed no file, within the same attempt and deadline.
@@ -104,7 +105,9 @@ function buildPrompt(input) {
     // Gemma 4 ended its build turns by announcing the next step without calling a tool; this rule
     // made it write the missing server in the same run (2026-09-28).
     "Every response except the final summary must contain a tool call. Never end a response by announcing what you will do next: put the tool call that does it (for example the apply_patch or the shell command that writes the file) in that same response.",
-    "Work in small steps: keep every response short (well under 8,000 tokens) and every file edit under about 200 lines; split large files (HTML, CSS, client script, server) into separate modules and write them one per step. The provider cuts a response after 15 minutes and all of its work is lost.",
+    // Gemma 4 wrote a file's code into a message until its response was cut (2026-09-28).
+    "Code or file contents written in a message are never applied: files change only through tool calls.",
+    `Work in small steps: keep every response short (${input.responseTokenLimit ? `well under ${input.responseTokenLimit} tokens; a longer response is cut there` : "well under 8,000 tokens"}) and every file edit under about 200 lines; split large files (HTML, CSS, client script, server) into separate modules and write them one per step. The provider cuts a response after 15 minutes and all of its work is lost.`,
     "If a preferred editing tool is unavailable in this Codex/model combination, use another available local file-editing method and continue.",
     "If previous_attempt_problems are listed, earlier attempts in this run lost their work that way: change your approach so it cannot happen again.",
     "If operator_guidance is present, follow it: it is the operator's decision after this run stopped.",
@@ -116,7 +119,9 @@ function buildPrompt(input) {
     ...(input.idleTurnMessage === undefined ? [] : [
       "",
       "Your previous turn in this attempt ended with the message below and changed no file in the worktree. That message is not a result.",
+      ...(input.idleTurnCut ? ["Its last response reached the response token limit and was cut, so what it was writing is lost."] : []),
       "Make the changes it describes now: start with the tool calls that edit the files, then run a local check of what you changed.",
+      "Write each file with a tool call, at most about 150 lines per call, and add further parts with more calls.",
       "",
       "Previous turn's last message:",
       bounded(input.idleTurnMessage || "(empty)", 4_000),
@@ -605,13 +610,15 @@ export class CodexCliBuildExecutor {
     writeFileSync(schemaPath, `${JSON.stringify(outputSchema())}\n`, { encoding: "utf8", mode: 0o600 });
     try {
       const context = { projectRoot: cwd, stateRoot: input.stateRoot, root: input.root };
+      const promptInput = { ...input, responseTokenLimit: buildResponseCap(this.model) };
       const before = worktreeFingerprint(cwd);
       const turns = [];
       const spent = () => turns.every(turn => Number.isSafeInteger(turn.tokensUsed)) ? turns.reduce((sum, turn) => sum + turn.tokensUsed, 0) : null;
       for (let followUp = 0; followUp <= IDLE_TURN_FOLLOW_UPS; followUp += 1) {
         const turn = await this.phase(followUp ? { ...input, tokenBudget: tokenBudget - spent() } : input, "build", {
           cwd,
-          prompt: buildPrompt(followUp ? { ...input, idleTurnMessage: sanitized(bounded(turns.at(-1).agentText, 4_000), context) } : input),
+          prompt: buildPrompt(followUp ? { ...promptInput, idleTurnMessage: sanitized(bounded(turns.at(-1).agentText, 4_000), context),
+            idleTurnCut: providerFailure(turns.at(-1))?.code === "neuraldeep_output_limit" } : promptInput),
           sandbox: "workspace-write",
           timeoutMs,
           usageSource: "child-agent",

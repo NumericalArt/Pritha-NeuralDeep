@@ -23,10 +23,13 @@ test('terminal diagnostics preserve absent reasoning counts and discard all prov
   assert.equal(responsesTerminalSummary({status:'private-status'}),null);
 });
 
-for(const buffered of [false,true]) for(const variant of ['empty-cap','empty-below','incomplete-cap','valid-cap']) {
+// completed-incomplete-cap: NeuralDeep ends a Gemma 4 response cut at the limit with response.completed,
+// status "incomplete" and no incomplete reason (2026-09-28).
+for(const buffered of [false,true]) for(const variant of ['empty-cap','empty-below','incomplete-cap','valid-cap','completed-incomplete-cap']) {
   test(`HTTP ${buffered?'buffered':'incremental'} response diagnostic: ${variant}`,async t=>{
-    const incomplete=variant==='incomplete-cap',valid=variant==='valid-cap';
-    const event=terminal(incomplete?'incomplete':'completed',valid?[publicMessage]:[]);
+    const incomplete=variant==='incomplete-cap',valid=variant==='valid-cap',completedCut=variant==='completed-incomplete-cap';
+    const event=terminal(incomplete?'incomplete':'completed',valid||completedCut?[publicMessage]:[]);
+    if(completedCut)event.response.status='incomplete';
     if(incomplete) {
       event.response.incomplete_details={reason:'max_output_tokens'};
       event.response.output=[{id:'fc',type:'function_call',call_id:'call',name:'must_not_execute',arguments:'{}'}];
@@ -46,7 +49,7 @@ for(const buffered of [false,true]) for(const variant of ['empty-cap','empty-bel
     else {
       assert.equal(observed[0].error.code,variant==='empty-below'?'neuraldeep_empty_response':'neuraldeep_output_limit');
       assert.equal(observed[0].error.class,'input');assert.equal(observed[0].error.retryAfter,null);
-      assert.doesNotMatch(body,/response\.output_item\.done|response\.completed/);
+      if(!completedCut)assert.doesNotMatch(body,/response\.output_item\.done|response\.completed/);
     }
   });
 }

@@ -27,6 +27,14 @@ const PROVIDER_RETRY_AFTER_CAP_MS = 60_000;
 // resent the same way; its attempt settles at the reservation's upper bound.
 const BROKEN_STREAM_CODES = new Set(["neuraldeep_stream_truncated", "ECONNRESET", "EPIPE", "ETIMEDOUT", "UND_ERR_SOCKET", "UND_ERR_BODY_TIMEOUT"]);
 const brokenStream = error => BROKEN_STREAM_CODES.has(error?.code) || BROKEN_STREAM_CODES.has(error?.cause?.code) || (error instanceof TypeError && error.message === "terminated");
+// NeuralDeep ends a Gemma 4 response cut at max_output_tokens with response.completed, status
+// "incomplete" and no incomplete reason (2026-09-28): the status and the reached limit decide.
+function unfinishedResponseError(summary, eventType, status) {
+  const state = summary?.status || String(eventType || "").replace(/^response\./, "");
+  if (eventType === "response.completed" && state === "completed") return null;
+  const cut = summary?.incompleteReason === "max_output_tokens" || state === "incomplete" && summary?.outputLimitReached;
+  return classifyNeuralDeepProviderError({ status, transportCode: cut ? "neuraldeep_output_limit" : `neuraldeep_response_${state}` });
+}
 
 export function providerRetryRequestHash(requestHash, attempt) {
   return createHash("sha256").update(`${requestHash}:provider-retry:${attempt}`).digest("hex");
@@ -287,8 +295,7 @@ export function createNeuralDeepAdapter(options = {}) {
         for await(const chunk of upstream.body || []) {if(chunk.length)received(chunk.length);await normalizer.push(chunk);}
         timings.responseCompletedMs=Date.now()-upstreamStartedAt;
         const events=normalizer.finish(),terminal=normalizer.terminal;
-        const error=terminal.type==='response.completed'?null:classifyNeuralDeepProviderError({
-          transportCode:responseSummary?.incompleteReason==='max_output_tokens'?'neuraldeep_output_limit':`neuraldeep_${terminal.type.replace('response.','response_')}`,status:upstream.status});
+        const error=unfinishedResponseError(responseSummary,terminal.type,upstream.status);
         // Close the accounting gap before any complete tool can cause Codex to
         // submit another request. Partial public text never settles the turn.
         notifyRequest({status:upstream.status,error});
@@ -319,7 +326,7 @@ export function createNeuralDeepAdapter(options = {}) {
         // The provider's complete error response reached us; no output was streamed to Codex.
         providerRejected: isResponses && !upstream.ok,
         error: upstream.ok ? responseSummary && responseSummary.status!=='completed'
-          ? classifyNeuralDeepProviderError({status:upstream.status,transportCode:responseSummary.incompleteReason==='max_output_tokens'?'neuraldeep_output_limit':`neuraldeep_response_${responseSummary.status}`}) : null : classifyNeuralDeepProviderError({
+          ? unfinishedResponseError(responseSummary,`response.${responseSummary.status}`,upstream.status) : null : classifyNeuralDeepProviderError({
           status: upstream.status,
           payload: parseProviderErrorPayload(upstreamBody),
           retryAfter: upstream.headers.get("retry-after"),

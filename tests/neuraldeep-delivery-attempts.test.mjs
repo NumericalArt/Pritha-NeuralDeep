@@ -137,12 +137,32 @@ test('a measured build turn that changes no file is followed by a turn that gets
   assert.deepEqual(calls.map(c=>c.sandbox),['workspace-write','workspace-write','read-only']);
   assert.deepEqual(calls.map(c=>c.tokenBudget),[200,160,130],'each turn receives only the unspent allocation');
   assert.doesNotMatch(calls[0].prompt,/changed no file/);
+  assert.match(calls[0].prompt,/well under 8,000 tokens/,'models without a build response cap keep the general advice');
+  assert.doesNotMatch(calls[1].prompt,/was cut/);
   assert.match(calls[1].prompt,/changed no file in the worktree[\s\S]*escaped backticks; I will fix them next\./);
   assert.equal(calls[1].prompt.includes(f.worktree),false,'host paths are redacted');
   assert.deepEqual(result.changed_files,['server.mjs']);assert.equal(result.summary,'Fixed the server.');
   assert.equal(result.tokens_used,80);assert.equal(result.attempts.length,3);
   const state=readDeliveryLedger(f.runRoot);
   assert.deepEqual(state.budget.accounted_turns.map(r=>r.phase),['build','build','summary']);assert.equal(state.budget.tokens_used,80);
+});
+
+// Gemma 4 put a file's code into a message until the 6144-token response limit cut it (2026-09-28).
+test('build prompts state the model response limit and a follow-up names a cut response',async t=>{
+  const f=fixture(t),executor=new CodexCliBuildExecutor({model:'gemma-4-31b'});executor.runtimeVersion=()=> 'fixture';const calls=[];
+  executor.run=async options=>{
+    calls.push(options);
+    if(calls.length===2)writeFileSync(path.join(f.worktree,'server.mjs'),'export {};\n');
+    return {code:0,durationMs:1,tokensUsed:10,usageKnown:true,processExited:true,threadId:'session',agentText:'Here is the fixed server:',
+      events:calls.length===1?[{type:'pritha.provider_error',error:{code:'neuraldeep_output_limit',status:200}}]:[]};
+  };
+  await executor.execute({...context(f),tokenBudget:200});
+  assert.equal(calls.length,3);
+  assert.match(calls[0].prompt,/well under 6144 tokens; a longer response is cut there/);
+  assert.match(calls[0].prompt,/Code or file contents written in a message are never applied/);
+  assert.doesNotMatch(calls[0].prompt,/was cut, so what it was writing is lost/);
+  assert.match(calls[1].prompt,/reached the response token limit and was cut, so what it was writing is lost/);
+  assert.match(calls[1].prompt,/at most about 150 lines per call/);
 });
 
 test('idle build turns get at most two follow-ups before the summary',async t=>{
