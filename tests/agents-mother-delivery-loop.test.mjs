@@ -142,6 +142,22 @@ test("passing Trials do not finish a managed process agent whose Start and Stop 
   assert.match(events, /"type":"managed_lifecycle_failed"/);
 });
 
+test("the next build turn learns which project script does not parse", async () => {
+  const project = repository();
+  const runRoot = path.join(mkdtempSync(path.join(os.tmpdir(), "pritha-loop-run-")), "builds", "fixture-agent", "run-syntax");
+  const seen = [];
+  const executor = new FunctionBuildExecutor(async ({ worktree, failures }) => {
+    seen.push(failures.map((failure) => [failure.id, failure.execution?.stderr || ""]));
+    if (seen.length === 1) writeFileSync(path.join(worktree, "server.mjs"), "const table = \\`| a |\\`;\n", "utf8");
+    else { writeFileSync(path.join(worktree, "server.mjs"), "export {};\n", "utf8"); writeFileSync(path.join(worktree, "implementation.txt"), "ready\n", "utf8"); }
+    return { summary: "implemented", changed_files: ["server.mjs"] };
+  });
+  const result = await runDeliveryLoop({ plan: plan(), projectPath: project, runRoot, runId: "run-syntax", buildExecutor: executor, trialBackend: "local", reportDir: false });
+  assert.equal(result.state.status, "verified");
+  assert.deepEqual(seen.map((failures) => failures.map(([id]) => id)), [["main"], ["main", "host-syntax-check"]]);
+  assert.match(seen[1][1][1], /<PROJECT_ROOT>\/server\.mjs:1[\s\S]*SyntaxError/);
+});
+
 test("repeated non-progress becomes a typed blocker instead of hanging", async () => {
   const project = repository();
   const runRoot = path.join(mkdtempSync(path.join(os.tmpdir(), "pritha-loop-run-")), "builds", "fixture-agent", "run-stuck");

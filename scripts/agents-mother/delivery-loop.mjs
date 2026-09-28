@@ -42,6 +42,7 @@ import {
 import { compileOutcomeSpec, TRIAL_PLAN_SCHEMA, verifyCompiledTrialPlan, verifyOutcomeApproval } from "./outcome-spec.mjs";
 import { runTrialPlan, verifyTrialResultFreshness } from "./trial-runner.mjs";
 import { managedLifecycleCheck, managedLifecycleFailure } from "./delivery-lifecycle.mjs";
+import { syntaxDiagnostics } from "./delivery-diagnostics.mjs";
 import { deliveryProcessesExited, trialModelUse } from "./trial-model-use.mjs";
 
 export class DeliveryLoopError extends Error {
@@ -835,7 +836,7 @@ async function runDeliveryLoopLocked(input = {}) {
           remainingIterations: Math.max(0, state.budget.max_iterations - state.iteration),
           worktree: worktree.worktree,
           plan,
-          failures: sanitize(failures, { projectRoot: worktree.worktree, stateRoot: input.stateRoot, root: input.root }),
+          failures: sanitize([...failures, ...syntaxDiagnostics(worktree.worktree)], { projectRoot: worktree.worktree, stateRoot: input.stateRoot, root: input.root }),
           executorProblems: recentExecutorProblems(runRoot),
           operatorGuidance: executionState.operator_guidance || null,
           protectedPaths: protectedInputs.entries,
