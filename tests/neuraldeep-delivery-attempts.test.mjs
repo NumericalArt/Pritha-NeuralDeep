@@ -288,3 +288,18 @@ test('a build turn the budget gate refused stops the run on its token budget; a 
   assert.equal(result.status,'completed');
   assert.deepEqual(seen,['run-1-iteration-1','run-1-iteration-1-follow-up-1','run-1-summary-1']);
 });
+
+// Flashcards Coach was complete when the gate stopped its first build turn; only a Continue had it verified (2026-09-29).
+test('a build turn the budget gate stopped after it changed the project hands its work to the Trials',async t=>{
+  const f=fixture(t),executor=new CodexCliBuildExecutor();executor.runtimeVersion=()=> 'fixture';const seen=[];
+  const refused=tokensUsed=>({code:1,durationMs:1,tokensUsed,usageKnown:true,processExited:true,threadId:'session',agentText:'',
+    events:[{type:'pritha.provider_error',error:{code:'provider_token_budget',status:409}}]});
+  executor.run=async options=>{seen.push(options.workloadId);
+    if(seen.length===1)writeFileSync(path.join(f.worktree,'server.mjs'),'export {};\n');
+    return refused(seen.length===1?150:0);};
+  const result=await executor.execute({...context(f),tokenBudget:200});
+  assert.equal(result.status,'completed');
+  assert.deepEqual(result.changed_files,['server.mjs']);
+  assert.ok(result.remaining_risks.some(risk=>/token budget stopped this build turn/.test(risk)));
+  assert.equal(seen[0],'run-1-iteration-1');assert.equal(seen.some(id=>/follow-up/.test(id)),false);
+});

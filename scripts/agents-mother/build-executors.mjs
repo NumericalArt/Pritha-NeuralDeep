@@ -636,6 +636,10 @@ export class CodexCliBuildExecutor {
           // The C3 run spent nine iterations on such refusals in one minute (2026-09-28).
           if (/^provider_(?:token_budget|budget_)/.test(providerFailure(turn)?.code || "")) {
             if (followUp) { turns.pop(); break; }
+            // A turn the gate stopped only after it changed the project hands that work to the Trials:
+            // Flashcards Coach was complete when its first build turn ran out of budget, and only a
+            // Continue had it verified (2026-09-29). An unchanged project still stops on its budget.
+            if (before !== null && worktreeFingerprint(cwd) !== before) break;
             throw new ExecutionBackendError("token_budget_exhausted", "The remaining build token budget cannot cover another request with a bounded response; Continue grows the budget.");
           }
           throw new ExecutionBackendError("codex_cli_build_failed", bounded(turn.stderr || `Codex CLI exited with ${turn.code}`, 2_000));
@@ -661,6 +665,7 @@ export class CodexCliBuildExecutor {
       const hasSummary = summaryResult.code === 0 && existsSync(outputPath);
       const summary = reliableBuildSummary(parseSummary(hasSummary ? readFileSync(outputPath, "utf8") : result.agentText), result.agentText);
       if (!hasSummary) summary.remaining_risks.push("Structured summary unavailable; host verification uses the preserved implementation and filesystem evidence.");
+      if (/^provider_(?:token_budget|budget_)/.test(providerFailure(result)?.code || "")) summary.remaining_risks.push("The token budget stopped this build turn before it finished; the Trials verify its changes as they are.");
       return sanitized({
         schema: BUILD_EXECUTOR_RESULT_SCHEMA,
         executor: this.name,
