@@ -1005,6 +1005,8 @@ export function resolveDeliveryBlocker(runRoot, answer, options = {}) {
       blockers: [],
       budget,
       operator_guidance: guidance,
+      // New guidance is a new approach: the repeated-failure count starts again.
+      ...(selected === "add-guidance" ? { consecutive_failure_signature: null, consecutive_failure_count: 0 } : {}),
     };
   }, { eventType: "blocker_resolved", payload: { blocker_code: state.blockers[0].code, answer: selected } }).state;
 }

@@ -130,6 +130,25 @@ test("an explicit Continue repeats a build runtime probe that failed twice (gemm
   assert.equal(resumed.adopted, true, JSON.stringify(resumed.blocker)); assert.equal(probes, 3); assert.equal(calls, 1);
 });
 
+test("an explicit Continue answers a repeated Trial failure with host guidance and a fresh count (gemma-4-31b, 2026-09-28)", async t => {
+  const f = fixture(t); let works = false, calls = 0;
+  const buildExecutor = new FunctionBuildExecutor(async input => {
+    calls++;
+    if (works) writeFileSync(path.join(input.worktree, "result.txt"), "working");
+    return { thread_id: "build-thread", turn_id: "build-turn", tokens_used: 25 };
+  });
+  const job = { ...f.job, budget: { ...f.job.budget, maxTokens: 100000 } };
+  const blocked = await runCreationDelivery(job, { ...f.options, buildExecutor });
+  assert.equal(blocked.blocker?.code, "repeated_trial_failure"); const before = calls;
+  assert.equal((await runCreationDelivery(job, { ...f.options, buildExecutor })).blocker?.code, "repeated_trial_failure", "without an explicit Continue the stop is kept");
+  assert.equal(calls, before);
+  works = true;
+  const resumed = await runCreationDelivery(job, { ...f.options, buildExecutor, settleUnknownUsage: { requestId: "continue-guidance" } });
+  assert.equal(resumed.adopted, true, JSON.stringify(resumed.blocker)); assert.equal(calls, before + 1);
+  const ledger = readDeliveryLedger(resumed.runRoot);
+  assert.match(ledger.operator_guidance, /Continue after the same Trial failure repeated/);
+});
+
 test("missing baseline, unknown preparation usage and another task fail before model execution", async t => {
   const f = fixture(t); let calls = 0;
   for (const job of [{ ...f.job, scaffoldReceipt: {} }, { ...f.job, budget: { ...f.job.budget, unknownAttempts: ["missing-receipt"] } }, { ...f.job, chatId: "chat_elsewhere" }]) {

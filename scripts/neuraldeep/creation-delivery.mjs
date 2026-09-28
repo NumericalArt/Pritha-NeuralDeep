@@ -159,6 +159,9 @@ export function deliveryAttemptBounds(coordination, attempts) {
 }
 
 const DELIVERY_BUDGET_BLOCKERS = new Set(["token_budget_exhausted", "elapsed_budget_exhausted", "iteration_budget_exhausted"]);
+const REPEATED_FAILURE_GUIDANCE = "The operator pressed Continue after the same Trial failure repeated: the previous approach did not change the result. "
+  + "Read latest_trial_failures first and implement what they show is missing (for example the product server a Trial could not start) before anything else, "
+  + "make every response call a tool, write large files in parts, and run the failing check locally before you finish.";
 
 // An explicit operator Continue never leaves a delivery at a dead end. Exited
 // attempts whose usage could not be measured are settled at their upper bound;
@@ -247,8 +250,11 @@ export async function runCreationDelivery(job, options = {}) {
         : ["creation_paused", "build_executor_aborted"].includes(code)
           || code === "trial_model_usage_unknown" && deliveryUsageStatus(state.budget) === "complete" && explicit ? "retry"
         // An explicit Continue repeats a build runtime probe that stopped on a provider or adapter error.
-        : code === "build_runtime_unavailable" && explicit ? "retry-after-upgrade" : null;
-      if (!completed.has(state.status)) await resumeDelivery(runId, { ...input, ...(answer ? { answer, answeredBy: "user" } : {}) });
+        : code === "build_runtime_unavailable" && explicit ? "retry-after-upgrade"
+        // and answers a repeated Trial failure with host guidance for a changed approach.
+        : code === "repeated_trial_failure" && explicit ? "add-guidance" : null;
+      const guidance = answer === "add-guidance" ? REPEATED_FAILURE_GUIDANCE : undefined;
+      if (!completed.has(state.status)) await resumeDelivery(runId, { ...input, ...(answer ? { answer, answeredBy: "user", ...(guidance ? { guidance } : {}) } : {}) });
     } else await deliverOutcome(job.outcome.path, job.target, input);
     const runRoot = findDeliveryRun(runId, options);
     receipt = await adoptVerified(job, options, receipt, runRoot, mayContinue);

@@ -6,7 +6,7 @@ const RESEARCH_ANSWER_BLOCKERS = new Set(['creation_research_selection_invalid',
 // unmeasured attempts at their upper bound or grows its exhausted budget.
 const DELIVERY_USAGE_BLOCKERS = new Set(['goal_usage_unavailable', 'trial_model_usage_unknown']);
 const DELIVERY_BUDGET_BLOCKERS = new Set(['token_budget_exhausted', 'elapsed_budget_exhausted', 'iteration_budget_exhausted', 'creation_budget_exhausted']);
-const DELIVERY_RETRY_BLOCKERS = new Set(['build_runtime_unavailable']);
+const DELIVERY_RETRY_BLOCKERS = new Set(['build_runtime_unavailable', 'repeated_trial_failure']);
 const exited = receipt => receipt.process_exited === true && receipt.process_tree_exited === true && receipt.adapter_closed === true;
 
 /**
