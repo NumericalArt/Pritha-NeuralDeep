@@ -57,11 +57,20 @@ export function managedLifecycleCheck(worktree, { baseRevision, timeoutMs = 90_0
     const env = Object.fromEntries(["PATH", "HOME", "TMPDIR", "LANG"].filter(key => process.env[key]).map(key => [key, process.env[key]]));
     const run = spawnSync(process.execPath, ["--test", LIFECYCLE_TEST], { cwd: copy, env, encoding: "utf8", timeout: timeoutMs, killSignal: "SIGKILL", maxBuffer: 4 * 1024 * 1024 });
     const output = tail(`${run.stdout || ""}\n${run.stderr || ""}`.replaceAll(copy, "<PROJECT_ROOT>"), 4_000);
-    return { applicable: true, ok: run.status === 0, exitCode: run.status, timedOut: run.error?.code === "ETIMEDOUT", output };
+    const contract = { portVariable: manifest.start_command.env_allowlist.find(name => String(name).endsWith("_PORT")),
+      pidFile: manifest.control_center_runtime?.pid_file || ".state/service.pid.json", healthPath: new URL(manifest.health_url).pathname };
+    return { applicable: true, ok: run.status === 0, exitCode: run.status, timedOut: run.error?.code === "ETIMEDOUT", output, contract };
   } finally {
     stopProcessesIn(copy);
     if (existsSync(copy)) rmSync(copy, { recursive: true, force: true });
   }
+}
+
+// Gemma 4 wrote a start that returned before the server listened and a stop that trusted any PID (2026-09-28).
+function lifecycleStatement({ portVariable = "the manifest's *_PORT variable", pidFile = ".state/service.pid.json", healthPath = "/health" } = {}) {
+  return `Pritha starts and stops this agent with \`node scripts/service-control.mjs start|stop\` (operations/manifest.json); tests/service-lifecycle.test.mjs is the check Pritha runs. `
+    + `\`start\` reads the port from ${portVariable}, returns only after GET ${healthPath} answers on that port, and records the process in ${pidFile}; a repeated start is idempotent. `
+    + `\`stop\` must recognize its own process (for example by a per-start token on the server's command line) and refuse a record that names another process; a repeated stop is safe.`;
 }
 
 export function managedLifecycleFailure(check) {
@@ -69,9 +78,7 @@ export function managedLifecycleFailure(check) {
     id: MANAGED_LIFECYCLE_TRIAL_ID,
     kind: "automated",
     status: "failed",
-    statement: "Pritha starts and stops this agent with `node scripts/service-control.mjs start|stop` (operations/manifest.json). "
-      + "The scaffold's tests/service-lifecycle.test.mjs must pass: start serves /health on the port from the manifest's *_PORT variable, "
-      + "a repeated start is idempotent, stop never touches a foreign PID, and a repeated stop is safe.",
+    statement: lifecycleStatement(check.contract),
     execution: { exit_code: check.exitCode ?? null, timed_out: check.timedOut === true, stderr: check.output },
   };
 }

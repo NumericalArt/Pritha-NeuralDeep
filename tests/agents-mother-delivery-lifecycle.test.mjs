@@ -88,6 +88,7 @@ test("the scaffold lifecycle stub fails the host check even when the child weake
   assert.equal(failure.id, MANAGED_LIFECYCLE_TRIAL_ID);
   assert.equal(failure.kind, "automated");
   assert.match(failure.statement, /service-control\.mjs start\|stop/);
+  assert.match(failure.statement, /reads the port from FIXTURE_PORT, returns only after GET \/health answers[\s\S]*\.state\/service\.pid\.json[\s\S]*refuse a record that names another process/);
   assert.match(failure.execution.stderr, /implementation-required/);
 });
 
