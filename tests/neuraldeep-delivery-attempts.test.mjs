@@ -162,6 +162,8 @@ test('build prompts state the model response limit and a follow-up names a cut r
   assert.match(calls[0].prompt,/Code or file contents written in a message are never applied/);
   assert.doesNotMatch(calls[0].prompt,/was cut, so what it was writing is lost/);
   assert.match(calls[1].prompt,/reached the response token limit and was cut, so what it was writing is lost/);
+  assert.match(calls[1].prompt,/Do not rewrite whole files: change only the lines that need to change/);
+  assert.match(calls[0].prompt,/edit only the lines that change/);
   assert.match(calls[1].prompt,/at most about 150 lines per call/);
 });
 

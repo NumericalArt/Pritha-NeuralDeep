@@ -108,6 +108,8 @@ function buildPrompt(input) {
     // Gemma 4 wrote a file's code into a message until its response was cut (2026-09-28).
     "Code or file contents written in a message are never applied: files change only through tool calls.",
     `Work in small steps: keep every response short (${input.responseTokenLimit ? `well under ${input.responseTokenLimit} tokens; a longer response is cut there` : "well under 8,000 tokens"}) and every file edit under about 200 lines; split large files (HTML, CSS, client script, server) into separate modules and write them one per step. The provider cuts a response after 15 minutes and all of its work is lost.`,
+    // Gemma 4 rewrote a 17 KB server in one call to change its port line; the cap cut every try (2026-09-28).
+    "To change part of an existing file, edit only the lines that change (apply_patch, or a targeted replacement command); rewrite a whole file only when it is new or short.",
     "If a preferred editing tool is unavailable in this Codex/model combination, use another available local file-editing method and continue.",
     "If previous_attempt_problems are listed, earlier attempts in this run lost their work that way: change your approach so it cannot happen again.",
     "If operator_guidance is present, follow it: it is the operator's decision after this run stopped.",
@@ -119,7 +121,7 @@ function buildPrompt(input) {
     ...(input.idleTurnMessage === undefined ? [] : [
       "",
       "Your previous turn in this attempt ended with the message below and changed no file in the worktree. That message is not a result.",
-      ...(input.idleTurnCut ? ["Its last response reached the response token limit and was cut, so what it was writing is lost."] : []),
+      ...(input.idleTurnCut ? ["Its last response reached the response token limit and was cut, so what it was writing is lost. Do not rewrite whole files: change only the lines that need to change."] : []),
       "Make the changes it describes now: start with the tool calls that edit the files, then run a local check of what you changed.",
       "Write each file with a tool call, at most about 150 lines per call, and add further parts with more calls.",
       "",
