@@ -632,6 +632,12 @@ export class CodexCliBuildExecutor {
         if (turn.aborted) throw new ExecutionBackendError("build_executor_aborted", "The owning creation task stopped this build attempt; receipts were preserved");
         if (turn.timedOut) throw new ExecutionBackendError("build_executor_timeout", "NeuralDeep Codex CLI build turn timed out");
         if (turn.code !== 0) {
+          // The budget gate refused the request before sending it: another turn would be refused too.
+          // The C3 run spent nine iterations on such refusals in one minute (2026-09-28).
+          if (/^provider_(?:token_budget|budget_)/.test(providerFailure(turn)?.code || "")) {
+            if (followUp) { turns.pop(); break; }
+            throw new ExecutionBackendError("token_budget_exhausted", "The remaining build token budget cannot cover another request with a bounded response; Continue grows the budget.");
+          }
           throw new ExecutionBackendError("codex_cli_build_failed", bounded(turn.stderr || `Codex CLI exited with ${turn.code}`, 2_000));
         }
         // A measured turn that changed nothing has only described the work (Gemma 4 ended build

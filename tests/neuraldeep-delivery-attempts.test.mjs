@@ -272,3 +272,19 @@ test('standalone CLI admission refreshes provider capacity while waiting without
   store.updateRuntimeRun('queued-runtime',{process_exited:true});
   lease.finish('completed');store.finish('neighbor',neighbor.ownerToken,'completed');
 });
+
+// A budget-refused request ended each C3 attempt at once; the loop spent nine iterations in a minute (2026-09-28).
+test('a build turn the budget gate refused stops the run on its token budget; a refused follow-up keeps the earlier turn',async t=>{
+  const refused={code:1,durationMs:1,tokensUsed:0,usageKnown:true,processExited:true,threadId:'session',agentText:'',
+    events:[{type:'pritha.provider_error',error:{code:'provider_token_budget',status:409}}]};
+  const f=fixture(t),executor=new CodexCliBuildExecutor();executor.runtimeVersion=()=> 'fixture';let calls=0;
+  executor.run=async()=>{calls++;return refused;};
+  await assert.rejects(executor.execute({...context(f),tokenBudget:200}),{code:'token_budget_exhausted'});
+  assert.equal(calls,1);
+  const g=fixture(t),second=new CodexCliBuildExecutor();second.runtimeVersion=()=> 'fixture';const seen=[];
+  second.run=async options=>{seen.push(options.workloadId);return seen.length===1
+    ?{code:0,durationMs:1,tokensUsed:10,usageKnown:true,processExited:true,threadId:'session',agentText:'Analysis only.'}:refused;};
+  const result=await second.execute({...context(g),tokenBudget:200});
+  assert.equal(result.status,'completed');
+  assert.deepEqual(seen,['run-1-iteration-1','run-1-iteration-1-follow-up-1','run-1-summary-1']);
+});
