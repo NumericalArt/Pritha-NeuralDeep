@@ -92,6 +92,7 @@ test("Codex CLI build executor separates tool execution from structured summary"
     plan: plan(),
     failures: [{ id: "main", error: "not ready" }],
     executorProblems: [{ code: "iteration_deadline", guidance: "Write each file in parts." }],
+    operatorGuidance: "Write the server first.",
     protectedPaths: [{ path: "scripts/eval.mjs" }],
     timeoutMs: 30_000,
     tokenBudget: 1_000,
@@ -107,6 +108,9 @@ test("Codex CLI build executor separates tool execution from structured summary"
   assert.match(executor.calls[0].prompt, /Work in small steps/);
   // Gemma lost two attempts to responses cut after 15 minutes; the next attempt is told why (2026-09-27).
   assert.match(executor.calls[0].prompt, /"previous_attempt_problems"[\s\S]*"iteration_deadline"/);
+  // Gemma announced its next step and ended the turn without a tool call (2026-09-28).
+  assert.match(executor.calls[0].prompt, /Every response except the final summary must contain a tool call/);
+  assert.match(executor.calls[0].prompt, /"operator_guidance": "Write the server first\."/);
   assert.match(executor.calls[0].prompt, /scripts\/eval\.mjs/);
   assert.equal(executor.calls[1].sandbox, "read-only");
   assert.equal(executor.calls[1].tokenBudget, 880, 'the summary receives only the measured remaining allocation');

@@ -829,6 +829,7 @@ async function runDeliveryLoopLocked(input = {}) {
           plan,
           failures: sanitize(failures, { projectRoot: worktree.worktree, stateRoot: input.stateRoot, root: input.root }),
           executorProblems: recentExecutorProblems(runRoot),
+          operatorGuidance: executionState.operator_guidance || null,
           protectedPaths: protectedInputs.entries,
           timeoutMs: input.executorTimeoutMs,
           stateRoot: input.stateRoot,

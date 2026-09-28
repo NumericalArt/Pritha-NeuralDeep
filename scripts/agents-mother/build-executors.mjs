@@ -86,6 +86,7 @@ function buildPrompt(input) {
     ...(input.plan.approval_id ? { approved_artifacts: approvedBuildContext(input.plan, { root: input.root, stateRoot: input.stateRoot }) } : {}),
     latest_trial_failures: input.failures || [],
     ...(input.executorProblems?.length ? { previous_attempt_problems: input.executorProblems } : {}),
+    ...(input.operatorGuidance ? { operator_guidance: input.operatorGuidance } : {}),
     protected_trial_inputs: protectedPaths,
   };
   return [
@@ -98,9 +99,13 @@ function buildPrompt(input) {
     "Network access is disabled. Use only files and dependencies already present in the worktree.",
     "Make the smallest coherent implementation, run relevant local checks if useful, and finish with a concise summary.",
     "Do not stop after a plan, acknowledgement, or progress note. Continue using tools until the implementation and its local verification are complete.",
+    // Gemma 4 ended its build turns by announcing the next step without calling a tool; this rule
+    // made it write the missing server in the same run (2026-09-28).
+    "Every response except the final summary must contain a tool call. Never end a response by announcing what you will do next: put the tool call that does it (for example the apply_patch or the shell command that writes the file) in that same response.",
     "Work in small steps: keep every response short (well under 8,000 tokens) and every file edit under about 200 lines; split large files (HTML, CSS, client script, server) into separate modules and write them one per step. The provider cuts a response after 15 minutes and all of its work is lost.",
     "If a preferred editing tool is unavailable in this Codex/model combination, use another available local file-editing method and continue.",
     "If previous_attempt_problems are listed, earlier attempts in this run lost their work that way: change your approach so it cannot happen again.",
+    "If operator_guidance is present, follow it: it is the operator's decision after this run stopped.",
     "A completion claim is not trusted; Pritha will independently run the approved Trials after this turn.",
     "The final response must satisfy the supplied output schema; intermediate progress text is not a completion result.",
     "",
