@@ -14,6 +14,8 @@ import { approvedBuildContext } from "./outcome-spec.mjs";
 import { requestDeadlineWindow } from '../neuraldeep/creation-execution-policy.mjs';
 
 export const BUILD_EXECUTOR_RESULT_SCHEMA = "pritha-build-executor-result-v1";
+// Extra build turns after a turn that changed no file, within the same attempt and deadline.
+const IDLE_TURN_FOLLOW_UPS = 2;
 const processReceiptFields = (runtime) => Object.fromEntries([
   "worker_pid", "worker_started", "process_protocol", "process_evidence", "process_tree_exited", "adapter_closed", "process_exited",
 ].filter((field) => runtime?.[field] !== undefined).map((field) => [field, runtime[field]]));
@@ -111,6 +113,14 @@ function buildPrompt(input) {
     "",
     "Delivery payload:",
     JSON.stringify(payload, null, 2),
+    ...(input.idleTurnMessage === undefined ? [] : [
+      "",
+      "Your previous turn in this attempt ended with the message below and changed no file in the worktree. That message is not a result.",
+      "Make the changes it describes now: start with the tool calls that edit the files, then run a local check of what you changed.",
+      "",
+      "Previous turn's last message:",
+      bounded(input.idleTurnMessage || "(empty)", 4_000),
+    ]),
   ].join("\n");
 }
 
@@ -173,6 +183,23 @@ function gitChangedFiles(cwd) {
     .filter(Boolean))]
     .sort()
     .slice(0, 500);
+}
+
+// Content of the uncommitted work: tracked changes against HEAD plus untracked files.
+// null when Git cannot answer, so no decision is taken on a guess.
+function worktreeFingerprint(cwd) {
+  const diff = runSyncProbe("git", ["diff", "--binary", "HEAD", "--"], { cwd, encoding: "buffer", maxBuffer: 64 * 1024 * 1024, timeout: 10_000 });
+  const untracked = runSyncProbe("git", ["ls-files", "-z", "--others", "--exclude-standard"], { cwd, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, timeout: 10_000 });
+  if (diff.status !== 0 || untracked.status !== 0) return null;
+  const hash = createHash("sha256").update(diff.stdout);
+  for (const file of untracked.stdout.split("\0").filter(Boolean).sort()) {
+    hash.update(`\0${file}\0`);
+    try {
+      const stat = lstatSync(path.join(cwd, file));
+      hash.update(stat.isFile() && stat.size <= 8 * 1024 * 1024 ? readFileSync(path.join(cwd, file)) : `${stat.size}:${stat.mtimeMs}`);
+    } catch { hash.update("missing"); }
+  }
+  return hash.digest("hex");
 }
 
 function structuredSummaryPrompt(implementationText, changedFiles) {
@@ -287,13 +314,20 @@ export class CodexCliBuildExecutor {
 
   async phase(input, phase, options) {
     if (input.signal?.aborted) throw new ExecutionBackendError("build_executor_aborted", "Build dispatch was cancelled before starting");
-    const dispatch = await input.beforeDispatch?.({ phase });
-    const tokenBudget = dispatch?.tokenBudget ?? input.tokenBudget;
-    if (tokenBudget !== undefined && (!Number.isSafeInteger(tokenBudget) || tokenBudget < 1))
-      throw new ExecutionBackendError('token_budget_exhausted', 'No measured budget remains for this phase');
-    const attemptId = `nd_${randomUUID()}`;
+    let tokenBudget;
     const deadline=input.deadline || null;
-    requestDeadlineWindow(deadline);
+    try {
+      const dispatch = await input.beforeDispatch?.({ phase });
+      tokenBudget = dispatch?.tokenBudget ?? input.tokenBudget;
+      if (tokenBudget !== undefined && (!Number.isSafeInteger(tokenBudget) || tokenBudget < 1))
+        throw new ExecutionBackendError('token_budget_exhausted', 'No measured budget remains for this phase');
+      requestDeadlineWindow(deadline);
+    } catch (error) {
+      // An optional turn the host cannot dispatch is skipped: nothing was sent or charged.
+      if (options.optional) return { skipped: true, reason: error.code || "dispatch_refused" };
+      throw error;
+    }
+    const attemptId = `nd_${randomUUID()}`;
     let receipt = {
       schema: BUILD_EXECUTOR_RESULT_SCHEMA, provider: "neuraldeep", executor: this.name,
       run_id: input.runId || null, attempt_id: attemptId, launcher_run_id: attemptId, phase,
@@ -570,22 +604,36 @@ export class CodexCliBuildExecutor {
     const outputPath = path.join(temporary, "last-message.json");
     writeFileSync(schemaPath, `${JSON.stringify(outputSchema())}\n`, { encoding: "utf8", mode: 0o600 });
     try {
-      const result = await this.phase(input, "build", {
-        cwd,
-        prompt: buildPrompt(input),
-        sandbox: "workspace-write",
-        timeoutMs,
-        usageSource: "child-agent",
-        workloadId: `${input.runId}-iteration-${input.iteration}`,
-      });
-      if (result.aborted) throw new ExecutionBackendError("build_executor_aborted", "The owning creation task stopped this build attempt; receipts were preserved");
-      if (result.timedOut) throw new ExecutionBackendError("build_executor_timeout", "NeuralDeep Codex CLI build turn timed out");
-      if (result.code !== 0) {
-        throw new ExecutionBackendError("codex_cli_build_failed", bounded(result.stderr || `Codex CLI exited with ${result.code}`, 2_000));
+      const context = { projectRoot: cwd, stateRoot: input.stateRoot, root: input.root };
+      const before = worktreeFingerprint(cwd);
+      const turns = [];
+      const spent = () => turns.every(turn => Number.isSafeInteger(turn.tokensUsed)) ? turns.reduce((sum, turn) => sum + turn.tokensUsed, 0) : null;
+      for (let followUp = 0; followUp <= IDLE_TURN_FOLLOW_UPS; followUp += 1) {
+        const turn = await this.phase(followUp ? { ...input, tokenBudget: tokenBudget - spent() } : input, "build", {
+          cwd,
+          prompt: buildPrompt(followUp ? { ...input, idleTurnMessage: sanitized(bounded(turns.at(-1).agentText, 4_000), context) } : input),
+          sandbox: "workspace-write",
+          timeoutMs,
+          usageSource: "child-agent",
+          workloadId: `${input.runId}-iteration-${input.iteration}${followUp ? `-follow-up-${followUp}` : ""}`,
+          optional: followUp > 0,
+        });
+        if (turn.skipped) break;
+        turns.push(turn);
+        if (turn.aborted) throw new ExecutionBackendError("build_executor_aborted", "The owning creation task stopped this build attempt; receipts were preserved");
+        if (turn.timedOut) throw new ExecutionBackendError("build_executor_timeout", "NeuralDeep Codex CLI build turn timed out");
+        if (turn.code !== 0) {
+          throw new ExecutionBackendError("codex_cli_build_failed", bounded(turn.stderr || `Codex CLI exited with ${turn.code}`, 2_000));
+        }
+        // A measured turn that changed nothing has only described the work (Gemma 4 ended build
+        // turns with an analysis or a plan, 2026-09-28): the next turn gets that message back.
+        if (spent() === null || before === null || worktreeFingerprint(cwd) !== before) break;
       }
+      const result = turns.at(-1);
+      const buildTokens = spent();
       const observedChangedFiles = gitChangedFiles(cwd);
       let summaryResult;
-      try { summaryResult = await this.phase({...input,tokenBudget:Number.isSafeInteger(result.tokensUsed) ? tokenBudget-result.tokensUsed : 0}, "summary", {
+      try { summaryResult = await this.phase({...input,tokenBudget:buildTokens === null ? 0 : tokenBudget-buildTokens}, "summary", {
         cwd,
         prompt: structuredSummaryPrompt(result.agentText, observedChangedFiles),
         sandbox: "read-only",
@@ -598,7 +646,6 @@ export class CodexCliBuildExecutor {
       const hasSummary = summaryResult.code === 0 && existsSync(outputPath);
       const summary = reliableBuildSummary(parseSummary(hasSummary ? readFileSync(outputPath, "utf8") : result.agentText), result.agentText);
       if (!hasSummary) summary.remaining_risks.push("Structured summary unavailable; host verification uses the preserved implementation and filesystem evidence.");
-      const context = { projectRoot: cwd, stateRoot: input.stateRoot, root: input.root };
       return sanitized({
         schema: BUILD_EXECUTOR_RESULT_SCHEMA,
         executor: this.name,
@@ -607,15 +654,15 @@ export class CodexCliBuildExecutor {
         status: "completed",
         ...summary,
         changed_files: observedChangedFiles,
-        duration_ms: result.durationMs + summaryResult.durationMs,
+        duration_ms: turns.reduce((sum, turn) => sum + (turn.durationMs || 0), 0) + (summaryResult.durationMs || 0),
         runtime_version: this.runtimeVersion(),
         thread_id: result.threadId || null,
         turn_id: null,
         usage_status: "not-applicable",
         receipt_kind: "iteration-summary",
-        attempts: [result.receipt, summaryResult.receipt].filter(Boolean).map(entry => entry.attempt_id),
+        attempts: [...turns.map(turn => turn.receipt), summaryResult.receipt].filter(Boolean).map(entry => entry.attempt_id),
         token_budget: tokenBudget,
-        tokens_used: Number.isSafeInteger(result.tokensUsed) && Number.isSafeInteger(summaryResult.tokensUsed) ? result.tokensUsed + summaryResult.tokensUsed : null,
+        tokens_used: buildTokens !== null && Number.isSafeInteger(summaryResult.tokensUsed) ? buildTokens + summaryResult.tokensUsed : null,
         goal_enforcement: "not-applicable",
         goal_status: "host-budget-enforced",
       }, context);

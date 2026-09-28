@@ -122,6 +122,46 @@ test('unknown build usage prevents paid summary and preserves existing implement
   assert.equal(state.budget.unaccounted_attempts[0].process_exited,true);
 });
 
+// Gemma 4 ended build turns with an analysis or a plan and no edit (2026-09-28).
+test('a measured build turn that changes no file is followed by a turn that gets its message back',async t=>{
+  const f=fixture(t),executor=new CodexCliBuildExecutor({model:'fixture'});executor.runtimeVersion=()=> 'fixture';const calls=[];
+  executor.run=async options=>{
+    calls.push(options);
+    if(calls.length===2)writeFileSync(path.join(f.worktree,'server.mjs'),'export {};\n');
+    if(calls.length===3)writeFileSync(options.outputPath,JSON.stringify({summary:'Fixed the server.',changed_files:[],remaining_risks:[]}));
+    return {code:0,timedOut:false,durationMs:1,tokensUsed:[40,30,10][calls.length-1],usageKnown:true,processExited:true,threadId:`session-${calls.length}`,
+      agentText:calls.length===1?`The server in ${f.worktree}/server.mjs has escaped backticks; I will fix them next.`:'Fixed the server.'};
+  };
+  const result=await executor.execute({...context(f),tokenBudget:200});
+  assert.deepEqual(calls.map(c=>c.workloadId),['run-1-iteration-1','run-1-iteration-1-follow-up-1','run-1-summary-1']);
+  assert.deepEqual(calls.map(c=>c.sandbox),['workspace-write','workspace-write','read-only']);
+  assert.deepEqual(calls.map(c=>c.tokenBudget),[200,160,130],'each turn receives only the unspent allocation');
+  assert.doesNotMatch(calls[0].prompt,/changed no file/);
+  assert.match(calls[1].prompt,/changed no file in the worktree[\s\S]*escaped backticks; I will fix them next\./);
+  assert.equal(calls[1].prompt.includes(f.worktree),false,'host paths are redacted');
+  assert.deepEqual(result.changed_files,['server.mjs']);assert.equal(result.summary,'Fixed the server.');
+  assert.equal(result.tokens_used,80);assert.equal(result.attempts.length,3);
+  const state=readDeliveryLedger(f.runRoot);
+  assert.deepEqual(state.budget.accounted_turns.map(r=>r.phase),['build','build','summary']);assert.equal(state.budget.tokens_used,80);
+});
+
+test('idle build turns get at most two follow-ups before the summary',async t=>{
+  const f=fixture(t),executor=new CodexCliBuildExecutor({model:'fixture'});executor.runtimeVersion=()=> 'fixture';const calls=[];
+  executor.run=async options=>{calls.push(options);return {code:0,durationMs:1,tokensUsed:10,usageKnown:true,processExited:true,threadId:'session',agentText:'I will start by exploring the workspace.'};};
+  const result=await executor.execute({...context(f),tokenBudget:200});
+  assert.deepEqual(calls.map(c=>c.workloadId),['run-1-iteration-1','run-1-iteration-1-follow-up-1','run-1-iteration-1-follow-up-2','run-1-summary-1']);
+  assert.deepEqual(result.changed_files,[]);assert.equal(result.attempts.length,4);assert.equal(readDeliveryLedger(f.runRoot).budget.tokens_used,40);
+});
+
+test('an idle turn that spent its allocation gets no follow-up and no receipt',async t=>{
+  const f=fixture(t),executor=new CodexCliBuildExecutor();executor.runtimeVersion=()=> 'fixture';let calls=0;
+  executor.run=async()=>{calls++;return {code:0,durationMs:1,tokensUsed:120,usageKnown:true,processExited:true,threadId:'session',agentText:'Plan only.'};};
+  const result=await executor.execute(context(f));
+  assert.equal(calls,1);assert.equal(result.status,'completed');
+  const state=readDeliveryLedger(f.runRoot);
+  assert.equal(state.budget.accounted_turns.length,1);assert.equal(state.budget.unaccounted_attempts.length,0);
+});
+
 test('executor bridges host-owned process identities even when the wrapper loses its acknowledgement',async t=>{
  const f=fixture(t),executor=new CodexCliBuildExecutor();executor.runtimeVersion=()=> 'fixture';
  const evidence={version:1,session:40,coverage:'observed',escaped:[{pid:99,started:'orphan birth'}]};
