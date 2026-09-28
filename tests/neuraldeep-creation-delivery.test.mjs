@@ -149,6 +149,27 @@ test("an explicit Continue answers a repeated Trial failure with host guidance a
   assert.match(ledger.operator_guidance, /Continue after the same Trial failure repeated/);
 });
 
+test("one explicit Continue answers a repeated Trial failure and a delivery clock that ran out meanwhile (gemma-4-31b, 2026-09-28)", async t => {
+  const f = fixture(t); let works = false, calls = 0;
+  const buildExecutor = new FunctionBuildExecutor(async input => {
+    calls++;
+    if (works) writeFileSync(path.join(input.worktree, "result.txt"), "working");
+    return { thread_id: "build-thread", turn_id: "build-turn", tokens_used: 25 };
+  });
+  const job = { ...f.job, budget: { ...f.job.budget, maxTokens: 100000 } };
+  const blocked = await runCreationDelivery(job, { ...f.options, buildExecutor });
+  assert.equal(blocked.blocker?.code, "repeated_trial_failure"); const before = calls;
+  // The job waited for host fixes past the delivery's wall-clock budget.
+  const statePath = path.join(blocked.runRoot, "build-state.json"), ledger = JSON.parse(readFileSync(statePath, "utf8"));
+  writeFileSync(statePath, JSON.stringify({ ...ledger, created_at: new Date(Date.now() - 2 * ledger.budget.max_elapsed_ms).toISOString() }));
+  works = true;
+  const resumed = await runCreationDelivery(job, { ...f.options, buildExecutor, settleUnknownUsage: { requestId: "continue-both" } });
+  assert.equal(resumed.adopted, true, JSON.stringify(resumed.blocker)); assert.equal(calls, before + 1);
+  const saved = readDeliveryLedger(resumed.runRoot);
+  assert.match(saved.operator_guidance, /Continue after the same Trial failure repeated/);
+  assert.equal(saved.budget.amendments.at(-1).request_id, "creation-continue-continue-both");
+});
+
 test("missing baseline, unknown preparation usage and another task fail before model execution", async t => {
   const f = fixture(t); let calls = 0;
   for (const job of [{ ...f.job, scaffoldReceipt: {} }, { ...f.job, budget: { ...f.job.budget, unknownAttempts: ["missing-receipt"] } }, { ...f.job, chatId: "chat_elsewhere" }]) {

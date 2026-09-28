@@ -177,8 +177,10 @@ function continueDeliveryRun(runRoot, receipt, options) {
     state = settleDeliveryAttemptsAtUpperBound(runRoot, { bounds, approvedBy: "user", requestId });
   }
   const grantId = `creation-continue-${requestId}`;
-  const exhausted = state.status === "blocked" ? DELIVERY_BUDGET_BLOCKERS.has(state.blockers?.[0]?.code)
-    : DELIVERY_ACTIVE_STATUSES.has(state.status) && DELIVERY_BUDGET_BLOCKERS.has(budgetBlocker(state)?.code);
+  // A Continue that answers another stop (a repeated Trial failure) also grows a budget that ran
+  // out meanwhile; otherwise the run stops again right after its first check (2026-09-28).
+  const exhausted = (state.status === "blocked" || DELIVERY_ACTIVE_STATUSES.has(state.status))
+    && (DELIVERY_BUDGET_BLOCKERS.has(state.blockers?.[0]?.code) || DELIVERY_BUDGET_BLOCKERS.has(budgetBlocker(state)?.code));
   if (exhausted && !state.budget.amendments.some(entry => entry.request_id === grantId)) {
     const original = state.budget.amendments[0]?.before || state.budget;
     const addTokens = Math.ceil(original.max_tokens / 2), addIterations = Math.ceil(original.max_iterations / 2), addElapsedMs = Math.ceil(original.max_elapsed_ms / 2);
