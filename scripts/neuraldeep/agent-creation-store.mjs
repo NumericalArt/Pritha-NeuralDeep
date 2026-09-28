@@ -105,7 +105,11 @@ export class AgentCreationStore {
       if (changed.chatId !== current.chatId || changed.agentId !== current.agentId || changed.instanceId !== current.instanceId || changed.releaseSha !== current.releaseSha) {
         throw new AgentCreationError('creation_identity_immutable');
       }
-      if(current.preparationPolicyVersion===2 && (changed.preparationPolicyVersion!==2 || changed.budget.maxTokens!==current.budget.maxTokens
+      // The preparation policy stays derived from the original budget. An explicit Continue may raise
+      // the ceiling above it (baseMaxTokens keeps the original); nothing may lower or re-base it.
+      const originalTokens=budget=>budget.baseMaxTokens ?? budget.maxTokens;
+      if(current.preparationPolicyVersion===2 && (changed.preparationPolicyVersion!==2 || changed.budget.maxTokens<current.budget.maxTokens
+        || originalTokens(changed.budget)!==originalTokens(current.budget)
         || JSON.stringify(changed.preparationPolicy)!==JSON.stringify(current.preparationPolicy)))throw new AgentCreationError('creation_policy_immutable');
       if (JSON.stringify(changed) === JSON.stringify(current)) return current;
       const next = {...changed, revision: current.revision+1, updatedAt: now()};

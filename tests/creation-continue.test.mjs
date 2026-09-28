@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { NeuralDeepCoordinationStore } from '../scripts/neuraldeep/coordination-store.mjs';
-import { creationBudgetBlocker } from '../scripts/neuraldeep/agent-creation-store.mjs';
+import { AgentCreationStore, creationBudgetBlocker } from '../scripts/neuraldeep/agent-creation-store.mjs';
 import { creationUpperBoundReceipt, resolveCreationContinue } from '../scripts/neuraldeep/creation-continue.mjs';
+import { assertPreparationPolicy } from '../scripts/neuraldeep/creation-preparation-policy.mjs';
 
 const request = { requestId: 'continue-fixture', actor: 'user' };
 const job = (budget = {}, extra = {}) => ({ preparationPolicyVersion: 2, preparationStop: null, ...extra,
@@ -57,6 +58,26 @@ test('Continue extends exhausted budgets from the original size and clears failu
   const stopped = resolveCreationContinue(job({}, { preparationStop: { code: 'provider_budget_no_progress', message: 'stop' } }), { coordination: store, request });
   assert.equal(stopped.preparationStop, null);
   assert.deepEqual(resolveCreationContinue(job(), { coordination: store, request }).budget.continueDecisions, undefined, 'nothing to resolve, nothing recorded');
+});
+
+// A Gemma 4 job spent its pinned 2,000,000 tokens in delivery; Continue was refused with
+// creation_policy_immutable because the store froze the ceiling itself (2026-09-28).
+test('a saved job with the pinned preparation policy accepts a Continue extension but no lowered or re-based ceiling', t => {
+  const coordination = new NeuralDeepCoordinationStore(); t.after(() => coordination.close());
+  const jobs = new AgentCreationStore(coordination);
+  const saved = jobs.create({ chatId: 'chat-extend', instanceId: 'fixture', agentId: 'extend-app', releaseSha: 'a'.repeat(40), target: '/tmp/extend-agent',
+    draftRoot: '/tmp/extend-draft', preparationPolicyVersion: 2 });
+  const spent = jobs.update(saved.chatId, j => ({ ...j, budget: { ...j.budget, tokensUsed: 2_014_860, activeMs: 11_020_117 } }));
+  const next = jobs.update(saved.chatId, j => resolveCreationContinue(j, { coordination, request }));
+  assert.equal(next.budget.maxTokens, 3_000_000);
+  assert.equal(next.budget.baseMaxTokens, 2_000_000);
+  assert.equal(next.budget.maxActiveMs, 270 * 60 * 1000);
+  assert.deepEqual(next.budget.continueDecisions.at(-1).resolved, ['token_budget_extended', 'time_budget_extended']);
+  assert.deepEqual(next.preparationPolicy, spent.preparationPolicy, 'the preparation policy keeps the original budget');
+  assert.equal(creationBudgetBlocker(next), null);
+  assert.doesNotThrow(() => assertPreparationPolicy(next));
+  for (const change of [{ maxTokens: 2_500_000 }, { baseMaxTokens: 3_000_000 }, { maxTokens: 4_000_000, baseMaxTokens: 4_000_000 }])
+    assert.throws(() => jobs.update(saved.chatId, j => ({ ...j, budget: { ...j.budget, ...change } })), { code: 'creation_policy_immutable' }, JSON.stringify(change));
 });
 
 test('Continue lifts only a queue pause left by a finished attempt', t => {
