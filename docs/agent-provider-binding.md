@@ -34,6 +34,13 @@ Pritha сохраняет в своём private admission SQLite только id
 - `PRITHA_LLM_MODEL`: явно выбранная модель.
 - `PRITHA_LLM_TOKEN`: отдельный bearer capability только для этого агента.
 
+Каталог данных задаётся отдельно от привязки. Если `operations/manifest.json`
+объявляет `control_center_runtime.data_dir` внутри `.state/` (заготовка
+api-process пишет `.state/data`), Start создаёт этот каталог и передаёт его как
+`PRITHA_DATA_DIR`. История продукта тогда не попадает в отслеживаемые файлы, и
+принятая ревизия не выглядит изменённой. У агентов без этого поля путь данных
+прежний.
+
 Приложение выполняет серверный `POST ${PRITHA_LLM_BASE_URL}/chat/completions`,
 заголовок `Authorization: Bearer ${PRITHA_LLM_TOKEN}`, JSON:
 

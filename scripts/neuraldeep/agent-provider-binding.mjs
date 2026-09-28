@@ -187,6 +187,18 @@ export function managedAgentEnvironment(parent = process.env, declared = {}, bin
   return environment;
 }
 
+/**
+ * The llm-operation Outcome keeps durable product data under PRITHA_DATA_DIR, but managed Start never
+ * set it: both Action Items Desk agents fell back to data/ inside their Git work tree, and their first
+ * real use made the accepted revision look changed (2026-09-28). A manifest that declares
+ * control_center_runtime.data_dir inside .state/ gets that directory; other agents keep their own default.
+ */
+export function managedAgentDataDirectory(folder, manifest) {
+  const declared = manifest?.control_center_runtime?.data_dir;
+  if (typeof declared !== 'string' || !/^\.state(?:\/[A-Za-z0-9_-][A-Za-z0-9._-]{0,99}){1,4}$/.test(declared)) return null;
+  return path.join(path.resolve(folder), declared);
+}
+
 export function redactAgentRuntimeOutput(value, environment) {
   let text = String(value || '');
   if (environment?.PRITHA_LLM_TOKEN) text = text.split(environment.PRITHA_LLM_TOKEN).join('[redacted]');

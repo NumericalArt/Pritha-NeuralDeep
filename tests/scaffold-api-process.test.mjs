@@ -65,7 +65,9 @@ test("API files preserve process contract, planned endpoints and non-running str
   assert.equal(ops.service_mode, "process"); assert.equal(ops.agent_kind, "service"); assert.equal(ops.autostart, "optional");
   assert.equal(ops.health_url, "http://127.0.0.1:3431/health"); assert.equal(ops.local_upstream_url, "http://127.0.0.1:3431");
   assert.deepEqual(ops.start_command.argv, ["node", "scripts/service-control.mjs", "start"]);
+  assert.equal(ops.control_center_runtime.data_dir, ".state/data");
   assert.match(readFileSync(path.join(f.target, "AGENTS.md"), "utf8"), /Harness evolution protocol/);
+  assert.match(readFileSync(path.join(f.target, "AGENTS.md"), "utf8"), /PRITHA_DATA_DIR: Pritha's managed Start sets it to \.state\/data/);
   assert.equal(existsSync(path.join(f.target, ".state")), false); assert.equal(readFileSync(f.file, "utf8"), f.source);
   const ephemeral = generatedAgentFiles({ ...data, memoryModel: "ephemeral", indexingSearchNeeds: "none; no SQLite/embeddings copied" });
   assert.equal(ephemeral.some(file => file.path.startsWith("memory/") || file.path === "scripts/memory-status.mjs"), false);
@@ -81,6 +83,7 @@ test("API scaffold CLI preserves acceptance/research gates then makes a clean ba
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.match(result.stdout, /Healthcheck: implementation-required \(not run\)/);
   assert.equal(execFileSync("git", ["status", "--porcelain"], { cwd: f.target, encoding: "utf8" }), "");
+  assert.equal(execFileSync("git", ["check-ignore", ".state/data/history.json"], { cwd: f.target, encoding: "utf8" }).trim(), ".state/data/history.json");
   const reports = path.join(f.stateRoot, "agents/reports");
   const report = readFileSync(path.join(reports, readdirSync(reports).find(name => name.endsWith("-scaffold-report.md"))), "utf8");
   assert.match(report, /scaffold_adapter: api-process-v1/); assert.match(report, /Service mode: process/);

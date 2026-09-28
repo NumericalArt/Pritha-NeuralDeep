@@ -23,4 +23,5 @@ export class AgentProviderBindings {
   accounted(requestId: string): void;
 }
 export function managedAgentEnvironment(parent?: NodeJS.ProcessEnv, declared?: Record<string,string>, binding?: Record<string,string>): NodeJS.ProcessEnv & Record<string,string>;
+export function managedAgentDataDirectory(folder: string, manifest: { control_center_runtime?: { data_dir?: unknown } } | null | undefined): string | null;
 export function redactAgentRuntimeOutput(value: unknown, environment?: Record<string,string | undefined>): string;

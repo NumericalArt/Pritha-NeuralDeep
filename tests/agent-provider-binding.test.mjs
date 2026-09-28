@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, realpathSync, readFileSync, rmSync, writeFileSy
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { AgentProviderBindings, managedAgentEnvironment, redactAgentRuntimeOutput } from '../scripts/neuraldeep/agent-provider-binding.mjs';
+import { AgentProviderBindings, managedAgentDataDirectory, managedAgentEnvironment, redactAgentRuntimeOutput } from '../scripts/neuraldeep/agent-provider-binding.mjs';
 import { NeuralDeepCoordinationStore } from '../scripts/neuraldeep/coordination-store.mjs';
 import { readAgentCatalog } from '../scripts/agents-mother/identity.mjs';
 import { handleAgentProviderRequest, flushAgentProviderAccounting } from '../scripts/neuraldeep/agent-provider-broker.mjs';
@@ -115,6 +115,17 @@ test('managed start strips ambient credentials and host config even from declare
   assert.equal(child.status, 0); const observed = JSON.parse(child.stdout);
   assert.equal(observed.PRITHA_LLM_TOKEN, 'scoped-child');
   for (const secret of ['private-key','foreign-key','aws-key','foreign-child','--require bad.mjs']) assert.equal(child.stdout.includes(secret), false);
+});
+
+// Both Action Items Desk agents wrote their history into data/ inside their Git work tree (2026-09-28).
+test('managed start passes only a declared data directory inside .state as PRITHA_DATA_DIR', () => {
+  const folder = path.join(os.tmpdir(), 'pritha-agent-fixture');
+  const declared = managedAgentDataDirectory(folder, { control_center_runtime: { data_dir: '.state/data' } });
+  assert.equal(declared, path.join(folder, '.state', 'data'));
+  assert.equal(managedAgentEnvironment({ PATH: '/bin' }, { PRITHA_DATA_DIR: declared }).PRITHA_DATA_DIR, declared);
+  for (const data_dir of [undefined, 7, 'data', '.state', '.state/', '.state/data/', '.state/../data', '.state/./data', '.state/.hidden', '/tmp/data', '.state\\data'])
+    assert.equal(managedAgentDataDirectory(folder, { control_center_runtime: { data_dir } }), null, String(data_dir));
+  assert.equal(managedAgentDataDirectory(folder, null), null);
 });
 
 test('managed environment preserves the child own private credential loader', t => {

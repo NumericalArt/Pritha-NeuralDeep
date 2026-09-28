@@ -60,7 +60,7 @@ import { outcomeDocumentLock as currentOutcomeDocumentLock } from "../../../../.
 import { approvalEventMatchesSpec } from "../../../../../scripts/agents-mother/outcome-approval-match.mjs";
 import { readAgentResultReadinessAsync } from "../../../../../scripts/agents-mother/result-readiness-async.mjs";
 import { readProjectMetadataAsync, unavailableProjectMetadata, projectMetadataIssueMessage, type ProjectMetadata, type ProjectMetadataFile } from "../../../../../scripts/agents-mother/project-metadata-async.mjs";
-import { managedAgentEnvironment, redactAgentRuntimeOutput, AgentProviderError } from "../../../../../scripts/neuraldeep/agent-provider-binding.mjs";
+import { managedAgentDataDirectory, managedAgentEnvironment, redactAgentRuntimeOutput, AgentProviderError } from "../../../../../scripts/neuraldeep/agent-provider-binding.mjs";
 import { agentProviderStartEnvironment } from "./agent-provider";
 
 type RegistryRecord = CatalogAgent & { routeAliases: string[] };
@@ -118,6 +118,7 @@ type OperationsManifest = {
     screen_session?: string;
     pid_file?: string;
     health_url?: string;
+    data_dir?: string;
   };
   start_command?: OperationsCommand;
   stop_command?: OperationsCommand;
@@ -3441,12 +3442,22 @@ export async function runAgentRuntimeAction(
     appendManualCheckAudit(status, result);
     return result;
   }
+  const dataDirectory = action === "start" ? managedAgentDataDirectory(folder.absolutePath, manifest) : null;
+  if (dataDirectory) {
+    try {
+      mkdirSync(dataDirectory, { recursive: true });
+    } catch {
+      const result = blockedOperatorActionResult({ status, agent, action, plan, generatedAt, errors: ["The declared data directory could not be created."] });
+      appendManualCheckAudit(status, result);
+      return result;
+    }
+  }
   const execution = await executeStructuredAgentCommand({
     action,
     manifest,
     command: validation.command,
     cwd: validation.cwd,
-    env: managedAgentEnvironment(process.env, validation.env, bindingEnvironment),
+    env: managedAgentEnvironment(process.env, dataDirectory ? { ...validation.env, PRITHA_DATA_DIR: dataDirectory } : validation.env, bindingEnvironment),
     timeoutMs: validation.timeoutMs,
   });
   const checks = plan.checks;
