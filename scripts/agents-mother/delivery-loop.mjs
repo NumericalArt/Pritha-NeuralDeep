@@ -785,7 +785,7 @@ async function runDeliveryLoopLocked(input = {}) {
       try {
         await phaseContext.beforeDispatch();
         if (!buildProbeCompleted) {
-          const probe = typeof buildExecutor.probe === "function"
+          const runProbe = async () => typeof buildExecutor.probe === "function"
             ? await buildExecutor.probe({ ...phaseContext, cwd: worktree.worktree, worktree: worktree.worktree, timeoutMs: input.probeTimeoutMs })
             : {
                 backend: buildExecutor.name || "custom-build-executor",
@@ -794,11 +794,20 @@ async function runDeliveryLoopLocked(input = {}) {
                 runtimeVersion: "unknown",
                 capabilities: { commandExec: "unknown", threadStart: "unknown", goal: "unprobed" },
               };
-          recordRuntimeProbe(runRoot, "build-executor", probe, {
+          const record = probe => recordRuntimeProbe(runRoot, "build-executor", probe, {
             projectRoot: worktree.worktree,
             stateRoot: input.stateRoot,
             root: input.root,
           });
+          let probe = await runProbe();
+          // A provider or adapter error says nothing about the model's capability:
+          // probe once more before blocking (a Gemma stream shape, 2026-09-28).
+          if (probe.available !== true && /\bprovider_error=/.test(String(probe.error || ""))) {
+            record(probe);
+            await phaseContext.beforeDispatch();
+            probe = await runProbe();
+          }
+          record(probe);
           buildProbeCompleted = true;
           if (probe.available !== true) {
             throw new DeliveryLoopError("build_runtime_unavailable", probe.error || "Build executor capability probe failed");

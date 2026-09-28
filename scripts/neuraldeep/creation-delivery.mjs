@@ -242,10 +242,13 @@ export async function runCreationDelivery(job, options = {}) {
     if (existing) {
       const state = readDeliveryLedger(existing);
       if (state.budget.max_tokens > remainingTokens || state.budget.max_iterations > receipt.maxIterations) fail("creation_budget_binding_changed");
-      const retryable = ["creation_paused", "build_executor_aborted"].includes(state.blockers?.[0]?.code)
-        || state.blockers?.[0]?.code === "trial_model_usage_unknown" && deliveryUsageStatus(state.budget) === "complete" && options.settleUnknownUsage?.requestId;
-      if (!completed.has(state.status)) await resumeDelivery(runId, { ...input,
-        ...(state.status === "blocked" && retryable ? { answer: "retry", answeredBy: "user" } : {}) });
+      const code = state.blockers?.[0]?.code, explicit = Boolean(options.settleUnknownUsage?.requestId);
+      const answer = state.status !== "blocked" ? null
+        : ["creation_paused", "build_executor_aborted"].includes(code)
+          || code === "trial_model_usage_unknown" && deliveryUsageStatus(state.budget) === "complete" && explicit ? "retry"
+        // An explicit Continue repeats a build runtime probe that stopped on a provider or adapter error.
+        : code === "build_runtime_unavailable" && explicit ? "retry-after-upgrade" : null;
+      if (!completed.has(state.status)) await resumeDelivery(runId, { ...input, ...(answer ? { answer, answeredBy: "user" } : {}) });
     } else await deliverOutcome(job.outcome.path, job.target, input);
     const runRoot = findDeliveryRun(runId, options);
     receipt = await adoptVerified(job, options, receipt, runRoot, mayContinue);

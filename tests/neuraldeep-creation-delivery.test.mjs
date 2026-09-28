@@ -108,6 +108,28 @@ test("after an explicit Continue the creation receipt never stops a run its ledg
   assert.deepEqual(readDeliveryLedger(resumed.runRoot).budget.amendments, [], "the ledger still had time; only the receipt followed it");
 });
 
+const probeResult = available => ({ backend: "fixture-codex", available, isolation: "unknown", runtimeVersion: "fixture", capabilities: { commandExec: "unknown", threadStart: "unknown", goal: "unprobed" },
+  ...(available ? {} : { error: "NeuralDeep build runtime probe stopped after a provider or adapter error; model capability is not established.\nprovider_error=neuraldeep_stream_identity" }) });
+
+test("a build runtime probe that stops on a provider error is probed once more before blocking (gemma-4-31b, 2026-09-28)", async t => {
+  const f = fixture(t); let probes = 0, calls = 0;
+  const buildExecutor = executor(() => calls++); buildExecutor.probe = async () => probeResult(++probes > 1);
+  const result = await runCreationDelivery(f.job, { ...f.options, buildExecutor });
+  assert.equal(result.adopted, true, JSON.stringify(result.blocker)); assert.equal(probes, 2); assert.equal(calls, 1);
+});
+
+test("an explicit Continue repeats a build runtime probe that failed twice (gemma-4-31b, 2026-09-28)", async t => {
+  const f = fixture(t); let probes = 0, healthy = false, calls = 0;
+  const buildExecutor = executor(() => calls++); buildExecutor.probe = async () => { probes++; return probeResult(healthy); };
+  const blocked = await runCreationDelivery(f.job, { ...f.options, buildExecutor });
+  assert.equal(blocked.blocker?.code, "build_runtime_unavailable"); assert.equal(probes, 2);
+  healthy = true;
+  assert.equal((await runCreationDelivery(f.job, { ...f.options, buildExecutor })).blocker?.code, "build_runtime_unavailable", "without an explicit Continue the stop is kept");
+  assert.equal(probes, 2, "no probe without a decision");
+  const resumed = await runCreationDelivery(f.job, { ...f.options, buildExecutor, settleUnknownUsage: { requestId: "continue-probe" } });
+  assert.equal(resumed.adopted, true, JSON.stringify(resumed.blocker)); assert.equal(probes, 3); assert.equal(calls, 1);
+});
+
 test("missing baseline, unknown preparation usage and another task fail before model execution", async t => {
   const f = fixture(t); let calls = 0;
   for (const job of [{ ...f.job, scaffoldReceipt: {} }, { ...f.job, budget: { ...f.job.budget, unknownAttempts: ["missing-receipt"] } }, { ...f.job, chatId: "chat_elsewhere" }]) {

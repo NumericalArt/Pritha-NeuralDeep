@@ -6,6 +6,7 @@ const RESEARCH_ANSWER_BLOCKERS = new Set(['creation_research_selection_invalid',
 // unmeasured attempts at their upper bound or grows its exhausted budget.
 const DELIVERY_USAGE_BLOCKERS = new Set(['goal_usage_unavailable', 'trial_model_usage_unknown']);
 const DELIVERY_BUDGET_BLOCKERS = new Set(['token_budget_exhausted', 'elapsed_budget_exhausted', 'iteration_budget_exhausted', 'creation_budget_exhausted']);
+const DELIVERY_RETRY_BLOCKERS = new Set(['build_runtime_unavailable']);
 const exited = receipt => receipt.process_exited === true && receipt.process_tree_exited === true && receipt.adapter_closed === true;
 
 /**
@@ -89,9 +90,9 @@ export function resolveCreationContinue(job, { coordination, request, now = new 
     }
   }
   const deliveryStop = next.deliveryRunId ? next.blocker?.code : null;
-  if (next.deliveryRunId && (next.deliveryUsageSettlement?.requestId === request.requestId || DELIVERY_USAGE_BLOCKERS.has(deliveryStop) || DELIVERY_BUDGET_BLOCKERS.has(deliveryStop))) {
+  if (next.deliveryRunId && (next.deliveryUsageSettlement?.requestId === request.requestId || DELIVERY_USAGE_BLOCKERS.has(deliveryStop) || DELIVERY_BUDGET_BLOCKERS.has(deliveryStop) || DELIVERY_RETRY_BLOCKERS.has(deliveryStop))) {
     next.deliveryUsageSettlement = { requestId: request.requestId, actor: request.actor || 'user', at: now };
-    resolved.push(DELIVERY_BUDGET_BLOCKERS.has(deliveryStop) ? 'delivery_budget_extension_requested' : 'delivery_usage_settlement_requested');
+    resolved.push(DELIVERY_BUDGET_BLOCKERS.has(deliveryStop) ? 'delivery_budget_extension_requested' : DELIVERY_RETRY_BLOCKERS.has(deliveryStop) ? 'delivery_retry_requested' : 'delivery_usage_settlement_requested');
   }
   if (resolved.length) {
     budget.continueDecisions = [...(budget.continueDecisions || []), { at: now, requestId: request.requestId, actor: request.actor || 'user', resolved,

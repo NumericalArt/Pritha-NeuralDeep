@@ -101,6 +101,13 @@ test('Continue hands an exhausted delivery budget to the delivery (qwen3.8-27b, 
   assert.equal(unrelated.deliveryUsageSettlement, undefined, 'a stop that needs another decision is not treated as a budget grant');
 });
 
+test('Continue hands a stopped build runtime probe to the delivery (gemma-4-31b, 2026-09-28)', () => {
+  const store = { db: { prepare: () => ({ all: () => [] }) } };
+  const next = resolveCreationContinue(job({}, { deliveryRunId: 'creation-run', blocker: { code: 'build_runtime_unavailable', message: 'probe stopped after a provider error' } }), { coordination: store, request });
+  assert.equal(next.deliveryUsageSettlement?.requestId, request.requestId);
+  assert.deepEqual(next.budget.continueDecisions[0].resolved, ['delivery_retry_requested']);
+});
+
 test('delivery attempt bounds use measured usage and the reservation of unmeasured requests', async t => {
   const { deliveryAttemptBounds } = await import('../scripts/neuraldeep/creation-delivery.mjs');
   const store = new NeuralDeepCoordinationStore(); t.after(() => store.close());
