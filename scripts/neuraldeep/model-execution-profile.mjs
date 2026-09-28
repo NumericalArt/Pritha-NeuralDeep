@@ -28,9 +28,11 @@ export function normalizeModelExecutionRequest(payload) {
 
 /**
  * A build step's response must finish inside the provider's 15-minute window. Gemma 4 on
- * NeuralDeep generated about 8 tokens a second in the 2026-09-28 run (a 15-minute response
- * was cut at roughly 7k tokens), while every completed build response stayed under 4k.
+ * NeuralDeep generated 8 to 16 tokens a second on 2026-09-28 (one 15-minute response was cut
+ * at roughly 7k tokens). A 6144 cap then cut single file writes: a ~15 KB file in a tool call
+ * needs about 7k tokens once escaped, and the provider returns a cut call as plain text.
+ * 8192 holds one such write and still fits the window at about 9 tokens a second.
  */
 export function buildResponseCap(modelId) {
-  return /^gemma-4(?:-|$)/i.test(String(modelId || '')) && !/-noreason$/.test(String(modelId)) ? 6144 : null;
+  return /^gemma-4(?:-|$)/i.test(String(modelId || '')) && !/-noreason$/.test(String(modelId)) ? 8192 : null;
 }

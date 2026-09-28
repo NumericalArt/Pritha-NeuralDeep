@@ -147,7 +147,7 @@ test('a measured build turn that changes no file is followed by a turn that gets
   assert.deepEqual(state.budget.accounted_turns.map(r=>r.phase),['build','build','summary']);assert.equal(state.budget.tokens_used,80);
 });
 
-// Gemma 4 put a file's code into a message until the 6144-token response limit cut it (2026-09-28).
+// Gemma 4 wrote files in calls longer than its response limit; the cut call came back as plain text (2026-09-28).
 test('build prompts state the model response limit and a follow-up names a cut response',async t=>{
   const f=fixture(t),executor=new CodexCliBuildExecutor({model:'gemma-4-31b'});executor.runtimeVersion=()=> 'fixture';const calls=[];
   executor.run=async options=>{
@@ -158,7 +158,7 @@ test('build prompts state the model response limit and a follow-up names a cut r
   };
   await executor.execute({...context(f),tokenBudget:200});
   assert.equal(calls.length,3);
-  assert.match(calls[0].prompt,/well under 6144 tokens; a longer response is cut there/);
+  assert.match(calls[0].prompt,/well under 8192 tokens; a longer response is cut there/);
   assert.match(calls[0].prompt,/Code or file contents written in a message are never applied/);
   assert.doesNotMatch(calls[0].prompt,/was cut, so what it was writing is lost/);
   assert.match(calls[1].prompt,/reached the response token limit and was cut, so what it was writing is lost/);
