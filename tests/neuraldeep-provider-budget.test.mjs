@@ -117,3 +117,13 @@ test('the model context check estimates text tokens instead of counting every by
   assert.equal(session.max_output_tokens,32768,'a 300 KB text session fits the 262k-token context');
   assert.throws(()=>prepareBudgetedRequest({model:'qwen3.8-27b',input:text(600_000)},2_000_000),{code:'provider_budget_model_context'},'a request beyond the context is still refused');
 });
+
+test('delivery steps keep a Gemma 4 response inside the provider window (gemma-4-31b build, 2026-09-28)',async t=>{
+  const {buildResponseCap}=await import('../scripts/neuraldeep/model-execution-profile.mjs');
+  assert.equal(buildResponseCap('gemma-4-31b'),6144);assert.equal(buildResponseCap('gemma-4-31b-noreason'),null);assert.equal(buildResponseCap('qwen3.8-27b'),null);
+  const store=new NeuralDeepCoordinationStore();t.after(()=>store.close());
+  const gate=providerBudgetGate(store,{runId:'run-build',workloadId:'creation-run-iteration-7',tokenBudget:1_000_000});
+  assert.equal(gate.prepare({model:'gemma-4-31b',input:'Implement the approved product'}).max_output_tokens,6144);
+  assert.equal(gate.prepare({model:'gemma-4-31b',input:'Implement the approved product',max_output_tokens:2048}).max_output_tokens,2048);
+  assert.equal(gate.prepare({model:'qwen3.8-27b',input:'Implement the approved product'}).max_output_tokens,32768,'other models keep their profile cap');
+});

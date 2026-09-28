@@ -25,3 +25,12 @@ export function normalizeModelExecutionRequest(payload) {
  const {reasoning:previous,...rest}=payload;
  return Object.keys(reasoning).length?{...rest,reasoning}:rest;
 }
+
+/**
+ * A build step's response must finish inside the provider's 15-minute window. Gemma 4 on
+ * NeuralDeep generated about 8 tokens a second in the 2026-09-28 run (a 15-minute response
+ * was cut at roughly 7k tokens), while every completed build response stayed under 4k.
+ */
+export function buildResponseCap(modelId) {
+  return /^gemma-4(?:-|$)/i.test(String(modelId || '')) && !/-noreason$/.test(String(modelId)) ? 6144 : null;
+}

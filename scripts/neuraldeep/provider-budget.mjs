@@ -5,7 +5,7 @@ import {readCreationResearch} from './creation-research-context.mjs';
 import {reconcileCreationArtifacts} from './agent-creation.mjs';
 import {prepareCreationBriefRequest,validateCreationBriefResponse} from './creation-brief-request.mjs';
 import {prepareCreationResearchRequest} from './creation-research-request.mjs';
-import {neuralDeepExecutionProfile} from './model-execution-profile.mjs';
+import {buildResponseCap,neuralDeepExecutionProfile} from './model-execution-profile.mjs';
 
 const OUTPUT_LIMIT = 32_768;
 const FRAMING_RESERVE = 8_192;
@@ -195,6 +195,10 @@ export function providerBudgetGate(store, { runId, workloadId, creation, tokenBu
         }
         payload={...payload,max_output_tokens:Math.min(payload.max_output_tokens ?? current.job.preparationPolicy.outputTokens,current.job.preparationPolicy.outputTokens)};
         checkRequest(payload);
+      } else {
+        // Delivery steps (build, probes, summaries) keep every response inside the provider window.
+        const cap=buildResponseCap(payload.model);
+        if(cap)payload={...payload,max_output_tokens:Math.min(payload.max_output_tokens ?? cap,cap)};
       }
       try{
         const bounded=prepareBudgetedRequest(payload,available,pinnedProfile);
