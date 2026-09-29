@@ -37,6 +37,6 @@ if(fs.existsSync(project)) {
     const git=spawnSync('git',args,{cwd:project,encoding:'utf8'});if(git.status!==0)throw new Error('Brief Desk local Git initialization failed.');
   }
   const p=spawnSync(process.execPath,['scripts/agents-mother.mjs','registry'],{cwd:root,stdio:'inherit',env:process.env});if(p.status!==0)throw new Error('Agent registry failed; inspect instance state before retrying.');
-  fs.mkdirSync(path.dirname(receipt),{recursive:true,mode:0o700});fs.writeFileSync(receipt,JSON.stringify({version:'0.1.0',project,installedAt:new Date().toISOString()},null,2),{mode:0o600});
+  fs.mkdirSync(path.dirname(receipt),{recursive:true,mode:0o700});fs.writeFileSync(receipt,JSON.stringify({version:JSON.parse(fs.readFileSync(path.join(root,'distribution/manifest.json'),'utf8')).version,project,installedAt:new Date().toISOString()},null,2),{mode:0o600});
   console.log('Installed Brief Desk ND. It is stopped and ready for local Start.');
 }

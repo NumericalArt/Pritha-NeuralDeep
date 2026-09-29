@@ -4,6 +4,51 @@ All notable changes to this project will be documented in this file.
 
 The format follows Keep a Changelog, and this project uses semantic versioning for public releases.
 
+## [0.2.0] — 2026-09-29
+
+Agent creation from the Control Center now reaches a verified, runnable child
+agent, with host-owned checks and an explicit operator decision at every stop.
+
+### Added
+
+- Task Chat → New child agent runs a durable host-operated preparation: model
+  interview and brief, contract, model-authored Outcome Spec, source research
+  and scaffold, each with its own approval and bounded budget.
+- Generic `llm-operation-v1` verifier for LLM web agents: model call through the
+  Pritha binding, saved results, export, provider failures, a missing binding,
+  recovery and restart persistence.
+- Instance NeuralDeep binding for child agents: a scoped broker capability,
+  60-second calls, 4096-token responses and an operator decision for a request
+  whose usage stayed unknown.
+- Host checks during delivery: an idle build turn is followed up in the same
+  attempt, scripts that do not parse and servers that do not start are reported
+  to the next turn, and a managed process agent must pass its scaffold lifecycle
+  test (Start, /health, Stop) before adoption.
+- Managed Start passes a declared `.state/data` directory as `PRITHA_DATA_DIR`;
+  new process agents get a free local port from 3010.
+
+### Changed
+
+- Creation limits doubled (default 2,000,000 tokens, 180 active minutes and 12
+  build iterations). Continue grows an exhausted budget, settles unknown usage
+  at its upper bound and never leaves a job dead-ended.
+- Provider rejections such as 504 are retried; a build turn stopped by the token
+  budget after changing the project is verified before the run stops.
+- Per-model execution profiles size output caps to the provider's 15-minute
+  response window (Gemma 4 build responses: 8,192 tokens).
+- Dependencies: sentence-transformers 6.1.0, zod 4.6.5, GitHub Actions v7.
+- AGENTS.md is shorter; raw intake material is separated from the platform.
+
+### Fixed
+
+- NeuralDeep Responses streams: a terminal snapshot that re-issues item IDs,
+  trims streamed text or omits whitespace-only messages no longer loses or
+  duplicates tool calls, and a response cut at its output limit is recorded.
+- Research keeps relevant passages by masking credential-shaped text instead of
+  dropping them, and retries a curated primary source after a transient failure.
+- CI no longer reads the local instance pointer; verified checkpoints are
+  committed with Pritha's machine identity.
+
 ## [0.1.0] — 2026-09-10
 
 First standalone Pritha NeuralDeep distribution, synchronized with the completed

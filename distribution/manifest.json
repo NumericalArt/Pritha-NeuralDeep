@@ -1,7 +1,7 @@
 {
   "schema": "pritha-distribution-v1",
   "name": "Pritha NeuralDeep",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "repository": "NumericalArt/Pritha-NeuralDeep",
   "node": ">=24",
   "platform": "macos-verified; linux/windows self-managed",
